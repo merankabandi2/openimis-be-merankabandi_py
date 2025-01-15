@@ -93,19 +93,22 @@ class BeneficiaryCardGenerator:
             }
         ''')
 
-    def _get_image_url(self, image_path):
+    def _get_image_url(self, request, image_path):
         """Get image URL - in this case returning the direct URL"""
-        # For demonstration using the same URL as in original code
-        return 'http://mis.mira.test/front/static/media/openIMIS.18731b76.png'
+        current_site = request.build_absolute_uri('/').rstrip('/')
+        return f"{current_site}/{image_path}"
 
-    def generate_card_html(self, beneficiary):
+    def generate_card_html(self, request, beneficiary):
+        current_site = request.build_absolute_uri('/').rstrip('/')
+        photo_url = f"{current_site}/api/merankabandi/beneficiary-photo/photo/{individual.id}/"
+
         """Generate HTML for beneficiary card"""
         individual = beneficiary.group.groupindividuals.get(role=GroupIndividual.Role.HEAD).individual
         colinne = beneficiary.group.location
         
         context = {
-            'logo_url': self._get_image_url('logo'),
-            'photo_url': f"http://mis.mira.test/api/merankabandi/beneficiary-photo/photo/{individual.id}/",
+            'logo_url': self._get_image_url(request, 'front/static/media/openIMIS.18731b76.png'),
+            'photo_url': photo_url,
             'social_id': beneficiary.group.code,
             'individual': individual,
             'province': colinne.parent.parent.name,
@@ -115,9 +118,9 @@ class BeneficiaryCardGenerator:
         
         return render_to_string('beneficiary_card.html', context)
 
-    def generate_beneficiary_cards(self, beneficiary):
+    def generate_beneficiary_cards(self, request, beneficiary):
         """Generate PDF with front and back cards for a single beneficiary"""
-        html = self.generate_card_html(beneficiary)
+        html = self.generate_card_html(request, beneficiary)
         
         html_doc = HTML(string=html)
         return html_doc.write_pdf(
@@ -131,7 +134,7 @@ def generate_beneficiary_card_view(request, social_id):
         beneficiary = Beneficiary.objects.get(group__code=social_id)
         
         generator = BeneficiaryCardGenerator()
-        pdf = generator.generate_beneficiary_cards(beneficiary)
+        pdf = generator.generate_beneficiary_cards(request, beneficiary)
         
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="card_{social_id}.pdf"'
@@ -154,7 +157,7 @@ def generate_colline_cards_view(request, benefit_plan_id, colline_id):
         all_cards_html = []
         
         for beneficiary in beneficiaries:
-            all_cards_html.append(generator.generate_card_html(beneficiary))
+            all_cards_html.append(generator.generate_card_html(request, beneficiary))
         
         combined_html = '\n'.join(all_cards_html)
         
