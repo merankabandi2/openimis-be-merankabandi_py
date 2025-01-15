@@ -1,0 +1,149 @@
+{% load static %}
+
+<!-- First copy of the card -->
+<div class="card">
+    <div class="card-header">
+        IKARATA Y'UWUFASHWA NA MERANKABANDI
+        <img class="logo" src="{{ logo_url }}" alt="Merankabandi Logo">
+    </div>
+    
+    <div class="social-id">{{ social_id }}
+        <img class="photo" src="{{ photo_url }}" alt="Beneficiary Photo">
+
+    </div>
+    
+    <div class="fields">
+        <div class="field">
+            <span class="field-label">Amazina</span>
+            <span class="field-value">{{ individual.first_name }} {{ individual.last_name }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Igitsina</span>
+            <span class="field-value">{{ individual.json_ext.sexe }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Aho aba</span>
+            <span class="field-value"></span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Porovensi</span>
+            <span class="field-value">{{ province }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Komine</span>
+            <span class="field-value">{{ commune }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Umutumba</span>
+            <span class="field-value">{{ colline }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Inomero ya Karangamuntu</span>
+            <span class="field-value">{{ individual.json_ext.ci }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Inomero ya telefone</span>
+            <span class="field-value">{{ individual.json_ext.telephone }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Yanditswe ku wa</span>
+            <span class="field-value">{{ individual.dob|date:"Y-m-d" }}</span>
+        </div>
+    </div>
+    
+    <div class="declaration">
+        Ndemeje ko mpawe n'Umugambi itelefone irimwo ikarata sim yanditswe ku mazina yanje kandi nisabiye hamwe n'ikarata y'Umugambi. Igikumu :
+    </div>
+</div>
+
+<!-- Second copy of the card -->
+<div class="card">
+    <div class="card-header">
+        IKARATA Y'UWUFASHWA NA MERANKABANDI
+        <img class="logo" src="{{ logo_url }}" alt="Merankabandi Logo">
+    </div>
+    
+    <div class="social-id">{{ social_id }}
+        <img class="photo" src="{{ photo_url }}" alt="Beneficiary Photo">
+
+    </div>
+    
+    <div class="fields">
+        <div class="field">
+            <span class="field-label">Amazina</span>
+            <span class="field-value">{{ individual.first_name }} {{ individual.last_name }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Igitsina</span>
+            <span class="field-value">{{ individual.json_ext.sexe }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Aho aba</span>
+            <span class="field-value"></span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Porovensi</span>
+            <span class="field-value">{{ province }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Komine</span>
+            <span class="field-value">{{ commune }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Umutumba</span>
+            <span class="field-value">{{ colline }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Inomero ya Karangamuntu</span>
+            <span class="field-value">{{ individual.json_ext.ci }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Inomero ya telefone</span>
+            <span class="field-value">{{ individual.json_ext.telephone }}</span>
+        </div>
+        
+        <div class="field">
+            <span class="field-label">Yanditswe ku wa</span>
+            <span class="field-value">{{ individual.dob|date:"Y-m-d" }}</span>
+        </div>
+    </div>
+    
+    <div class="declaration">
+        Ndemeje ko mpawe n'Umugambi itelefone irimwo ikarata sim yanditswe ku mazina yanje kandi nisabiye hamwe n'ikarata y'Umugambi. Igikumu :
+    </div>
+</div>
+
+<!-- Back of the card -->
+<div class="card card-back">
+    <div class="back-title">
+        <h3>Uwufise akamubakiye canke ico ashaka gushikiriza,</h3>
+        <h3>yohamagara kuri uyu murongo utariha</h3>
+    </div>
+    
+    <div class="phone-number">302</div>
+    
+    <h3>Muhamagare kuri uyu murongo mu gihe:</h3>
+    
+    <ul class="bullet-points">
+        <li>Utaronse ubutumwa mw'itelefone bukumenyesha ko amahera yawe yaje</li>
+        <li>Utohabwa imfashanyo ingana n'amahera 36 000</li>
+        <li>Boguha iyo mfashanyo mu noti zishaje cane zizokugora gukoresha</li>
+        <li>Itelefone yawe canke ikarata sim itakaye canke bakayikwiba</li>
+        <li>Hogira abagomba kugusaba ku nguvu ngo ubahe kuriyo mfashanyo</li>
+    </ul>
+</div>
