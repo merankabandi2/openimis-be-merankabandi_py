@@ -100,20 +100,20 @@ class BeneficiaryCardGenerator:
 
     def generate_card_html(self, request, beneficiary):
         current_site = request.build_absolute_uri('/').rstrip('/')
-        photo_url = f"{current_site}/api/merankabandi/beneficiary-photo/photo/{individual.id}/"
 
         """Generate HTML for beneficiary card"""
         individual = beneficiary.group.groupindividuals.get(role=GroupIndividual.Role.HEAD).individual
-        colinne = beneficiary.group.location
+        photo_url = f"{current_site}/api/merankabandi/beneficiary-photo/photo/{individual.id}/"
+        colline = beneficiary.group.location
         
         context = {
             'logo_url': self._get_image_url(request, 'front/static/media/openIMIS.18731b76.png'),
             'photo_url': photo_url,
             'social_id': beneficiary.group.code,
             'individual': individual,
-            'province': colinne.parent.parent.name,
-            'commune': colinne.parent.name,
-            'colline': colinne.name,
+            'province': colline.parent.parent.name,
+            'commune': colline.parent.name,
+            'colline': colline.name,
         }
         
         return render_to_string('beneficiary_card.html', context)
