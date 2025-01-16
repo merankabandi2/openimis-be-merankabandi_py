@@ -23,6 +23,7 @@ setup(
         'django',
         'django-db-signals',
         'djangorestframework',
+        'weasyprint',
         'openimis-be-core'
     ],
     classifiers=[
