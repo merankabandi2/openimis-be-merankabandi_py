@@ -26,6 +26,9 @@ setup(
         'weasyprint',
         'openimis-be-core'
     ],
+    package_data={
+        'merankabandi': ['templates/*'],
+    },
     classifiers=[
         'Environment :: Web Environment',
         'Framework :: Django',

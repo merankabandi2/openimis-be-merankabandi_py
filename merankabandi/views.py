@@ -80,17 +80,6 @@ class BeneficiaryCardGenerator:
             .declaration {
                 font-size: 10pt;
             }
-            
-            /* Back side styling */
-            .card-back {
-                text-align: center;
-                page-break-before: always;
-            }
-            .bullet-points {
-                text-align: left;
-                margin-top: 1cm;
-                padding-left: 1cm;
-            }
         ''')
 
     def _get_image_url(self, request, image_path):
