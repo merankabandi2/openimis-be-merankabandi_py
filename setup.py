@@ -27,7 +27,7 @@ setup(
         'openimis-be-core'
     ],
     package_data={
-        'merankabandi': ['templates/*'],
+        'merankabandi': ['templates/*', 'static/*.*'],
     },
     classifiers=[
         'Environment :: Web Environment',

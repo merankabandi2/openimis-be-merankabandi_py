@@ -4,7 +4,12 @@ from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from social_protection.models import GroupBeneficiary as Beneficiary 
 from individual.models import GroupIndividual, Individual
+from django.conf import settings
 from django.http import FileResponse, HttpResponseForbidden
+from pathlib import Path
+import base64
+
+
 import os
 from django.contrib.auth.decorators import login_required
 
@@ -24,7 +29,7 @@ class BeneficiaryCardGenerator:
             
             .card {
                 height: 14cm;
-                width: 19.5cm;  /* A4 width - 2cm margins */
+                width: 19.5cm;
                 margin: 0 auto 0 auto;
                 page-break-inside: avoid;
                 position: relative;
@@ -32,55 +37,84 @@ class BeneficiaryCardGenerator:
             }
             
             .card-header {
-                text-align: center;
-                font-size: 16pt;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12pt;
                 font-weight: bold;
                 margin-bottom: 0.5cm;
             }
 
-            .card-content {
+            .header-text {
+                flex-grow: 1;
+                text-align: center;
+            }
+
+            .social-id-container {
                 display: flex;
                 justify-content: space-between;
+                align-items: center;
                 margin-bottom: 0.5cm;
             }
 
             .social-id {
+                flex-grow: 1;
                 font-weight: bold;
                 text-align: center;
-                font-size: 24pt;
-                margin-bottom: 0.5cm;
+                font-size: 16pt;
             }
             
             .logo, .photo {
                 width: 1.5cm;
                 height: 2cm;
                 object-fit: contain;
-                floar: right;
+                margin-left: 1cm;
             }
-            
-            .fields {
-                margin-top: 1cm;
-            }
-
+    
             .field {
-                margin-bottom: 0.4cm;
+                margin-top: 0.3cm;
+                margin-bottom: 0.3cm;
                 display: flex;
                 align-items: center;
             }
             
             .field-label {
                 display: inline-block;
+                font-size: 10pt;
                 width: 6cm;
             }
             
             .field-value {
                 font-weight: bold;
+                font-size: 12pt;
             }
             
             .declaration {
                 font-size: 10pt;
+                margin-top: 0.6cm;
             }
         ''')
+
+    def _get_image_data_url(self, image_path):
+        """Convert image to data URL for embedding in HTML"""
+        if not image_path or not Path(image_path).exists():
+            return ""
+        
+        # Read the image file and convert to base64
+        with open(image_path, 'rb') as img_file:
+            image_data = base64.b64encode(img_file.read()).decode('utf-8')
+            
+        # Get the file extension for MIME type
+        file_ext = os.path.splitext(image_path)[1].lower()
+        mime_type = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml'
+        }.get(file_ext, 'application/octet-stream')
+
+        return f'data:{mime_type};base64,{image_data}'
 
     def _get_image_url(self, request, image_path):
         """Get image URL - in this case returning the direct URL"""
@@ -88,16 +122,20 @@ class BeneficiaryCardGenerator:
         return f"{current_site}/{image_path}"
 
     def generate_card_html(self, request, beneficiary):
-        current_site = request.build_absolute_uri('/').rstrip('/')
-
         """Generate HTML for beneficiary card"""
-        individual = beneficiary.group.groupindividuals.get(role=GroupIndividual.Role.HEAD).individual
-        photo_url = f"{current_site}/api/merankabandi/beneficiary-photo/photo/{individual.id}/"
+        individual = beneficiary.group.groupindividuals.get(recipient_type=GroupIndividual.RecipientType.PRIMARY).individual
+        household = individual.groupindividuals.get().group
+        base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
+        clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
+        photo_path = os.path.join(base_dir, clean_path)
+        print(['hello', photo_path, 'rlla'])
+
         colline = beneficiary.group.location
         
+        logo_path = os.path.join(settings.STATIC_ROOT, 'merankabandi/logo.png')
         context = {
-            'logo_url': self._get_image_url(request, 'front/static/media/openIMIS.18731b76.png'),
-            'photo_url': photo_url,
+            'logo_url': self._get_image_data_url(logo_path),
+            'photo_url': self._get_image_data_url(photo_path),
             'social_id': beneficiary.group.code,
             'individual': individual,
             'province': colline.parent.parent.name,
@@ -139,7 +177,7 @@ def generate_colline_cards_view(request, benefit_plan_id, colline_id):
     try:
         beneficiaries = Beneficiary.objects.filter(
             benefit_plan=benefit_plan_id, 
-            location=colline_id
+            group__location__uuid=colline_id
         )
         
         generator = BeneficiaryCardGenerator()
@@ -168,7 +206,7 @@ def generate_colline_cards_view(request, benefit_plan_id, colline_id):
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
     household = individual.groupindividuals.get().group
-    base_dir = os.path.join('../../photos', str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
+    base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
     clean_path = f"{type}_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
     
     # Define your permission logic here
