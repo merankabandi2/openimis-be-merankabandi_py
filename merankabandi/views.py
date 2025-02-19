@@ -128,7 +128,7 @@ class BeneficiaryCardGenerator:
         base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
         clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
         photo_path = os.path.join(base_dir, clean_path)
-        print(['hello', photo_path, 'rlla'])
+        moyen_paiement = beneficiary.json_ext.get('moyen_paiement', '')
 
         colline = beneficiary.group.location
         
@@ -138,6 +138,8 @@ class BeneficiaryCardGenerator:
             'photo_url': self._get_image_data_url(photo_path),
             'social_id': beneficiary.group.code,
             'individual': individual,
+            'telephone': moyen_paiement.get('phoneNumber', '') if moyen_paiement else '',
+            'date_enregistrement': moyen_paiement.get('responseDate', '') if moyen_paiement else '',
             'province': colline.parent.parent.name,
             'commune': colline.parent.name,
             'colline': colline.name,
@@ -172,12 +174,12 @@ def generate_beneficiary_card_view(request, social_id):
     except Beneficiary.DoesNotExist:
         return HttpResponse("Beneficiary not found", status=404)
 
-def generate_colline_cards_view(request, benefit_plan_id, colline_id):
+def generate_colline_cards_view(request, commune_name):
     """View for generating cards for all beneficiaries in a colline"""
     try:
         beneficiaries = Beneficiary.objects.filter(
-            benefit_plan=benefit_plan_id, 
-            group__location__uuid=colline_id
+            group__location__parent__name=commune_name,
+            json_ext__moyen_paiement__phoneNumber__isnull=False
         )
         
         generator = BeneficiaryCardGenerator()
@@ -195,7 +197,7 @@ def generate_colline_cards_view(request, benefit_plan_id, colline_id):
         )
         
         response = HttpResponse(content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="colline_{colline_id}_cards.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="colline_{commune_name}_cards.pdf"'
         response.write(pdf)
         
         return response

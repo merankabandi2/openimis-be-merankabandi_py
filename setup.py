@@ -24,6 +24,7 @@ setup(
         'django-db-signals',
         'djangorestframework',
         'weasyprint',
+        'django_oauth_toolkit',
         'openimis-be-core'
     ],
     package_data={

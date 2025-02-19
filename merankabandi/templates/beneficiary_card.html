@@ -1,16 +1,15 @@
 {% load static %}
-
 <!-- First copy of the card -->
 <div class="card">
     <div class="card-header">
-        <div class="header-text">IKARATA Y'UWUFASHWA NA MERANKABANDI</div>
         <img class="logo" src="{{ logo_url }}" alt="Merankabandi Logo">
-    </div>
-    
-    <div class="social-id-container">
-        <div class="social-id">{{ social_id }}</div>
+        <div class="social-id-contain">
+            <div class="header-text">IKARATA Y'UWUFASHWA NA MERANKABANDI</div>
+            <div class="social-id">{{ social_id }}</div>
+        </div>
         <img class="photo" src="{{ photo_url }}" alt="Beneficiary Photo">
     </div>
+    
     
     <div class="fields">
         <div class="field">
@@ -50,12 +49,12 @@
         
         <div class="field">
             <span class="field-label">Inomero ya telefone</span>
-            <span class="field-value">{{ individual.json_ext.telephone }}</span>
+            <span class="field-value">{{ telephone }}</span>
         </div>
         
         <div class="field">
             <span class="field-label">Yanditswe ku wa</span>
-            <span class="field-value">{{ individual.dob|date:"Y-m-d" }}</span>
+            <span class="field-value">{{ date_enregistrement }}</span>
         </div>
     </div>
     
@@ -65,14 +64,13 @@
 </div>
 
 <!-- Second copy of the card -->
-<div class="card">
+<div class="card card2">
     <div class="card-header">
-        <div class="header-text">IKARATA Y'UWUFASHWA NA MERANKABANDI</div>
         <img class="logo" src="{{ logo_url }}" alt="Merankabandi Logo">
-    </div>
-    
-    <div class="social-id-container">
-        <div class="social-id">{{ social_id }}</div>
+        <div class="social-id-contain">
+            <div class="header-text">IKARATA Y'UWUFASHWA NA MERANKABANDI</div>
+            <div class="social-id">{{ social_id }}</div>
+        </div>
         <img class="photo" src="{{ photo_url }}" alt="Beneficiary Photo">
     </div>
     
@@ -114,12 +112,12 @@
         
         <div class="field">
             <span class="field-label">Inomero ya telefone</span>
-            <span class="field-value">{{ individual.json_ext.telephone }}</span>
+            <span class="field-value">{{ telephone }}</span>
         </div>
         
         <div class="field">
             <span class="field-label">Yanditswe ku wa</span>
-            <span class="field-value">{{ individual.dob|date:"Y-m-d" }}</span>
+            <span class="field-value">{{ date_enregistrement }}</span>
         </div>
     </div>
     
