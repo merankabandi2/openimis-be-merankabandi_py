@@ -190,8 +190,8 @@ class PhoneNumberAttributionRequestSerializer(serializers.Serializer):
     """
     cni = serializers.CharField(required=True)
     socialid = serializers.CharField(required=True)
-    msisdn = serializers.CharField(required=True)
-    status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
+    msisdn = serializers.CharField(required=False)
+    status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED', 'SUCCESS', 'FAILURE'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     error_message = serializers.CharField(required=False, allow_blank=True)
 
@@ -205,9 +205,10 @@ class PhoneNumberAttributionRequestSerializer(serializers.Serializer):
                 raise serializers.ValidationError("error_code is required when status is REJECTED")
             if not data.get('error_message'):
                 raise serializers.ValidationError("error_message is required when status is REJECTED")
+        if data.get('status') == 'SUCCESS':
+            if not data.get('msisdn'):
+                raise serializers.ValidationError("msisdn is required when status is SUCCESS")
         return data
-
-
 
 
 class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):

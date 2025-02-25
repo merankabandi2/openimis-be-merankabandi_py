@@ -207,7 +207,7 @@ class PhoneNumberAttributionService:
             
             # Find group beneficiaries by socialid
             group_beneficiaries = GroupBeneficiary.objects.filter(
-                json_ext__socialid=socialid
+                json_ext__social_id=socialid
             )
             
             # Get group beneficiaries where individual is a primary recipient
@@ -232,7 +232,7 @@ class PhoneNumberAttributionService:
     
     @classmethod
     @transaction.atomic
-    def process_phone_attribution(cls, data):
+    def process_phone_attribution(cls, data, user):
         """
         Process phone number attribution request
         
@@ -253,34 +253,29 @@ class PhoneNumberAttributionService:
                 return False, None, "Beneficiary not found"
             
             # Verify beneficiary is in the correct state
-            if beneficiary.status != 'PENDING_PHONE_VERIFICATION':
+            if beneficiary.status != 'ACTIVE':
                 return False, beneficiary, f"Invalid beneficiary state: {beneficiary.status}"
             
             # Update phone number data in json_ext
             json_ext = beneficiary.json_ext or {}
             
             # Ensure nested structure exists
-            if 'moyen_telecom' not in json_ext:
+            if 'moyen_telecom' not in json_ext or not json_ext['moyen_telecom']:
                 json_ext['moyen_telecom'] = {}
-                
+
             # Update phone number info
-            json_ext['moyen_telecom']['msisdn'] = data['msisdn']
             json_ext['moyen_telecom']['status'] = data['status']
+            if data['status'] == 'SUCCESS':
+                json_ext['moyen_telecom']['msisdn'] = data['msisdn']
             
-            if data['status'] == 'REJECTED':
-                json_ext['moyen_telecom']['error_code'] = data['status_code']
+            if data['status'] in ['REJECTED', 'FAILURE']:
+                json_ext['moyen_telecom']['error_code'] = data['error_code']
                 json_ext['moyen_telecom']['error_message'] = data['error_message']
             
             beneficiary.json_ext = json_ext
             
-            # Update beneficiary status
-            if data['status'] == 'ACCEPTED':
-                beneficiary.status = 'PHONE_VERIFIED'
-            else:
-                beneficiary.status = 'PHONE_VERIFICATION_FAILED'
-            
             # Save changes
-            beneficiary.save()
+            beneficiary.save(user=user)
             
             return True, beneficiary, None
             
@@ -328,44 +323,6 @@ class PhoneNumberAttributionService:
             
         return queryset
 
-    @classmethod
-    def get_pending_phone_reception(cls, commune=None, programme=None):
-        """
-        Get all beneficiaries awaiting phone number request reception
-        
-        Args:
-            commune (str, optional): Filter by commune name
-            programme (str, optional): Filter by programme name
-            
-        Returns:
-            QuerySet: Filtered queryset of beneficiaries
-        """
-        queryset = GroupBeneficiary.objects.filter(
-            json_ext__moyen_telecom__status='CREATED'
-        ).select_related(
-            'group', 
-            'benefit_plan'
-        ).prefetch_related(
-            'group__groupindividuals', 
-            'group__groupindividuals__individual',
-            'group__location',
-            'group__location__parent',
-            'group__location__parent__parent'
-        )
-        
-        # Apply filters if provided
-        if commune:
-            queryset = queryset.filter(
-                group__location__parent__name__iexact=commune
-            )
-            
-        if programme:
-            queryset = queryset.filter(
-                benefit_plan__name__iexact=programme
-            )
-            
-        return queryset
-    
 
 class PaymentAccountAttributionService:
     """
@@ -454,7 +411,7 @@ class PaymentAccountAttributionService:
     
     @classmethod
     @transaction.atomic
-    def process_acknowledgment(cls, data):
+    def process_acknowledgment(cls, data, user):
         """
         Process payment account acknowledgment request
         
@@ -483,7 +440,7 @@ class PaymentAccountAttributionService:
             json_ext = beneficiary.json_ext or {}
             
             # Ensure nested structure exists
-            if 'moyen_paiement' not in json_ext:
+            if 'moyen_paiement' not in json_ext or not json_ext['moyen_paiement']:
                 json_ext['moyen_paiement'] = {}
                 
             # Update payment account info
@@ -491,7 +448,7 @@ class PaymentAccountAttributionService:
             json_ext['moyen_paiement']['status'] = data['status']
             
             if data['status'] == 'REJECTED':
-                json_ext['moyen_paiement']['error_code'] = data['status_code']
+                json_ext['moyen_paiement']['error_code'] = data['error_code']
                 json_ext['moyen_paiement']['error_message'] = data['error_message']
             
             beneficiary.json_ext = json_ext
@@ -503,7 +460,7 @@ class PaymentAccountAttributionService:
                 beneficiary.status = 'ACCOUNT_ATTRIBUTION_REJECTED'
             
             # Save changes
-            beneficiary.save()
+            beneficiary.save(user=user)
             
             return True, beneficiary, None
             
@@ -515,7 +472,7 @@ class PaymentAccountAttributionService:
     
     @classmethod
     @transaction.atomic
-    def process_account_attribution(cls, data):
+    def process_account_attribution(cls, data, user):
         """
         Process payment account attribution request
         
@@ -543,7 +500,7 @@ class PaymentAccountAttributionService:
             json_ext = beneficiary.json_ext or {}
             
             # Ensure nested structure exists
-            if 'moyen_paiement' not in json_ext:
+            if 'moyen_paiement' not in json_ext or not json_ext['moyen_paiement']:
                 json_ext['moyen_paiement'] = {}
                 
             # Update payment account info
@@ -557,14 +514,8 @@ class PaymentAccountAttributionService:
             
             beneficiary.json_ext = json_ext
             
-            # Update beneficiary status
-            if data['status'] == 'SUCCESS':
-                beneficiary.status = 'ACCOUNT_CREATED'
-            else:
-                beneficiary.status = 'ACCOUNT_CREATION_FAILED'
-            
             # Save changes
-            beneficiary.save()
+            beneficiary.save(user=user)
             
             return True, beneficiary, None
             

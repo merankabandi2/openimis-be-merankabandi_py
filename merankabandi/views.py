@@ -326,7 +326,8 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             
         # Process phone number attribution
         success, beneficiary, error_message = PhoneNumberAttributionService.process_phone_attribution(
-            request_serializer.validated_data
+            request_serializer.validated_data,
+            request.user
         )
         
         if not success:
@@ -560,28 +561,28 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         try:
             # Count beneficiaries by status
             pending_attribution = Beneficiary.objects.filter(
-                status__in=['PENDING_ACCOUNT_ATTRIBUTION', 'PHONE_VERIFIED']
+                json_ext__moyen_paiement__status='ACCEPTED'
             ).count()
             
-            pending_creation = Beneficiary.objects.filter(
-                status='PENDING_ACCOUNT_CREATION'
+            rejected = Beneficiary.objects.filter(
+                json_ext__moyen_paiement__status='REJECTED'
             ).count()
             
             created = Beneficiary.objects.filter(
-                status='ACCOUNT_CREATED'
+                json_ext__moyen_paiement__status='SUCCESS'
             ).count()
             
             failed = Beneficiary.objects.filter(
-                status__in=['ACCOUNT_ATTRIBUTION_REJECTED', 'ACCOUNT_CREATION_FAILED']
+                json_ext__moyen_paiement__status='FAILED'
             ).count()
             
             # Return statistics
             return Response({
                 'pending_attribution': pending_attribution,
-                'pending_creation': pending_creation,
+                'rejected': rejected,
                 'created': created,
                 'failed': failed,
-                'total': pending_attribution + pending_creation + created + failed
+                'total': pending_attribution + rejected + created + failed
             })
             
         except Exception as e:
