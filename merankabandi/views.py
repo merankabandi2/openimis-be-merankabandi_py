@@ -8,10 +8,29 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponseForbidden
 from pathlib import Path
 import base64
-
-
 import os
-from django.contrib.auth.decorators import login_required
+from rest_framework.response import Response
+from rest_framework import status
+
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.decorators import action
+import logging
+
+from .serializers import (
+    PaymentAccountAcknowledgmentSerializer,
+    PaymentAccountAttributionListSerializer,
+    PaymentAccountAttributionSerializer,
+    PhoneNumberAttributionRequestSerializer,
+    BeneficiaryPhoneDataSerializer,
+    ResponseSerializer
+)
+from .services import PaymentAccountAttributionService, PhoneNumberAttributionService
+
+logger = logging.getLogger(__name__)
+
 
 
 class BeneficiaryCardGenerator:
@@ -128,7 +147,7 @@ class BeneficiaryCardGenerator:
         base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
         clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
         photo_path = os.path.join(base_dir, clean_path)
-        moyen_paiement = beneficiary.json_ext.get('moyen_paiement', '')
+        moyen_paiement = beneficiary.json_ext.get('moyen_telecom', '')
 
         colline = beneficiary.group.location
         
@@ -138,8 +157,8 @@ class BeneficiaryCardGenerator:
             'photo_url': self._get_image_data_url(photo_path),
             'social_id': beneficiary.group.code,
             'individual': individual,
-            'telephone': moyen_paiement.get('phoneNumber', '') if moyen_paiement else '',
-            'date_enregistrement': moyen_paiement.get('responseDate', '') if moyen_paiement else '',
+            'telephone': moyen_paiement.get('msisdn', '') if moyen_paiement else '',
+            'date_enregistrement': moyen_paiement.get('responseDate', '2025-02-19') if moyen_paiement else '2025-02-19',
             'province': colline.parent.parent.name,
             'commune': colline.parent.name,
             'colline': colline.name,
@@ -245,3 +264,333 @@ def has_image_access_permission(user, image_path):
         return True
     
     return False
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class PhoneNumberAttributionViewSet(viewsets.ViewSet):
+    """
+    API endpoint for phone number attribution.
+    
+    GET: Retrieve beneficiaries requiring phone number verification
+    POST: Verify and attribute phone numbers to beneficiaries
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def list(self, request):
+        """
+        GET: List beneficiaries requiring phone number verification.
+        Optional filters: commune, programme
+        """
+        commune = request.query_params.get('commune')
+        programme = request.query_params.get('programme')
+        
+        # Get beneficiaries awaiting phone verification
+        queryset = PhoneNumberAttributionService.get_pending_phone_verifications(
+            commune=commune, 
+            programme=programme
+        )
+        
+        # Paginate results
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        # Serialize data
+        serializer = BeneficiaryPhoneDataSerializer(
+            page, 
+            many=True,
+            context={'request': request}
+        )
+        
+        return paginator.get_paginated_response(serializer.data)
+
+    def create(self, request):
+        """
+        POST: Verify and attribute phone number to beneficiary
+        """
+        # Validate request data
+        request_serializer = PhoneNumberAttributionRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'invalid_data',
+                    'message': request_serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Process phone number attribution
+        success, beneficiary, error_message = PhoneNumberAttributionService.process_phone_attribution(
+            request_serializer.validated_data
+        )
+        
+        if not success:
+            response_data = {
+                'status': 'FAILURE',
+                'error_code': 'processing_error',
+                'message': error_message
+            }
+            
+            # Determine appropriate status code
+            if not beneficiary:
+                response_status = status.HTTP_404_NOT_FOUND
+            elif error_message and 'state' in error_message:
+                response_status = status.HTTP_400_BAD_REQUEST
+            else:
+                response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                
+            return Response(response_data, status=response_status)
+        
+        # Return success response
+        response_serializer = ResponseSerializer(data={
+            'status': 'SUCCESS',
+            'error_code': None,
+            'message': 'Phone number successfully processed'
+        })
+        response_serializer.is_valid()
+        return Response(response_serializer.validated_data)
+    
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """
+        GET: Retrieve statistics about phone number verification
+        """
+        try:
+            # Count beneficiaries by status
+            pending_count = Beneficiary.objects.filter(
+                json_ext__moyen_telecom__msisdn__isnull=True
+            ).count()
+            
+            rejected_count = Beneficiary.objects.filter(
+                json_ext__moyen_telecom__status='REJECTED'
+            ).count()
+            
+            attributed_count = Beneficiary.objects.filter(
+                json_ext__moyen_telecom__status='SUCCESS',
+                json_ext__moyen_telecom__msisdn__isnull=False
+            ).count()
+
+            failed_count = Beneficiary.objects.filter(
+                json_ext__moyen_telecom__status='FAILED'
+            ).count()
+            
+            # Return statistics
+            return Response({
+                'pending_count': pending_count,
+                'rejected_count': rejected_count,
+                'failed_count': failed_count,
+                'attributed_count': attributed_count,
+                'total': pending_count + rejected_count + failed_count + attributed_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting phone verification stats: {str(e)}")
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'stats_error',
+                    'message': 'Error retrieving statistics'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+   
+
+class PaymentAccountAttributionViewSet(viewsets.ViewSet):
+    """
+    API endpoint for payment account attribution workflow.
+    
+    GET: Retrieve beneficiary data for account attribution
+    POST: Acknowledge receipt of data or attribute payment account
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def list(self, request):
+        """
+        GET: List beneficiaries requiring payment account attribution.
+        Optional filters: commune, programme
+        """
+        commune = request.query_params.get('commune')
+        programme = request.query_params.get('programme')
+        
+        # Get beneficiaries awaiting account attribution
+        queryset = PaymentAccountAttributionService.get_pending_account_attributions(
+            commune=commune, 
+            programme=programme
+        )
+        
+        # Paginate results
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        # Serialize data
+        serializer = PaymentAccountAttributionListSerializer(
+            page, 
+            many=True,
+            context={'request': request}
+        )
+        
+        return paginator.get_paginated_response(serializer.data)
+
+    def create(self, request):
+        """
+        POST: Handle acknowledgment or attribution based on payload
+        """
+        # Determine operation type based on payload
+        payload = request.data
+        
+        if 'tp_account_number' in payload:
+            return self.handle_attribution(request)
+        elif 'status' in payload and payload.get('status') in ['ACCEPTED', 'REJECTED']:
+            return self.handle_acknowledgment(request)
+        else:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'invalid_operation',
+                    'message': 'Could not determine operation type from payload'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+    def handle_acknowledgment(self, request):
+        """
+        Handle acknowledgment of beneficiary data
+        """
+        # Validate request data
+        serializer = PaymentAccountAcknowledgmentSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'invalid_data',
+                    'message': serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Process acknowledgment
+        success, beneficiary, error_message = PaymentAccountAttributionService.process_acknowledgment(
+            serializer.validated_data
+        )
+        
+        if not success:
+            response_data = {
+                'status': 'FAILURE',
+                'error_code': 'processing_error',
+                'message': error_message
+            }
+            
+            # Determine appropriate status code
+            if not beneficiary:
+                response_status = status.HTTP_404_NOT_FOUND
+            elif error_message and 'state' in error_message:
+                response_status = status.HTTP_400_BAD_REQUEST
+            else:
+                response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                
+            return Response(response_data, status=response_status)
+        
+        # Return success response
+        response_serializer = ResponseSerializer(data={
+            'status': 'SUCCESS',
+            'error_code': None,
+            'message': 'Payment account acknowledgment successful'
+        })
+        response_serializer.is_valid()
+        return Response(response_serializer.validated_data)
+            
+    def handle_attribution(self, request):
+        """
+        Handle payment account attribution
+        """
+        # Validate request data
+        serializer = PaymentAccountAttributionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'invalid_data',
+                    'message': serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Process account attribution
+        success, beneficiary, error_message = PaymentAccountAttributionService.process_account_attribution(
+            serializer.validated_data
+        )
+        
+        if not success:
+            response_data = {
+                'status': 'FAILURE',
+                'error_code': 'processing_error',
+                'message': error_message
+            }
+            
+            # Determine appropriate status code
+            if not beneficiary:
+                response_status = status.HTTP_404_NOT_FOUND
+            elif error_message and 'state' in error_message:
+                response_status = status.HTTP_400_BAD_REQUEST
+            else:
+                response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                
+            return Response(response_data, status=response_status)
+        
+        # Return success response
+        response_serializer = ResponseSerializer(data={
+            'status': 'SUCCESS',
+            'error_code': None,
+            'message': 'Payment account attribution successful'
+        })
+        response_serializer.is_valid()
+        return Response(response_serializer.validated_data)
+    
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """
+        GET: Retrieve statistics about payment account attribution
+        """
+        try:
+            # Count beneficiaries by status
+            pending_attribution = Beneficiary.objects.filter(
+                status__in=['PENDING_ACCOUNT_ATTRIBUTION', 'PHONE_VERIFIED']
+            ).count()
+            
+            pending_creation = Beneficiary.objects.filter(
+                status='PENDING_ACCOUNT_CREATION'
+            ).count()
+            
+            created = Beneficiary.objects.filter(
+                status='ACCOUNT_CREATED'
+            ).count()
+            
+            failed = Beneficiary.objects.filter(
+                status__in=['ACCOUNT_ATTRIBUTION_REJECTED', 'ACCOUNT_CREATION_FAILED']
+            ).count()
+            
+            # Return statistics
+            return Response({
+                'pending_attribution': pending_attribution,
+                'pending_creation': pending_creation,
+                'created': created,
+                'failed': failed,
+                'total': pending_attribution + pending_creation + created + failed
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting account attribution stats: {str(e)}")
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'stats_error',
+                    'message': 'Error retrieving statistics'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
