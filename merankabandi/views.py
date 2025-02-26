@@ -1,5 +1,6 @@
 from django.http import HttpResponse
 from django.template.loader import render_to_string
+from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from social_protection.models import GroupBeneficiary as Beneficiary 
@@ -20,14 +21,17 @@ from rest_framework.decorators import action
 import logging
 
 from .serializers import (
+    IndividualPaymentRequestSerializer,
     PaymentAccountAcknowledgmentSerializer,
     PaymentAccountAttributionListSerializer,
     PaymentAccountAttributionSerializer,
+    PaymentAcknowledgmentSerializer,
+    PaymentStatusUpdateSerializer,
     PhoneNumberAttributionRequestSerializer,
     BeneficiaryPhoneDataSerializer,
     ResponseSerializer
 )
-from .services import PaymentAccountAttributionService, PhoneNumberAttributionService
+from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService
 
 logger = logging.getLogger(__name__)
 
@@ -587,6 +591,230 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             
         except Exception as e:
             logger.error(f"Error getting account attribution stats: {str(e)}")
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'stats_error',
+                    'message': 'Error retrieving statistics'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PaymentRequestViewSet(viewsets.ViewSet):
+    """
+    API endpoint for payment requests.
+    
+    GET: Retrieve individual payment requests for payment agency
+    POST: Acknowledge receipt or update payment status
+    """
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def list(self, request):
+        """
+        GET: List individual payment requests for payment agency
+        Optional filters: payment_provider_id, payment_cycle_id, commune
+        """
+        # Get filter parameters
+        payment_provider_id = request.query_params.get('payment_provider_id')
+        payment_cycle_id = request.query_params.get('payment_cycle_id')
+        commune = request.query_params.get('commune')
+        
+        # Get payment requests
+        queryset = PaymentApiService.get_individual_payment_requests(
+            payment_provider_id=payment_provider_id,
+            payment_cycle_id=payment_cycle_id,
+            commune=commune
+        )
+        
+        # Paginate results
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        # Serialize data
+        serializer = IndividualPaymentRequestSerializer(page, many=True)
+        
+        return paginator.get_paginated_response(serializer.data)
+    
+    def retrieve(self, request, pk=None):
+        """
+        GET: Retrieve a specific payment request by code
+        """
+        payment_request = PaymentApiService.get_payment_request_by_code(pk)
+        
+        if not payment_request:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'not_found',
+                    'message': f'Payment request with code {pk} not found or not available for payment'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = IndividualPaymentRequestSerializer(payment_request)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """
+        POST: Handle both acknowledgment and payment status updates
+        Determines operation type based on payload
+        """
+        # Determine operation type based on presence of status field
+        operation = None
+        if 'status' in request.data:
+            if request.data['status'] in ['ACCEPTED', 'REJECTED']:
+                operation = 'acknowledge'
+            elif request.data['status'] in ['PAID', 'FAILED']:
+                operation = 'update_status'
+
+        user = request.user
+        # Handle acknowledgment
+        if operation == 'acknowledge':
+            serializer = PaymentAcknowledgmentSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'invalid_data',
+                        'message': serializer.errors
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process acknowledgment
+            data = serializer.validated_data
+            success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
+                user,
+                code=data['code'],
+                status=data['status'],
+                status_code=data.get('status_code'),
+                error_message=data.get('error_message')
+            )
+            
+            if not success:
+                response_status = status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'acknowledgment_failed',
+                        'message': error_message
+                    },
+                    status=response_status
+                )
+            
+            # Return success response
+            response_serializer = ResponseSerializer(data={
+                'status': 'SUCCESS',
+                'message': 'Payment request acknowledgment successful'
+            })
+            response_serializer.is_valid()
+            return Response(response_serializer.validated_data)
+        
+        # Handle payment status update
+        elif operation == 'update_status':
+            serializer = PaymentStatusUpdateSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'invalid_data',
+                        'message': serializer.errors
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process status update
+            data = serializer.validated_data
+            success, benefit, error_message = PaymentApiService.update_payment_status(
+                user,
+                code=data['code'],
+                status=data['status'],
+                transaction_reference=data.get('transaction_reference'),
+                transaction_date=data.get('transaction_date'),
+                error_code=data.get('error_code'),
+                error_message=data.get('error_message')
+            )
+            
+            if not success:
+                response_status = status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'status_update_failed',
+                        'message': error_message
+                    },
+                    status=response_status
+                )
+            
+            # Return success response
+            response_serializer = ResponseSerializer(data={
+                'status': 'SUCCESS',
+                'message': f'Payment status updated to {data["status"]} successfully'
+            })
+            response_serializer.is_valid()
+            return Response(response_serializer.validated_data)
+        
+        # Invalid operation or missing status field
+        else:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'invalid_operation',
+                    'message': 'Could not determine operation type from payload. Status must be one of: ACCEPTED, REJECTED, PAID, FAILED'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """
+        GET: Get statistics about payment requests
+        """
+        try:
+            # Get payment provider ID filter if present
+            payment_provider_id = request.query_params.get('payment_provider_id')
+            
+            # Get payment requests
+            payment_requests = PaymentApiService.get_individual_payment_requests(
+                payment_provider_id=payment_provider_id
+            )
+            
+            # Calculate statistics
+            total_count = payment_requests.count()
+            total_amount = sum(req.amount or 0 for req in payment_requests)
+            
+            # Count by status from acknowledgments
+            acknowledged = 0
+            rejected = 0
+            
+            for req in payment_requests:
+                if not req.json_ext or 'payment_provider' not in req.json_ext:
+                    continue
+                    
+                if req.json_ext['payment_provider'].get('acknowledgment_status') == 'ACCEPTED':
+                    acknowledged += 1
+                elif req.json_ext['payment_provider'].get('acknowledgment_status') == 'REJECTED':
+                    rejected += 1
+            
+            # Count by payment status
+            paid = BenefitConsumption.objects.filter(
+                status=BenefitConsumptionStatus.RECONCILED
+            ).count()
+            
+            return Response({
+                'total_requests': total_count,
+                'total_amount': float(total_amount),
+                'acknowledged': acknowledged,
+                'rejected': rejected,
+                'pending': total_count - acknowledged - rejected,
+                'paid': paid,
+                'failed': rejected
+            })
+            
+        except Exception as e:
+            logger.error(f"Error retrieving payment stats: {str(e)}")
             return Response(
                 {
                     'status': 'FAILURE',

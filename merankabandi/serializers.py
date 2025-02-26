@@ -1,3 +1,4 @@
+from payroll.models import BenefitConsumption
 from rest_framework import serializers
 from django.urls import reverse
 import logging
@@ -330,3 +331,117 @@ class ResponseSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'])
     error_code = serializers.CharField(required=False, allow_null=True)
     error_message = serializers.CharField(required=False, allow_null=True)
+
+class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
+    """
+    Serializer for individual payment requests to be provided to payment agencies
+    """
+    prenom = serializers.SerializerMethodField()
+    nom = serializers.SerializerMethodField()
+    genre = serializers.SerializerMethodField()
+    naissance_date = serializers.SerializerMethodField()
+    num_cni = serializers.SerializerMethodField()
+    code = serializers.SerializerMethodField()
+    montant = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BenefitConsumption
+        fields = [
+            'prenom', 'nom', 'num_cni', 'naissance_date', 
+            'genre', 'code', 'montant'
+        ]
+    
+    def get_prenom(self, obj):
+        """Get first name"""
+        return obj.individual.first_name if obj.individual else ""
+    
+    def get_nom(self, obj):
+        """Get last name"""
+        return obj.individual.last_name if obj.individual else ""
+    
+    def get_genre(self, obj):
+        """Get gender from individual json_ext"""
+        if obj.individual and obj.individual.json_ext and 'sexe' in obj.individual.json_ext:
+            return obj.individual.json_ext.get('sexe')
+        return ""
+    
+    def get_naissance_date(self, obj):
+        """Get date of birth"""
+        return obj.individual.dob if obj.individual and obj.individual.dob else None
+    
+    def get_num_cni(self, obj):
+        """Get CNI from individual json_ext"""
+        if obj.individual and obj.individual.json_ext and 'ci' in obj.individual.json_ext:
+            return obj.individual.json_ext.get('ci')
+        return ""
+    
+    def get_code(self, obj):
+        """Get payment code"""
+        return obj.code
+    
+    def get_montant(self, obj):
+        """Get payment amount"""
+        return str(obj.amount) if obj.amount else "0"
+
+
+class PaymentAcknowledgmentSerializer(serializers.Serializer):
+    """
+    Serializer for payment request acknowledgment
+    """
+    code = serializers.CharField(required=True)
+    payment_agency_id = serializers.CharField(required=True)
+    status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
+    status_code = serializers.CharField(required=False, allow_blank=True)
+    error_message = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate the acknowledgment data"""
+        # Ensure status_code and error_message are provided if status is REJECTED
+        if data.get('status') == 'REJECTED':
+            if not data.get('status_code'):
+                raise serializers.ValidationError({
+                    'status_code': 'Status code is required when status is REJECTED'
+                })
+        
+        return data
+
+
+class PaymentStatusUpdateSerializer(serializers.Serializer):
+    """
+    Serializer for payment status update
+    """
+    code = serializers.CharField(required=True)
+    payment_agency_id = serializers.CharField(required=True)
+    status = serializers.ChoiceField(choices=['PAID', 'FAILED'], required=True)
+    transaction_reference = serializers.CharField(required=False, allow_blank=True)
+    transaction_date = serializers.CharField(required=False, allow_blank=True)
+    error_code = serializers.CharField(required=False, allow_blank=True)
+    error_message = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate the payment status update data"""
+        # Validate based on status
+        if data.get('status') == 'PAID':
+            if not data.get('transaction_reference'):
+                raise serializers.ValidationError({
+                    'transaction_reference': 'Transaction reference is required when status is PAID'
+                })
+                
+            # Validate transaction date format if provided
+            if data.get('transaction_date'):
+                try:
+                    # Try parsing the date
+                    datetime.fromisoformat(data.get('transaction_date').replace('Z', '+00:00'))
+                except ValueError:
+                    raise serializers.ValidationError({
+                        'transaction_date': 'Invalid date format. Use ISO 8601 format (e.g., 2023-01-01T12:00:00Z)'
+                    })
+        
+        elif data.get('status') == 'FAILED':
+            if not data.get('error_code'):
+                raise serializers.ValidationError({
+                    'error_code': 'Error code is required when status is FAILED'
+                })
+        
+        return data
+
