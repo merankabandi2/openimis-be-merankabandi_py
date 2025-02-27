@@ -600,7 +600,7 @@ class PaymentApiService:
     
     @classmethod
     @transaction.atomic
-    def acknowledge_payment_request(cls, user, code, status, error_code=None, error_message=None):
+    def acknowledge_payment_request(cls, user, code, status, transaction_reference=None, error_code=None, error_message=None):
         """
         Acknowledge receipt of payment request by payment provider
         
@@ -629,19 +629,26 @@ class PaymentApiService:
             json_ext = benefit.json_ext or {}
             
             # Ensure payment_provider field exists
-            if 'payment_provider' not in json_ext:
-                json_ext['payment_provider'] = {}
+            if 'payment_request' not in json_ext:
+                json_ext['payment_request'] = {}
                 
             # Update acknowledgment info
-            json_ext['payment_provider']['acknowledgment_status'] = status
-            json_ext['payment_provider']['acknowledgment_date'] = datetime.now().isoformat()
+            json_ext['payment_request']['acknowledgment_status'] = status
+            json_ext['payment_request']['acknowledgment_date'] = datetime.now().isoformat()
             
+            if status == 'ACCEPTED':
+                if not transaction_reference:
+                    return False, benefit, "Transaction reference is required when status is ACCEPTED"
+                
+                benefit.receipt = transaction_reference
+                json_ext['payment_request']['transaction_reference'] = transaction_reference
+
             if status == 'REJECTED':
                 if not error_code:
                     return False, benefit, "Status code is required when status is REJECTED"
                     
-                json_ext['payment_provider']['error_code'] = error_code
-                json_ext['payment_provider']['error_message'] = error_message or ""
+                json_ext['payment_request']['error_code'] = error_code
+                json_ext['payment_request']['error_message'] = error_message or ""
                 
                 # Update benefit status to rejected
                 
@@ -693,18 +700,19 @@ class PaymentApiService:
             json_ext = benefit.json_ext or {}
 
             # Update payment status
-            if 'payment_execution' not in json_ext:
-                json_ext['payment_execution'] = {}
+            if 'payment_reconciliation' not in json_ext:
+                json_ext['payment_reconciliation'] = {}
                 
-            json_ext['payment_execution']['status'] = status
-            json_ext['payment_execution']['date'] = datetime.now().isoformat()
+            json_ext['payment_reconciliation']['status'] = status
+            json_ext['payment_reconciliation']['date'] = datetime.now().isoformat()
             
             if status == 'PAID':
                 if not transaction_reference:
                     return False, benefit, "Transaction reference is required when status is PAID"
-                    
-                json_ext['payment_execution']['transaction_reference'] = transaction_reference
-                json_ext['payment_execution']['transaction_date'] = transaction_date or datetime.now().isoformat()
+                
+                benefit.receipt = transaction_reference
+                json_ext['payment_reconciliation']['transaction_reference'] = transaction_reference
+                json_ext['payment_reconciliation']['transaction_date'] = transaction_date or datetime.now().isoformat()
                 
                 # Update benefit status to reconciled
                 benefit.status = BenefitConsumptionStatus.RECONCILED
@@ -713,8 +721,8 @@ class PaymentApiService:
                 if not error_code:
                     return False, benefit, "Error code is required when status is FAILED"
                     
-                json_ext['payment_execution']['error_code'] = error_code
-                json_ext['payment_execution']['error_message'] = error_message or ""
+                json_ext['payment_reconciliation']['error_code'] = error_code
+                json_ext['payment_reconciliation']['error_message'] = error_message or ""
                 
                 # Update benefit status to rejected
                 benefit.status = BenefitConsumptionStatus.REJECTED
@@ -724,7 +732,7 @@ class PaymentApiService:
             
             # Save changes
             benefit.json_ext = json_ext
-            benefit.save()
+            benefit.save(user=user)
             
             return True, benefit, None
             

@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
+from oauth2_provider.contrib.rest_framework import TokenHasScope
 import logging
 
 from .serializers import (
@@ -282,14 +283,26 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
     GET: Retrieve beneficiaries requiring phone number verification
     POST: Verify and attribute phone numbers to beneficiaries
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    permission_classes = [TokenHasScope]
+    required_scopes = ['group_beneficiary:read']
+
+    def get_required_scopes(self, request):
+        """Return appropriate scopes based on request method"""
+        method_scopes = {
+            'GET': ['group_beneficiary:read'],
+            'POST': ['group_beneficiary:write']
+        }
+        return method_scopes.get(request.method, [])
+    
 
     def list(self, request):
         """
         GET: List beneficiaries requiring phone number verification.
         Optional filters: commune, programme
         """
+
+        application_name = request.auth.application.name
         commune = request.query_params.get('commune')
         programme = request.query_params.get('programme')
         
@@ -316,6 +329,8 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         """
         POST: Verify and attribute phone number to beneficiary
         """
+
+        application_name = request.auth.application.name
         # Validate request data
         request_serializer = PhoneNumberAttributionRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
@@ -412,14 +427,24 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
     GET: Retrieve beneficiary data for account attribution
     POST: Acknowledge receipt of data or attribute payment account
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    permission_classes = [TokenHasScope]
+    required_scopes = ['group_beneficiary:read']
 
+    def get_required_scopes(self, request):
+        """Return appropriate scopes based on request method"""
+        method_scopes = {
+            'GET': ['group_beneficiary:read'],
+            'POST': ['group_beneficiary:write']
+        }
+        return method_scopes.get(request.method, [])
+    
     def list(self, request):
         """
         GET: List beneficiaries requiring payment account attribution.
         Optional filters: commune, programme
         """
+        application_name = request.auth.application.name
         commune = request.query_params.get('commune')
         programme = request.query_params.get('programme')
         
@@ -446,6 +471,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         """
         POST: Handle acknowledgment or attribution based on payload
         """
+        application_name = request.auth.application.name
         # Determine operation type based on payload
         payload = request.data
         
@@ -608,22 +634,33 @@ class PaymentRequestViewSet(viewsets.ViewSet):
     GET: Retrieve individual payment requests for payment agency
     POST: Acknowledge receipt or update payment status
     """
-    permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    permission_classes = [TokenHasScope]
+    required_scopes = ['benefit_consumption:read']
+    
+    def get_required_scopes(self, request):
+        """Return appropriate scopes based on request method"""
+        method_scopes = {
+            'GET': ['benefit_consumption:read'],
+            'POST': ['benefit_consumption:write']
+        }
+        return method_scopes.get(request.method, [])
+
 
     def list(self, request):
         """
         GET: List individual payment requests for payment agency
         Optional filters: payment_provider_id, payment_cycle_id, commune
         """
+
+        application_name = request.auth.application.name
         # Get filter parameters
-        payment_provider_id = request.query_params.get('payment_provider_id')
         payment_cycle_id = request.query_params.get('payment_cycle_id')
         commune = request.query_params.get('commune')
         
         # Get payment requests
         queryset = PaymentApiService.get_individual_payment_requests(
-            payment_provider_id=payment_provider_id,
+            payment_provider_id=application_name,
             payment_cycle_id=payment_cycle_id,
             commune=commune
         )
@@ -689,6 +726,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 user,
                 code=data['code'],
                 status=data['status'],
+                transaction_reference=data.get('transaction_reference'),
                 status_code=data.get('status_code'),
                 error_message=data.get('error_message')
             )
@@ -773,12 +811,12 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         GET: Get statistics about payment requests
         """
         try:
-            # Get payment provider ID filter if present
-            payment_provider_id = request.query_params.get('payment_provider_id')
+            
+            application_name = request.auth.application.name
             
             # Get payment requests
             payment_requests = PaymentApiService.get_individual_payment_requests(
-                payment_provider_id=payment_provider_id
+                payment_provider_id=application_name
             )
             
             # Calculate statistics
