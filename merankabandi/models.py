@@ -7,8 +7,8 @@ from location.models import Location
 
 class SensitizationTraining(models.Model):
     THEME_CATEGORIES = [
-        ('module_mip', 'Module MIP (Mesures d\'Inclusion Productive)'),
-        ('module_mach', 'Module MACH (Mesures d\'Accompagnement pour le développement du Capital Humain)')
+        ('module_mip__mesures_d_inclusio', 'Module MIP (Mesures d\'Inclusion Productive)'),
+        ('module_mach__mesures_d_accompa', 'Module MACH (Mesures d\'Accompagnement pour le développement du Capital Humain)')
     ]
 
     id = models.UUIDField(primary_key=True)
