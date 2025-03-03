@@ -7,7 +7,9 @@ from core.gql_queries import UserGQLType
 from core.utils import DefaultStorageFileHandler
 
 from location.gql_queries import LocationGQLType
-from merankabandi.models import BehaviorChangePromotion, MicroProject, SensitizationTraining
+from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
+from payroll.gql_queries import PaymentPointGQLType
+from social_protection.gql_queries import BenefitPlanGQLType
 
 
 class SensitizationTrainingGQLType(DjangoObjectType):
@@ -63,5 +65,27 @@ class MicroProjectGQLType(DjangoObjectType):
             "livestock_poultry_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
             "livestock_cattle_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
             "commerce_services_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
+        }
+        connection_class = ExtendedConnection
+
+
+class MonetaryTransferGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = MonetaryTransfer
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+            "planned_women": ["exact", "lt", "lte", "gt", "gte"],
+            "planned_men": ["exact", "lt", "lte", "gt", "gte"],
+            "planned_twa": ["exact", "lt", "lte", "gt", "gte"],
+            "paid_women": ["exact", "lt", "lte", "gt", "gte"],
+            "paid_men": ["exact", "lt", "lte", "gt", "gte"],
+            "paid_twa": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection

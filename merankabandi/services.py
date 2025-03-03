@@ -1,11 +1,16 @@
 import logging
 import base64
 import hashlib
+from merankabandi.models import MonetaryTransfer
+from merankabandi.validation import MonetaryTransferValidation
 import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
 
 from django.db import transaction
+from core.services import BaseService
+from core.services.utils import model_representation, output_result_success
+from core.signals import register_service_signal
 from django.db.models import Q, Sum, Count
 from merankabandi.apps import MerankabandiConfig
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus, Payroll, PayrollStatus
@@ -741,3 +746,26 @@ class PaymentApiService:
             if transaction.get_connection().in_atomic_block:
                 transaction.set_rollback(True)
             return False, None, str(e)
+        
+class MonetaryTransferService(BaseService):
+    OBJECT_TYPE = MonetaryTransfer
+
+    def __init__(self, user, validation_class=MonetaryTransferValidation):
+        super().__init__(user, validation_class)
+
+    @register_service_signal('monetary_transfer_service.create')
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal('monetary_transfer_service.update')
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal('monetary_transfer_service.delete')
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+    
+    def save_instance(self, obj_):
+        obj_.save()
+        dict_repr = model_representation(obj_)
+        return output_result_success(dict_representation=dict_repr)

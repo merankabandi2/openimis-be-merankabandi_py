@@ -1,9 +1,12 @@
+import uuid
 from django.db import models
 from django.core.validators import MinValueValidator
 from datetime import datetime
 
 from core.models import User
 from location.models import Location
+from payroll.models import PaymentPoint
+from social_protection.models import BenefitPlan
 
 class SensitizationTraining(models.Model):
     THEME_CATEGORIES = [
@@ -101,14 +104,15 @@ class SensitizationTraining(models.Model):
         if int(kobo_data.get('group_bz5vi86/group_mc86q55/Femme_', 0)) > 0:
             female_participants=int(kobo_data.get('group_bz5vi86/group_mc86q55/Femme_', 0))
             male_participants=int(kobo_data.get('group_bz5vi86/group_mc86q55/Homme_001', 0))
-        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
 
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        date = kobo_data.get('Date_de_la_sensibilisation_Formation') or kobo_data.get('start')
 
         return cls(
             # Metadata
             id=kobo_data.get('_uuid'),
-            sensitization_date=datetime.fromisoformat(kobo_data.get('Date_de_la_sensibilisation_Formation')).date() if kobo_data.get('Date_de_la_sensibilisation_Formation') else None,
-            location=Location.objects.get(code=locationcode),
+            sensitization_date=datetime.fromisoformat(date).date() if date else None,
+            location=Location.objects.filter(code=locationcode).first(),
 
             # Training details
             category=kobo_data.get('Th_me'),
@@ -186,11 +190,12 @@ class BehaviorChangePromotion(models.Model):
             male_participants=int(kobo_data.get('group_hw5bi20/Homme_001', 0))
         locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
 
+        date = kobo_data.get('Date') or kobo_data.get('start')
         return cls(
             # Metadata
             id=kobo_data.get('_uuid'),
-            report_date=datetime.fromisoformat(kobo_data.get('Date')).date() if kobo_data.get('Date') else None,
-            location=Location.objects.get(code=locationcode),
+            report_date=datetime.fromisoformat(date).date() if date else None,
+            location=Location.objects.filter(code=locationcode).first(),
             
             male_participants=male_participants,
             female_participants=female_participants,
@@ -264,11 +269,12 @@ class MicroProject(models.Model):
             twa_participants=int(kobo_data.get('group_bh77o90/Twa', 0))
 
         locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        date = kobo_data.get('Date') or kobo_data.get('start')
 
         micro_project = cls(
             id=kobo_data.get('_uuid'),
-            report_date=datetime.fromisoformat(kobo_data.get('Date')).date() if kobo_data.get('Date') else None,
-            location=Location.objects.get(code=locationcode),
+            report_date=datetime.fromisoformat(date).date() if date else None,
+            location=Location.objects.filter(code=locationcode).first(),
             
             male_participants=male_participants,
             female_participants=female_participants,
@@ -296,3 +302,117 @@ class MicroProject(models.Model):
                     )
         
         return micro_project
+    
+
+class MonetaryTransfer(models.Model):
+    id = models.UUIDField(primary_key=True)
+    transfer_date = models.DateField(verbose_name="Date des transferts")
+    
+    location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
+    programme = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT)
+    payment_agency = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT)
+
+    # Planned beneficiaries
+    planned_women = models.PositiveIntegerField(
+        verbose_name="Femmes prévues",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+    planned_men = models.PositiveIntegerField(
+        verbose_name="Hommes prévus",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+    planned_twa = models.PositiveIntegerField(
+        verbose_name="Twa prévus",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+    
+    # Paid beneficiaries
+    paid_women = models.PositiveIntegerField(
+        verbose_name="Femmes payées",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+    paid_men = models.PositiveIntegerField(
+        verbose_name="Hommes payés",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+    paid_twa = models.PositiveIntegerField(
+        verbose_name="Twa payés",
+        validators=[MinValueValidator(0)],
+        default=0
+    )
+
+    
+    class Meta:
+        verbose_name = "Transfert Monétaire"
+        verbose_name_plural = "Transferts Monétaires"
+        ordering = ['-transfer_date']
+
+    def __str__(self):
+        return f"Transfert du {self.transfer_date} - {self.location}"
+    
+    @property
+    def total_planned(self):
+        return (
+            self.planned_women +
+            self.planned_men +
+            self.planned_twa
+        )
+    
+    @property
+    def total_paid(self):
+        return (
+            self.paid_women +
+            self.paid_men +
+            self.paid_twa
+        )
+    
+    def save(self, *args, **kwargs):
+        # check if object has been newly created
+        if self.id is None:
+            self.id = uuid.uuid4()
+        return super().save(*args, **kwargs)
+
+
+    @classmethod
+    def to_data_element_obj(cls, kobo_data, **kwargs):
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        date = kobo_data.get('Date_des_transferts') or kobo_data.get('start')
+        
+        # Planned beneficiaries
+        planned_women = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Femme', 0))
+        planned_men = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Homme', 0))
+        planned_twa = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Twa', 0))
+        
+        # Paid beneficiaries
+        paid_women = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Femme_001', 0))
+        paid_men = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Homme_001', 0))
+        paid_twa = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Twa_001', 0))
+ 
+        programme_code = '1.1' if kobo_data.get('Nom_du_camp_r_fugi_s') else '1.2'
+        payment_agency_name=kobo_data.get('Nom_de_l_agence_de_paiement')
+
+        return cls(
+            # Metadata
+            id=kobo_data.get('_uuid'),
+            transfer_date=datetime.fromisoformat(date).date() if date else None,
+            location=Location.objects.filter(code=locationcode).first(),
+        
+            # Payment details
+            payment_agency=PaymentPoint.objects.filter(name=payment_agency_name).first(),
+            programme=BenefitPlan.objects.filter(code=programme_code).first(),
+            
+            # Planned beneficiaries
+            planned_women=planned_women,
+            planned_men=planned_men,
+            planned_twa=planned_twa,
+            
+            # Paid beneficiaries
+            paid_women=paid_women,
+            paid_men=paid_men,
+            paid_twa=paid_twa,
+        )

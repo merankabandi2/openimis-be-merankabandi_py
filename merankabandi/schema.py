@@ -8,8 +8,9 @@ from core.schema import OrderedDjangoFilterConnectionField
 from core.services import wait_for_mutation
 from core.utils import append_validity_filter
 
-from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, SensitizationTrainingGQLType
-from merankabandi.models import BehaviorChangePromotion, MicroProject, SensitizationTraining
+from merankabandi.gql_mutations import CreateMonetaryTransferMutation, DeleteMonetaryTransferMutation, UpdateMonetaryTransferMutation
+from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferGQLType, SensitizationTrainingGQLType
+from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
 
 class Query(graphene.ObjectType):
     sensitization_training = OrderedDjangoFilterConnectionField(
@@ -24,6 +25,11 @@ class Query(graphene.ObjectType):
         MicroProjectGQLType,
         orderBy=graphene.List(of_type=graphene.String),
     )
+    monetary_transfer = OrderedDjangoFilterConnectionField(
+        MonetaryTransferGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        client_mutation_id=graphene.String(),
+    )
 
     def resolve_sensitization_training(self, info, **kwargs):
         return gql_optimizer.query(SensitizationTraining.objects.all(), info)
@@ -33,3 +39,15 @@ class Query(graphene.ObjectType):
 
     def resolve_micro_project(self, info, **kwargs):
         return gql_optimizer.query(MicroProject.objects.all(), info)
+
+    def resolve_monetary_transfer(self, info, **kwargs):
+        #Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
+        filters = append_validity_filter(**kwargs)
+        query = MonetaryTransfer.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+
+class Mutation(graphene.ObjectType):
+    create_monetary_transfer = CreateMonetaryTransferMutation.Field()
+    update_monetary_transfer = UpdateMonetaryTransferMutation.Field()
+    delete_monetary_transfer = DeleteMonetaryTransferMutation.Field()
