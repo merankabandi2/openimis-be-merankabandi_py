@@ -25,7 +25,8 @@ setup(
         'djangorestframework',
         'weasyprint',
         'django_oauth_toolkit',
-        'openimis-be-core'
+        'openimis-be-core',
+        'django-two-factor-auth[phonenumberslite]'
     ],
     package_data={
         'merankabandi': ['templates/*', 'static/*.*', 'static/merankabandi/*.*'],

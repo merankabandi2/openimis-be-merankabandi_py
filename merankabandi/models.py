@@ -69,7 +69,7 @@ class SensitizationTraining(models.Model):
         ordering = ['-sensitization_date']
 
     def __str__(self):
-        return f"Formation du {self.sensitization_date} - {self.colline}"
+        return f"Formation du {self.sensitization_date} - {self.location.name}"
 
     @property
     def total_participants(self):
@@ -163,7 +163,7 @@ class BehaviorChangePromotion(models.Model):
         ordering = ['-report_date', 'location']
 
     def __str__(self):
-        return f"Rapport {self.report_date} - {self.colline}"
+        return f"Rapport {self.report_date} - {self.location.name}"
 
     @property
     def total_beneficiaries(self):
@@ -255,7 +255,7 @@ class MicroProject(models.Model):
         ordering = ['-report_date']
 
     def __str__(self):
-        return f"Micro-projet {self.report_date} - {self.colline}"
+        return f"Micro-projet {self.report_date} - {self.location.name}"
 
     @classmethod
     def to_data_element_obj(cls, kobo_data, **kwargs):
@@ -353,7 +353,7 @@ class MonetaryTransfer(models.Model):
         ordering = ['-transfer_date']
 
     def __str__(self):
-        return f"Transfert du {self.transfer_date} - {self.location}"
+        return f"Transfert du {self.transfer_date} - {self.location.name}"
     
     @property
     def total_planned(self):
