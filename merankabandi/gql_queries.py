@@ -89,3 +89,44 @@ class MonetaryTransferGQLType(DjangoObjectType):
             "paid_twa": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
+
+
+class MonetaryTransferQuarterlyDataGQLType(graphene.ObjectType):
+    transfer_type = graphene.String(required=True)
+    q1_amount = graphene.Decimal()
+    q2_amount = graphene.Decimal()
+    q3_amount = graphene.Decimal()
+    q4_amount = graphene.Decimal()
+    q1_beneficiaries = graphene.Int()
+    q2_beneficiaries = graphene.Int()
+    q3_beneficiaries = graphene.Int()
+    q4_beneficiaries = graphene.Int()
+
+    class Meta:
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+        }
+
+
+class MonetaryTransferBeneficiaryDataGQLType(graphene.ObjectType):
+    transfer_type = graphene.String()
+    male_paid = graphene.Int()
+    male_unpaid = graphene.Int()
+    female_paid = graphene.Int()
+    female_unpaid = graphene.Int()
+    total_paid = graphene.Int()
+    total_unpaid = graphene.Int()
+
+    class Meta:
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+        }
+    

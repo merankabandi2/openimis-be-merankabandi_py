@@ -8,7 +8,15 @@ from .strategies import StrategyOnlinePaymentPush, StrategyOnlinePaymentPull
 
 MODULE_NAME = 'merankabandi'
 
-DEFAULT_CONFIG = {}
+DEFAULT_CONFIG = {
+    "gql_payment_point_search_perms": ["201001"],
+    "gql_payment_point_create_perms": ["201002"],
+    "gql_payment_point_update_perms": ["201003"],
+    "gql_payment_point_delete_perms": ["201004"],
+    "gql_payroll_search_perms": ["202001"],
+    "gql_payroll_create_perms": ["202002"],
+    "gql_payroll_delete_perms": ["202004"]
+    }
 
 class MerankabandiConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
