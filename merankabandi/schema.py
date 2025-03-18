@@ -4,8 +4,9 @@ from core.gql.export_mixin import ExportableQueryMixin
 from decimal import Decimal
 from gettext import gettext as _
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, OuterRef, Subquery
 
+from core.custom_filters import CustomFilterWizardStorage
 from core.schema import OrderedDjangoFilterConnectionField
 from core.services import wait_for_mutation
 from core.utils import append_validity_filter
@@ -14,37 +15,153 @@ from merankabandi.gql_mutations import CreateMonetaryTransferMutation, DeleteMon
 from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType
 from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
-from social_protection.models import BenefitPlan
+from social_protection.models import BenefitPlan, GroupBeneficiary
+from payment_cycle.gql_queries import PaymentCycleGQLType
+from payment_cycle.models import PaymentCycle
+from payment_cycle.apps import PaymentCycleConfig
+from payroll.apps import PayrollConfig
+from payroll.gql_queries import BenefitsSummaryGQLType
+from social_protection.gql_queries import GroupBeneficiaryGQLType
+from social_protection.apps import SocialProtectionConfig
+
+from location.apps import LocationConfig
+from individual.apps import IndividualConfig
+from individual.gql_queries import IndividualGQLType, GroupGQLType
+from individual.models import GroupIndividual
 
 class Query(ExportableQueryMixin, graphene.ObjectType):
 
     exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer']
 
+    payment_cycle_filtered = OrderedDjangoFilterConnectionField(
+        PaymentCycleGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        dateValidFrom__Gte=graphene.DateTime(),
+        dateValidFrom__Lte=graphene.DateTime(),
+        dateValidTo__Lte=graphene.DateTime(),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        search=graphene.String(),
+        client_mutation_id=graphene.String(),
+        year=graphene.Int(description="Filter by year"),
+        benefitPlanUuid=graphene.String(),
+    )
+    
+    
     sensitization_training = OrderedDjangoFilterConnectionField(
         SensitizationTrainingGQLType,
         orderBy=graphene.List(of_type=graphene.String),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
     behavior_change_promotion = OrderedDjangoFilterConnectionField(
         BehaviorChangePromotionGQLType,
         orderBy=graphene.List(of_type=graphene.String),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
     micro_project = OrderedDjangoFilterConnectionField(
         MicroProjectGQLType,
         orderBy=graphene.List(of_type=graphene.String),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
     monetary_transfer = OrderedDjangoFilterConnectionField(
         MonetaryTransferGQLType,
         orderBy=graphene.List(of_type=graphene.String),
         client_mutation_id=graphene.String(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
     monetary_transfer_quarterly_data = graphene.List(
         MonetaryTransferQuarterlyDataGQLType,
-        year=graphene.Int(description="Filter by year")
+        year=graphene.Int(description="Filter by year"),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
     monetary_transfer_beneficiary_data = graphene.List(
         MonetaryTransferBeneficiaryDataGQLType,
-        year=graphene.Int(description="Filter by year")
+        year=graphene.Int(description="Filter by year"),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
+
+    benefits_summary_filtered = graphene.Field(
+        BenefitsSummaryGQLType,
+        individualId=graphene.String(),
+        payrollId=graphene.String(),
+        benefitPlanUuid=graphene.String(),
+        paymentCycleUuid=graphene.String(),
+        year=graphene.Int(description="Filter by year"),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+    )
+
+    group_beneficiary_filtered = OrderedDjangoFilterConnectionField(
+        GroupBeneficiaryGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        dateValidFrom__Gte=graphene.DateTime(),
+        dateValidFrom__Lte=graphene.DateTime(),
+        dateValidTo__Lte=graphene.DateTime(),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        year=graphene.Int(description="Filter by year"),
+        customFilters=graphene.List(of_type=graphene.String),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+    )
+    
+    individual_filtered = OrderedDjangoFilterConnectionField(
+        IndividualGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        groupId=graphene.String(),
+        customFilters=graphene.List(of_type=graphene.String),
+        benefitPlanToEnroll=graphene.String(),
+        benefitPlanId=graphene.String(),
+        filterNotAttachedToGroup=graphene.Boolean(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+    )
+
+    group_filtered = OrderedDjangoFilterConnectionField(
+        GroupGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        first_name=graphene.String(),
+        last_name=graphene.String(),
+        customFilters=graphene.List(of_type=graphene.String),
+        benefitPlanToEnroll=graphene.String(),
+        benefitPlanId=graphene.String(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+    )
+
+
+    def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
+        filters = append_validity_filter(**kwargs)
+
+        client_mutation_id = kwargs.get("client_mutation_id")
+        if client_mutation_id:
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        Query._check_permissions(info.context.user, PaymentCycleConfig.gql_query_payment_cycle_perms)
+        query = PaymentCycle.objects.filter(*filters)
+        
+        benefit_plan_uuid = kwargs.get("benefitPlanUuid", None)
+        if benefit_plan_uuid:
+            query = query.filter(
+                payment_plan__benefit_plan_id=benefit_plan_uuid
+            )
+
+        # Filter by year if provided
+        if year:
+            query = query.filter(
+                start_date__year=year
+            )
+        
+        return gql_optimizer.query(query, info)
 
     def resolve_sensitization_training(self, info, **kwargs):
         return gql_optimizer.query(SensitizationTraining.objects.all(), info)
@@ -193,11 +310,20 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         return result
 
     def resolve_monetary_transfer_beneficiary_data(self, info, year=None, **kwargs):
+        Query._check_permissions(info.context.user,
+                                 PayrollConfig.gql_payroll_search_perms)
+        filters = append_validity_filter(**kwargs)
+
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_individual_location_filters(parent_location, parent_location_level, prefix='individual__'))
+
         # Start by getting all benefit consumption data
         query = BenefitConsumption.objects.filter(~Q(status__in= [BenefitConsumptionStatus.PENDING_DELETION, BenefitConsumptionStatus.DUPLICATE]))
         # Filter by year if provided
         if year:
-            query = query.filter(
+            query = query.filter(*filters,
                 payrollbenefitconsumption__payroll__payment_cycle__start_date__year=year
             )
         
@@ -310,6 +436,222 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
             result.append(type_data)
         
         return result
+
+
+    def resolve_benefits_summary_filtered(self, info, year=None, **kwargs):
+        Query._check_permissions(info.context.user,
+                                 PayrollConfig.gql_payroll_search_perms)
+        filters = append_validity_filter(**kwargs)
+
+        individual_id = kwargs.get("individualId", None)
+        payroll_id = kwargs.get("payrollId", None)
+        benefit_plan_uuid = kwargs.get("benefitPlanUuid", None)
+        payment_cycle_uuid = kwargs.get("paymentCycleUuid", None)
+
+        # Filter by year if provided
+        if year:
+            filters.append(Q(payrollbenefitconsumption__payroll__payment_cycle__start_date__year=year))
+        
+        if individual_id:
+            filters.append(Q(individual__id=individual_id))
+
+        if payroll_id:
+            filters.append(Q(payrollbenefitconsumption__payroll_id=payroll_id))
+
+        if benefit_plan_uuid:
+            filters.append(Q(payrollbenefitconsumption__payroll__payment_plan__benefit_plan_id=benefit_plan_uuid))
+
+        if payment_cycle_uuid:
+            filters.append(Q(payrollbenefitconsumption__payroll__payment_cycle_id=payment_cycle_uuid))
+
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_individual_location_filters(parent_location, parent_location_level, prefix='individual__'))
+
+        amount_received = BenefitConsumption.objects.filter(
+            *filters,
+            is_deleted=False,
+            payrollbenefitconsumption__is_deleted=False,
+            status=BenefitConsumptionStatus.RECONCILED
+        ).aggregate(total_received=Sum('amount'))['total_received'] or 0
+
+        amount_due = BenefitConsumption.objects.filter(
+            *filters,
+            is_deleted=False,
+            payrollbenefitconsumption__is_deleted=False
+        ).exclude(status=BenefitConsumptionStatus.RECONCILED).aggregate(total_due=Sum('amount'))['total_due'] or 0
+
+        return BenefitsSummaryGQLType(
+            total_amount_received=amount_received,
+            total_amount_due=amount_due,
+        )
+
+    def resolve_group_beneficiary_filtered(self, info, **kwargs):
+        def _build_filters(info, **kwargs):
+            filters = append_validity_filter(**kwargs)
+
+            client_mutation_id = kwargs.get("client_mutation_id")
+            if client_mutation_id:
+                filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+            Query._check_permissions(
+                info.context.user,
+                SocialProtectionConfig.gql_beneficiary_search_perms
+            )
+            return filters
+
+        def _apply_custom_filters(query, **kwargs):
+            custom_filters = kwargs.get("customFilters")
+            if custom_filters:
+                query = CustomFilterWizardStorage.build_custom_filters_queryset(
+                    Query.module_name,
+                    Query.object_type,
+                    custom_filters,
+                    query,
+                    "group__groupindividuals__individual",
+                )
+            return query
+    
+
+        filters = _build_filters(info, **kwargs)
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='group__'))
+
+        query = GroupBeneficiary.get_queryset(None, info.context.user)
+        query = _apply_custom_filters(query.filter(*filters), **kwargs)
+
+        return gql_optimizer.query(query, info)
+
+    def resolve_individual_filtered(self, info, **kwargs):
+        Query._check_permissions(info.context.user,
+                                 IndividualConfig.gql_individual_search_perms)
+
+        filters = append_validity_filter(**kwargs)
+
+        client_mutation_id = kwargs.get("client_mutation_id")
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        group_id = kwargs.get("groupId")
+        if group_id:
+            filters.append(Q(groupindividuals__group__id=group_id))
+
+        benefit_plan_to_enroll = kwargs.get("benefitPlanToEnroll")
+        if benefit_plan_to_enroll:
+            filters.append(
+                Q(is_deleted=False) &
+                ~Q(beneficiary__benefit_plan_id=benefit_plan_to_enroll)
+            )
+
+        benefit_plan_id = kwargs.get("benefitPlanId")
+        if benefit_plan_id:
+            filters.append(
+                Q(is_deleted=False) &
+                Q(beneficiary__benefit_plan_id=benefit_plan_id)
+            )
+
+        filter_not_attached_to_group = kwargs.get("filterNotAttachedToGroup")
+        if filter_not_attached_to_group:
+            subquery = GroupIndividual.objects.filter(individual=OuterRef('pk')).values('individual')
+            filters.append(~Q(pk__in=Subquery(subquery)))
+
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_individual_location_filters(parent_location, parent_location_level))
+
+        query = IndividualGQLType.get_queryset(None, info)
+        query = query.filter(*filters)
+
+        custom_filters = kwargs.get("customFilters", None)
+        if custom_filters:
+            query = CustomFilterWizardStorage.build_custom_filters_queryset(
+                Query.module_name,
+                Query.object_type,
+                custom_filters,
+                query,
+            )
+
+        return gql_optimizer.query(query, info)
+
+    def resolve_group_filtered(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            IndividualConfig.gql_group_search_perms
+        )
+        filters = append_validity_filter(**kwargs)
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        first_name = kwargs.get("first_name", None)
+        if first_name:
+            filters.append(Q(groupindividuals__individual__first_name__icontains=first_name))
+
+        last_name = kwargs.get("last_name", None)
+        if last_name:
+            filters.append(Q(groupindividuals__individual__last_name__icontains=last_name))
+
+        benefit_plan_to_enroll = kwargs.get("benefitPlanToEnroll")
+        if benefit_plan_to_enroll:
+            filters.append(
+                Q(is_deleted=False) &
+                ~Q(groupbeneficiary__benefit_plan_id=benefit_plan_to_enroll)
+            )
+
+        benefit_plan_id = kwargs.get("benefitPlanId")
+        if benefit_plan_id:
+            filters.append(
+                Q(is_deleted=False) &
+                Q(groupbeneficiary__benefit_plan_id=benefit_plan_to_enroll)
+            )
+
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level))
+
+        query = GroupGQLType.get_queryset(None, info)
+        query = query.filter(*filters).distinct()
+
+        custom_filters = kwargs.get("customFilters", None)
+        if custom_filters:
+            query = CustomFilterWizardStorage.build_custom_filters_queryset(
+                Query.module_name,
+                "Group",
+                custom_filters,
+                query
+            )
+        return gql_optimizer.query(query, info)
+
+
+    @staticmethod
+    def _get_location_filters(parent_location, parent_location_level, prefix=""):
+        query_key = "uuid"
+        for i in range(len(LocationConfig.location_types) - parent_location_level - 1):
+            query_key = "parent__" + query_key
+        query_key = prefix + "location__" + query_key
+        return Q(**{query_key: parent_location})
+
+    @staticmethod
+    def _get_individual_location_filters(parent_location, parent_location_level, prefix=""):
+        query_key = "uuid"
+        for i in range(len(LocationConfig.location_types) - parent_location_level - 1):
+            query_key = "parent__" + query_key
+        query_key = prefix + "groupindividuals__group__location__" + query_key
+        return Q(**{query_key: parent_location})
+
+
+    @staticmethod
+    def _check_permissions(user, perms):
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(perms):
+            raise PermissionError("Unauthorized")
 
 class Mutation(graphene.ObjectType):
     create_monetary_transfer = CreateMonetaryTransferMutation.Field()
