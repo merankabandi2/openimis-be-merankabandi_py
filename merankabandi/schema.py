@@ -4,7 +4,7 @@ from core.gql.export_mixin import ExportableQueryMixin
 from decimal import Decimal
 from gettext import gettext as _
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Q, Sum, Count, OuterRef, Subquery
+from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value
 
 from core.custom_filters import CustomFilterWizardStorage
 from core.schema import OrderedDjangoFilterConnectionField
@@ -12,7 +12,7 @@ from core.services import wait_for_mutation
 from core.utils import append_validity_filter
 
 from merankabandi.gql_mutations import CreateMonetaryTransferMutation, DeleteMonetaryTransferMutation, UpdateMonetaryTransferMutation
-from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType
+from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType
 from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary
@@ -23,6 +23,7 @@ from payroll.apps import PayrollConfig
 from payroll.gql_queries import BenefitsSummaryGQLType
 from social_protection.gql_queries import GroupBeneficiaryGQLType
 from social_protection.apps import SocialProtectionConfig
+from grievance_social_protection.models import Ticket
 
 from location.apps import LocationConfig
 from individual.apps import IndividualConfig
@@ -33,6 +34,13 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
 
     exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer']
 
+    # Add the new query field
+    benefit_consumption_by_province = graphene.List(
+        BenefitConsumptionByProvinceGQLType,
+        year=graphene.Int(description="Filter by year"),
+        benefitPlan_Id=graphene.String(description="Filter by benefit plan ID"),
+    )
+    
     payment_cycle_filtered = OrderedDjangoFilterConnectionField(
         PaymentCycleGQLType,
         orderBy=graphene.List(of_type=graphene.String),
@@ -138,6 +146,13 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         parent_location_level=graphene.Int(),
     )
 
+    tickets_by_resolution = graphene.List(
+        TicketResolutionStatusGQLType,
+        year=graphene.Int(description="Filter by year"),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+        benefitPlan_Id=graphene.String(),
+    )
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
         filters = append_validity_filter(**kwargs)
@@ -182,7 +197,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
     def resolve_monetary_transfer_quarterly_data(self, info, year=None, **kwargs):
         # Start by getting all benefit consumption data through payrolls
         query = BenefitConsumption.objects.filter(
-            status='ACCEPTED',
+            status__in=['ACCEPTED', 'RECONCILED'],
             payrollbenefitconsumption__payroll__isnull=False
         )
         
@@ -630,6 +645,132 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
             )
         return gql_optimizer.query(query, info)
 
+    def resolve_tickets_by_resolution(self, info, **kwargs):
+        # Check permissions - adjust as needed based on your application's permission model
+        # Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_beneficiaries_perms)
+        
+        # Start with all tickets
+        query = Ticket.objects.filter(is_deleted=False)
+        
+        # Apply year filter if provided
+        year = kwargs.get('year')
+        if year:
+            query = query.filter(
+                date_of_incident__year=year
+            )
+        
+        # Apply location filter if provided
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters = Query._get_individual_location_filters(parent_location, parent_location_level)
+            query = query.filter(*filters)
+        
+        # Apply benefit plan filter if provided
+        benefit_plan_id = kwargs.get('benefitPlan_Id')
+        if benefit_plan_id:
+            query = query.filter(benefit_plan_id=benefit_plan_id)
+        
+        status_counts = query.values('status').annotate(count=Count('id'))
+        
+        result = []
+        for item in status_counts:
+            status_code = item['status']
+            status_name =  Ticket.TicketStatus(status_code).label
+            
+            result.append({
+                'status': status_name,
+                'count': item['count']
+            })
+        
+        return result
+
+    def resolve_benefit_consumption_by_province(self, info, **kwargs):
+        Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
+        
+        # Filter by benefit plan if provided
+        benefit_plan_id = kwargs.get('benefitPlan_Id')
+        benefit_plan_filter = Q()
+        if benefit_plan_id:
+            benefit_plan_filter = Q(payrollbenefitconsumption__payroll__payment_plan__benefit_plan_id=benefit_plan_id)
+        
+        # Filter by year if provided
+        year = kwargs.get('year')
+        year_filter = Q()
+        if year:
+            year_filter = Q(payrollbenefitconsumption__payroll__payment_cycle__start_date__year=year)
+        
+        # Get the location information from Individual -> Group -> Location hierarchy
+        from location.models import Location
+        
+        # Start by finding all provinces with benefit consumption
+        provinces = Location.objects.filter(type='D')
+        
+        result = []
+        for province in provinces:
+            # Get all locations under this province
+            location_query = Q()
+            for i in range(len(LocationConfig.location_types) - 1):
+                parent_field = "parent" + "__parent" * i
+                location_query |= Q(**{f"{parent_field}__id": province.id})
+            
+            # Find groups in these locations
+            groups_in_province = Q(individual__groupindividuals__group__location__id__in=Location.objects.filter(
+                Q(id=province.id) | location_query
+            ).values_list('id', flat=True))
+            
+            # Get benefit consumption data for individuals in these groups
+            benefit_data = BenefitConsumption.objects.filter(
+                groups_in_province,
+                benefit_plan_filter,
+                year_filter,
+                is_deleted=False
+            )
+            
+            # Calculate totals
+            total_amount = benefit_data.filter(
+                status=BenefitConsumptionStatus.RECONCILED
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            total_paid = benefit_data.filter(
+                status=BenefitConsumptionStatus.RECONCILED
+            ).values('individual_id').distinct().count()
+            
+            # Get beneficiary status counts from groupbeneficiary
+            from social_protection.models import GroupBeneficiary
+            
+            beneficiaries = GroupBeneficiary.objects.filter(
+                group__location__id__in=Location.objects.filter(Q(id=province.id) | location_query).values_list('id', flat=True)
+            )
+            
+            if benefit_plan_id:
+                beneficiaries = beneficiaries.filter(benefit_plan_id=benefit_plan_id)
+                
+            if year:
+                # Filter by valid date range in the specified year
+                start_date = f"{year}-01-01"
+                end_date = f"{year}-12-31"
+                beneficiaries = beneficiaries.filter(
+                    Q(date_valid_to__isnull=True) | Q(date_valid_to__gte=start_date),
+                    date_valid_from__lte=end_date
+                )
+            
+            active_count = beneficiaries.filter(status='ACTIVE').count()
+            suspended_count = beneficiaries.filter(status='SUSPENDED').count()
+            selected_count = beneficiaries.filter(status='SELECTED').count()
+            
+            result.append({
+                'province_id': str(province.id),
+                'province_name': province.name,
+                'province_code': province.code,
+                'total_paid': total_paid,
+                'total_amount': total_amount,
+                'beneficiaries_active': active_count,
+                'beneficiaries_suspended': suspended_count,
+                'beneficiaries_selected': selected_count,
+            })
+        
+        return result
 
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):

@@ -130,3 +130,35 @@ class MonetaryTransferBeneficiaryDataGQLType(graphene.ObjectType):
             **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
         }
     
+
+class TicketResolutionStatusGQLType(graphene.ObjectType):
+    status = graphene.String(required=True)
+    count = graphene.Int(required=True)
+
+    class Meta:
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "title": ["iexact", "istartswith", "icontains"],
+            "description": ["iexact", "istartswith", "icontains"],
+            "code": ["iexact", "istartswith", "icontains"],
+            "resolution": ["iexact", "istartswith", "icontains"],
+            "date_of_incident": ["exact", "lt", "lte", "gt", "gte"],
+            "due_date": ["exact", "lt", "lte", "gt", "gte"],
+            "status": ["exact"],
+            "priority": ["exact"],
+            "category": ["exact"],
+            "flags": ["exact"],
+            "channel": ["exact"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("attending_staff__", UserGQLType._meta.filter_fields),
+        }
+
+class BenefitConsumptionByProvinceGQLType(graphene.ObjectType):
+    province_id = graphene.String()
+    province_name = graphene.String()
+    province_code = graphene.String()
+    total_paid = graphene.Int()
+    total_amount = graphene.Decimal()
+    beneficiaries_active = graphene.Int()
+    beneficiaries_suspended = graphene.Int()
+    beneficiaries_selected = graphene.Int()
