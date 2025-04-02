@@ -29,7 +29,7 @@ setup(
         'django-two-factor-auth[phonenumberslite]'
     ],
     package_data={
-        'merankabandi': ['templates/*', 'static/*.*', 'static/merankabandi/*.*'],
+        'merankabandi': ['templates/*', 'static/*.*', 'static/merankabandi/*.*', 'management/commands/*'],
     },
     classifiers=[
         'Environment :: Web Environment',
