@@ -26,7 +26,8 @@ setup(
         'weasyprint',
         'django_oauth_toolkit',
         'openimis-be-core',
-        'django-two-factor-auth[phonenumberslite]'
+        'django-two-factor-auth[phonenumberslite]',
+        'tqdm'
     ],
     package_data={
         'merankabandi': ['templates/*', 'static/*.*', 'static/merankabandi/*.*', 'management/commands/*'],

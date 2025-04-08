@@ -34,7 +34,7 @@ class Command(BaseCommand):
                 JOIN individual_group g ON gb.group_id = g."UUID"
                 JOIN individual_groupindividual gi ON gi.group_id = g."UUID"
                 JOIN individual_individual i ON gi.individual_id = i."UUID"
-                WHERE TRIM(BOTH E'\n\r ' FROM i."Json_ext"->>'ci')  = TRIM(BOTH E'\n\r ' FROM %s)
+                WHERE REGEXP_REPLACE(i."Json_ext"->>'ci', E'[\\n\\r\\s]', '', 'g') = REGEXP_REPLACE(%s, E'[\\n\\r\\s]', '', 'g')
                 AND gi.recipient_type = 'PRIMARY'
                 LIMIT 1
             """, [cni])

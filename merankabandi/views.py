@@ -48,13 +48,13 @@ class BeneficiaryCardGenerator:
         return CSS(string='''
             @page {
                 size: A4;
-                margin: 0.5cm;
+                margin: 1cm;
             }
             
             .card {
-                height: 14cm;
-                width: 19.5cm;
-                margin: 0 auto 0 auto;
+                height: 13cm;
+                width: 18.5cm;
+                margin: 0 0 0 0;
                 page-break-inside: avoid;
                 position: relative;
                 font-family: Arial, sans-serif;
@@ -63,38 +63,38 @@ class BeneficiaryCardGenerator:
             .card-header {
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
+                align-items: flex-start;
                 font-size: 12pt;
                 font-weight: bold;
-                margin-bottom: 0.5cm;
+                margin-bottom: 0;
             }
-
             .header-text {
                 flex-grow: 1;
                 text-align: center;
             }
-
             .social-id-container {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 margin-bottom: 0.5cm;
             }
-
             .social-id {
                 flex-grow: 1;
                 font-weight: bold;
                 text-align: center;
                 font-size: 16pt;
+                margin-top: 0.5cm
             }
             
-            .logo, .photo {
-                width: 1.5cm;
+            .logo {
                 height: 2cm;
                 object-fit: contain;
-                margin-left: 1cm;
             }
-    
+            .photo {
+                height: 3cm;
+                object-fit: contain;
+            }
+
             .field {
                 margin-top: 0.3cm;
                 margin-bottom: 0.3cm;
@@ -116,6 +116,10 @@ class BeneficiaryCardGenerator:
             .declaration {
                 font-size: 10pt;
                 margin-top: 0.6cm;
+            }
+    
+            .card2 {
+                margin-top: 1.3cm;
             }
         ''')
 
