@@ -123,7 +123,7 @@ class Command(BaseCommand):
         skip_errors = options['skip_errors']
         
         try:
-            with open(csv_file, 'r', newline='', encoding='utf-8-sig') as file:
+            with open(csv_file, 'r', newline='', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 total_rows = 0
                 successful_rows = 0

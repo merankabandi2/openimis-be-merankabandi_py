@@ -1,8 +1,8 @@
 import logging
 import base64
 import hashlib
-from merankabandi.models import MonetaryTransfer
-from merankabandi.validation import MonetaryTransferValidation
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement
+from merankabandi.validation import MonetaryTransferValidation, SectionValidation, IndicatorValidation, IndicatorAchievementValidation
 import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -11,12 +11,17 @@ from django.db import transaction
 from core.services import BaseService
 from core.services.utils import model_representation, output_result_success
 from core.signals import register_service_signal
-from django.db.models import Q, Sum, Count
+from django.db.models import Q
 from merankabandi.apps import MerankabandiConfig
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus, Payroll, PayrollStatus
-from social_protection.models import GroupBeneficiary
 from individual.models import GroupIndividual, Individual
-
+from location.models import Location
+from payment_cycle.models import PaymentCycle
+from payroll.services import PayrollService
+from payroll.models import PaymentPoint
+from social_protection.models import GroupBeneficiary
+from contribution_plan.models import PaymentPlan
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +148,157 @@ class LumicashPaymentService:
 
         except Exception as e:
             logger
+
+
+class PayrollGenerationService:
+    """
+    Service for generating payrolls across multiple communes in a province
+    """
+    
+    def __init__(self, user):
+        self.user = user
+    
+    def generate_province_payroll(self, province_id, payment_plan_id, payment_date):
+        """
+        Generate payroll for all communes in a province that have active beneficiaries
+        
+        Args:
+            province_id (str): UUID of the province location
+            payment_plan_id (str): UUID of the benefit plan
+            payment_date (date): Payment date for the payroll
+            
+        Returns:
+            dict: Summary of generated payrolls
+        """
+        
+        try:
+            # Validate province
+            province = Location.objects.filter(id=province_id, type='D').first()
+            if not province:
+                return {
+                    'success': False,
+                    'error': 'Province not found or invalid',
+                    'generated_payrolls': []
+                }
+                
+            # Validate payment plan
+            payment_plan = PaymentPlan.objects.filter(id=payment_plan_id).first()
+            benefit_plan_id = payment_plan.benefit_plan_id
+            benefit_plan = payment_plan.benefit_plan
+            
+            if not payment_plan:
+                return {
+                    'success': False,
+                    'error': 'No payment plan found or invalid',
+                    'generated_payrolls': []
+                }
+            
+            payment_point = PaymentPoint.objects.filter(benefit_plan_id=benefit_plan_id).first()
+            if not payment_point:
+                return {
+                    'success': False,
+                    'error': 'No payment point found or invalid',
+                    'generated_payrolls': []
+                }
+            
+            # Find the appropriate payment cycle for the given date
+            payment_cycle = PaymentCycle.objects.filter(
+                start_date__lte=payment_date,
+                end_date__gte=payment_date,
+                status='ACTIVE'
+            ).first()
+            
+            if not payment_cycle:
+                return {
+                    'success': False,
+                    'error': 'No active payment cycle found for the specified date',
+                    'generated_payrolls': []
+                }
+            
+            # Get all communes in this province
+            communes = Location.objects.filter(parent=province, type='W')
+            # Filter communes that have beneficiaries for this benefit plan
+            communes_with_beneficiaries = []
+            for commune in communes:
+                beneficiary_count = GroupBeneficiary.objects.filter(
+                    group__location__parent=commune,
+                    benefit_plan_id=benefit_plan_id,
+                    status='ACTIVE',
+                    is_deleted=False
+                ).count()
+                
+                if beneficiary_count > 0:
+                    communes_with_beneficiaries.append({
+                        'commune': commune,
+                        'beneficiary_count': beneficiary_count
+                    })
+            
+            # No eligible communes found
+            if not communes_with_beneficiaries:
+                return {
+                    'success': False,
+                    'error': 'No communes found with eligible beneficiaries',
+                    'generated_payrolls': []
+                }
+            
+            # Generate payroll for each eligible commune
+            payroll_service = PayrollService(self.user)
+            generated_payrolls = []
+            
+            for commune_data in communes_with_beneficiaries:
+                commune = commune_data['commune']
+                
+                # Prepare payroll data
+                # Import relativedelta for date calculations
+                
+                payroll_data = {
+                    'name': f"Demande de paiement du {payment_date.strftime('%Y/%m/%d')} pour la commune de {commune.name}",
+                    'payment_cycle_id': payment_cycle.id,
+                    'payment_plan_id': payment_plan.id,
+                    'payment_point_id': payment_point.id,
+                    'location_id': commune.id,
+                    'date_valid_from': payment_date,
+                    'date_valid_to': payment_date + relativedelta(months=1)
+                }
+                
+                # Create the payroll
+                try:
+                    result = payroll_service.create(payroll_data)
+                    if 'data' in result and 'id' in result['data']:
+                        generated_payrolls.append({
+                            'commune_id': str(commune.id),
+                            'commune_name': commune.name,
+                            'payroll_id': result['data']['id'],
+                            'beneficiary_count': commune_data['beneficiary_count'],
+                            'name': f"Demande de paiement du {payment_date.strftime('%Y/%m/%d')} pour la commune de {commune.name}",
+                        })
+                    else:
+                        logger.error(f"Failed to create payroll for commune {commune.name}: {result}")
+                except Exception as e:
+                    logger.error(f"Error creating payroll for commune {commune.name}: {str(e)}")
+            
+            # Return summary
+            return {
+                'success': True,
+                'payment_cycle_id': str(payment_cycle.id),
+                'payment_cycle_code': payment_cycle.code,
+                'payment_date': payment_date.isoformat(),
+                'province_id': str(province.id),
+                'province_name': province.name,
+                'benefit_plan_id': str(benefit_plan.id),
+                'benefit_plan_name': benefit_plan.name,
+                'generated_payrolls': generated_payrolls,
+                'total_payrolls': len(generated_payrolls),
+                'total_beneficiaries': sum(p['beneficiary_count'] for p in generated_payrolls)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating province-wide payroll: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'generated_payrolls': []
+            }
 
 
 class PaymentDataService:
@@ -762,6 +918,153 @@ class MonetaryTransferService(BaseService):
         return super().update(obj_data)
 
     @register_service_signal('monetary_transfer_service.delete')
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+    
+    def save_instance(self, obj_):
+        obj_.save()
+        dict_repr = model_representation(obj_)
+        return output_result_success(dict_representation=dict_repr)
+
+
+class SectionService(BaseService):
+    OBJECT_TYPE = Section
+
+    def __init__(self, user, validation_class=SectionValidation):
+        super().__init__(user, validation_class)
+
+    @register_service_signal('section_service.create')
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal('section_service.update')
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal('section_service.delete')
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+    
+    def save_instance(self, obj_):
+        obj_.save()
+        dict_repr = model_representation(obj_)
+        return output_result_success(dict_representation=dict_repr)
+
+
+class IndicatorService(BaseService):
+    OBJECT_TYPE = Indicator
+
+    def __init__(self, user, validation_class=IndicatorValidation):
+        super().__init__(user, validation_class)
+
+    @register_service_signal('indicator_service.create')
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal('indicator_service.update')
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal('indicator_service.delete')
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+    
+    def save_instance(self, obj_):
+        obj_.save()
+        dict_repr = model_representation(obj_)
+        return output_result_success(dict_representation=dict_repr)
+
+
+class ProvincePaymentPointService:
+    """
+    Service for managing payment points at province level
+    """
+    
+    def __init__(self, user):
+        self.user = user
+    
+    def add_province_payment_point(self, province_id, payment_point_id, payment_plan_id=None):
+        """
+        Add a payment point to all communes in a province
+        
+        Args:
+            province_id (str): UUID of the province location
+            payment_point_id (str): UUID of the payment point
+            payment_plan_id (str, optional): UUID of the payment plan
+            
+        Returns:
+            dict: Summary of operation results
+        """
+        
+        try:
+            # Validate province
+            province = Location.objects.filter(id=province_id, type='D').first()
+            if not province:
+                return {
+                    'success': False,
+                    'error': 'Province not found or invalid',
+                    'affected_communes': []
+                }
+                
+            # Validate payment point
+            payment_point = PaymentPoint.objects.filter(id=payment_point_id).first()
+            if not payment_point:
+                return {
+                    'success': False,
+                    'error': 'Payment point not found or invalid',
+                    'affected_communes': []
+                }
+            
+            # If payment_plan_id is provided, verify it exists
+            benefit_plan = None
+            if payment_plan_id:
+                # Get the payment plan and associated benefit plan
+                payment_plan = PaymentPlan.objects.filter(id=payment_plan_id).first()
+                if payment_plan:
+                    benefit_plan = payment_plan.benefit_plan
+                else:
+                    return {
+                        'success': False,
+                        'error': 'Payment plan not found or invalid'
+                    }
+
+            # Save the payment point to persist the location associations
+            payment_point.save()
+            
+            # Return summary
+            return {
+                'success': True,
+                'province_id': str(province.id),
+                'province_name': province.name,
+                'payment_point_id': str(payment_point.id),
+                'payment_point_name': payment_point.name,
+                'benefit_plan_id': str(benefit_plan.id) if benefit_plan else None,
+                'benefit_plan_name': benefit_plan.name if benefit_plan else None,
+            }
+            
+        except Exception as e:
+            logger.error(f"Error adding province-wide payment point: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+
+class IndicatorAchievementService(BaseService):
+    OBJECT_TYPE = IndicatorAchievement
+
+    def __init__(self, user, validation_class=IndicatorAchievementValidation):
+        super().__init__(user, validation_class)
+
+    @register_service_signal('indicator_achievement_service.create')
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal('indicator_achievement_service.update')
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal('indicator_achievement_service.delete')
     def delete(self, obj_data):
         return super().delete(obj_data)
     

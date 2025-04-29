@@ -7,7 +7,7 @@ from core.gql_queries import UserGQLType
 from core.utils import DefaultStorageFileHandler
 
 from location.gql_queries import LocationGQLType
-from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
+from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining, Section, Indicator, IndicatorAchievement
 from payroll.gql_queries import PaymentPointGQLType
 from social_protection.gql_queries import BenefitPlanGQLType
 
@@ -162,3 +162,41 @@ class BenefitConsumptionByProvinceGQLType(graphene.ObjectType):
     beneficiaries_active = graphene.Int()
     beneficiaries_suspended = graphene.Int()
     beneficiaries_selected = graphene.Int()
+
+
+class SectionGQLType(DjangoObjectType):
+    class Meta:
+        model = Section
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "name": ["exact", "icontains"],
+        }
+        connection_class = ExtendedConnection
+
+class IndicatorGQLType(DjangoObjectType):
+    class Meta:
+        model = Indicator
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "name": ["exact", "icontains"],
+            "pbc": ["exact", "icontains"],
+            "section": ["exact"],
+            "baseline": ["exact", "lt", "lte", "gt", "gte"],
+            "target": ["exact", "lt", "lte", "gt", "gte"],
+        }
+        connection_class = ExtendedConnection
+
+class IndicatorAchievementGQLType(DjangoObjectType):
+    class Meta:
+        model = IndicatorAchievement
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "indicator": ["exact"],
+            "achieved": ["exact", "lt", "lte", "gt", "gte"],
+            "timestamp": ["exact", "lt", "lte", "gt", "gte"],
+            "date": ["exact", "lt", "lte", "gt", "gte"],
+        }
+        connection_class = ExtendedConnection

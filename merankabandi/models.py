@@ -3,10 +3,11 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from datetime import datetime
 
-from core.models import User
+from core.models import User, HistoryModel, UUIDModel
 from location.models import Location
 from payroll.models import PaymentPoint
 from social_protection.models import BenefitPlan
+from payment_cycle.models import PaymentCycle
 
 class SensitizationTraining(models.Model):
     THEME_CATEGORIES = [
@@ -416,3 +417,30 @@ class MonetaryTransfer(models.Model):
             paid_men=paid_men,
             paid_twa=paid_twa,
         )
+    
+class Section(models.Model):
+    name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.name
+
+class Indicator(models.Model):
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="indicators", null=True, blank=True)
+    name = models.CharField(max_length=255)
+    pbc = models.CharField(max_length=255, blank=True, null=True)
+    baseline = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    target = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    observation = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+class IndicatorAchievement(models.Model):
+    indicator = models.ForeignKey(Indicator, on_delete=models.CASCADE, related_name="achievements")
+    achieved = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    comment = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    date = models.DateField(null=True, blank=True)  # New field to specify the date of the indicator value
+
+    def __str__(self):
+        return f"{self.indicator.name} - {self.achieved} at {self.timestamp}"

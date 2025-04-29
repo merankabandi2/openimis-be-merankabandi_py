@@ -11,9 +11,20 @@ from core.schema import OrderedDjangoFilterConnectionField
 from core.services import wait_for_mutation
 from core.utils import append_validity_filter
 
-from merankabandi.gql_mutations import CreateMonetaryTransferMutation, DeleteMonetaryTransferMutation, UpdateMonetaryTransferMutation
-from merankabandi.gql_queries import BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType
-from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining
+from merankabandi.gql_mutations import (
+    CreateMonetaryTransferMutation, DeleteMonetaryTransferMutation, UpdateMonetaryTransferMutation,
+    CreateSectionMutation, UpdateSectionMutation, DeleteSectionMutation,
+    CreateIndicatorMutation, UpdateIndicatorMutation, DeleteIndicatorMutation,
+    CreateIndicatorAchievementMutation, UpdateIndicatorAchievementMutation, DeleteIndicatorAchievementMutation, 
+    GenerateProvincePayrollMutation, AddProvincePaymentPointMutation
+)
+from merankabandi.gql_queries import (
+    BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
+    MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, 
+    TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType,
+    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType,
+)
+from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining, Section, Indicator, IndicatorAchievement
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary
 from payment_cycle.gql_queries import PaymentCycleGQLType
@@ -24,7 +35,6 @@ from payroll.gql_queries import BenefitsSummaryGQLType
 from social_protection.gql_queries import GroupBeneficiaryGQLType
 from social_protection.apps import SocialProtectionConfig
 from grievance_social_protection.models import Ticket
-
 from location.apps import LocationConfig
 from individual.apps import IndividualConfig
 from individual.gql_queries import IndividualGQLType, GroupGQLType
@@ -32,7 +42,7 @@ from individual.models import GroupIndividual
 
 class Query(ExportableQueryMixin, graphene.ObjectType):
 
-    exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer']
+    exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer', 'section', 'indicator', 'indicator_achievement']
 
     # Add the new query field
     benefit_consumption_by_province = graphene.List(
@@ -152,6 +162,25 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
         benefitPlan_Id=graphene.String(),
+    )
+
+    section = OrderedDjangoFilterConnectionField(
+        SectionGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    
+    indicator = OrderedDjangoFilterConnectionField(
+        IndicatorGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        section_id=graphene.Int(description="Filter by section ID"),
+    )
+    
+    indicator_achievement = OrderedDjangoFilterConnectionField(
+        IndicatorAchievementGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        indicator_id=graphene.Int(description="Filter by indicator ID"),
+        date_from=graphene.Date(description="Filter by date from"),
+        date_to=graphene.Date(description="Filter by date to"),
     )
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
@@ -772,6 +801,36 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         
         return result
 
+    def resolve_section(self, info, **kwargs):
+        return gql_optimizer.query(Section.objects.all(), info)
+
+    def resolve_indicator(self, info, **kwargs):
+        query = Indicator.objects.all()
+        
+        section_id = kwargs.get("section_id")
+        if section_id:
+            query = query.filter(section_id=section_id)
+            
+        return gql_optimizer.query(query, info)
+
+    def resolve_indicator_achievement(self, info, **kwargs):
+        query = IndicatorAchievement.objects.all()
+        
+        indicator_id = kwargs.get("indicator_id")
+        if indicator_id:
+            query = query.filter(indicator_id=indicator_id)
+            
+        date_from = kwargs.get("date_from")
+        if date_from:
+            query = query.filter(date__gte=date_from)
+            
+        date_to = kwargs.get("date_to")
+        if date_to:
+            query = query.filter(date__lte=date_to)
+            
+        return gql_optimizer.query(query, info)
+
+
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
         query_key = "uuid"
@@ -798,3 +857,22 @@ class Mutation(graphene.ObjectType):
     create_monetary_transfer = CreateMonetaryTransferMutation.Field()
     update_monetary_transfer = UpdateMonetaryTransferMutation.Field()
     delete_monetary_transfer = DeleteMonetaryTransferMutation.Field()
+    
+    # Add new mutations for Section, Indicator, and IndicatorAchievement
+    create_section = CreateSectionMutation.Field()
+    update_section = UpdateSectionMutation.Field()
+    delete_section = DeleteSectionMutation.Field()
+    
+    create_indicator = CreateIndicatorMutation.Field()
+    update_indicator = UpdateIndicatorMutation.Field()
+    delete_indicator = DeleteIndicatorMutation.Field()
+    
+    create_indicator_achievement = CreateIndicatorAchievementMutation.Field()
+    update_indicator_achievement = UpdateIndicatorAchievementMutation.Field()
+    delete_indicator_achievement = DeleteIndicatorAchievementMutation.Field()
+    
+    # Add province payroll generation mutation
+    generate_province_payroll = GenerateProvincePayrollMutation.Field()
+    
+    # Add province payment point mutation
+    add_province_payment_point = AddProvincePaymentPointMutation.Field()
