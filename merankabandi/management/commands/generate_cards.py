@@ -153,7 +153,9 @@ class BeneficiaryCardGenerator:
         photo_path = os.path.join(base_dir, clean_path)
         moyen_telecom = beneficiary.json_ext.get('moyen_telecom', '')
         colline = beneficiary.group.location
-        
+        # Get current date for fallback
+        current_date = date.today().strftime('%Y-%m-%d')
+
         logo_path = os.path.join(settings.STATIC_ROOT, 'merankabandi/logo.png')
         context = {
             'logo_url': self._get_image_data_url(logo_path),
@@ -161,7 +163,7 @@ class BeneficiaryCardGenerator:
             'social_id': beneficiary.group.code,
             'individual': individual,
             'telephone': moyen_telecom.get('msisdn', '') if moyen_telecom else '',
-            'date_enregistrement': moyen_telecom.get('responseDate', '') if moyen_telecom else '',
+            'date_enregistrement': moyen_telecom.get('responseDate', current_date) if moyen_telecom else current_date,
             'province': colline.parent.parent.name,
             'commune': colline.parent.name,
             'colline': colline.name,

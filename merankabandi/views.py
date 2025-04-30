@@ -1,3 +1,4 @@
+from datetime import date
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
@@ -156,18 +157,21 @@ class BeneficiaryCardGenerator:
         base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
         clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
         photo_path = os.path.join(base_dir, clean_path)
-        moyen_paiement = beneficiary.json_ext.get('moyen_telecom', '')
+        moyen_telecom = beneficiary.json_ext.get('moyen_telecom', '')
 
         colline = beneficiary.group.location
         
         logo_path = os.path.join(settings.STATIC_ROOT, 'merankabandi/logo.png')
+        # Get current date for fallback
+        current_date = date.today().strftime('%Y-%m-%d')
+        
         context = {
             'logo_url': self._get_image_data_url(logo_path),
             'photo_url': self._get_image_data_url(photo_path),
             'social_id': beneficiary.group.code,
             'individual': individual,
-            'telephone': moyen_paiement.get('msisdn', '') if moyen_paiement else '',
-            'date_enregistrement': moyen_paiement.get('responseDate', '2025-02-19') if moyen_paiement else '2025-02-19',
+            'telephone': moyen_telecom.get('msisdn', '') if moyen_telecom else '',
+            'date_enregistrement': moyen_telecom.get('responseDate', current_date) if moyen_telecom else current_date,
             'province': colline.parent.parent.name,
             'commune': colline.parent.name,
             'colline': colline.name,
@@ -207,7 +211,7 @@ def generate_colline_cards_view(request, commune_name):
     try:
         beneficiaries = Beneficiary.objects.filter(
             group__location__parent__name=commune_name,
-            json_ext__moyen_paiement__phoneNumber__isnull=False
+            json_ext__moyen_telecom__phoneNumber__isnull=False
         )
         
         generator = BeneficiaryCardGenerator()
@@ -232,6 +236,60 @@ def generate_colline_cards_view(request, commune_name):
         
     except Exception as e:
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)  
+
+def generate_location_cards_view(request, location_id):
+    """View for generating cards for all beneficiaries in a specific location"""
+    try:
+        from location.models import Location
+        
+        location = Location.objects.get(id=location_id)
+        
+        # Get beneficiaries for this location based on its type
+        location_type = location.type
+        
+        if location_type == 'D':  # District/Province
+            beneficiaries = Beneficiary.objects.filter(
+                group__location__parent__parent_id=location_id,
+                json_ext__moyen_telecom__msisdn__isnull=False
+            )
+        elif location_type == 'W':  # Commune
+            beneficiaries = Beneficiary.objects.filter(
+                group__location__parent_id=location_id,
+                json_ext__moyen_telecom__msisdn__isnull=False
+            )
+        elif location_type == 'V':  # Colline
+            beneficiaries = Beneficiary.objects.filter(
+                group__location_id=location_id,
+                json_ext__moyen_telecom__msisdn__isnull=False
+            )
+        else:
+            return HttpResponse(f"Unsupported location type: {location_type}", status=400)
+        
+        if not beneficiaries.exists():
+            return HttpResponse(f"No beneficiaries with registered phone numbers found for this location", status=404)
+            
+        generator = BeneficiaryCardGenerator()
+        all_cards_html = []
+        
+        for beneficiary in beneficiaries:
+            all_cards_html.append(generator.generate_card_html(request, beneficiary))
+        
+        combined_html = '\n'.join(all_cards_html)
+        
+        html_doc = HTML(string=combined_html)
+        pdf = html_doc.write_pdf(
+            stylesheets=[generator.css],
+            font_config=generator.font_config
+        )
+        
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="location_{location_id}_cards.pdf"'
+        response.write(pdf)
+        
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Error generating cards: {str(e)}", status=500)
 
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)

@@ -21,5 +21,5 @@ urlpatterns = [
          name='colline_cards'),
     path('beneficiary-photo/<str:type>/<str:id>/', views.beneficiary_photo_view, name='beneficiary_photo'),
     path('', include(router.urls)),
-    path('', include(router.urls)),
+    path('location/<str:location_id>/cards/', views.generate_location_cards_view, name='generate_location_cards'),
 ]
