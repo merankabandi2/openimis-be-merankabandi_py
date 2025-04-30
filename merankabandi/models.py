@@ -8,6 +8,7 @@ from location.models import Location
 from payroll.models import PaymentPoint
 from social_protection.models import BenefitPlan
 from payment_cycle.models import PaymentCycle
+from contribution_plan.models import PaymentPlan
 
 class SensitizationTraining(models.Model):
     THEME_CATEGORIES = [
@@ -444,3 +445,22 @@ class IndicatorAchievement(models.Model):
 
     def __str__(self):
         return f"{self.indicator.name} - {self.achieved} at {self.timestamp}"
+
+class ProvincePaymentPoint(UUIDModel):
+    """
+    Model for associating payment points with provinces and benefit plans
+    """
+    province = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='province_payment_points')
+    payment_point = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT, related_name='province_associations')
+    payment_plan = models.ForeignKey(PaymentPlan, on_delete=models.PROTECT, null=True, blank=True, related_name='province_payment_points')
+    is_active = models.BooleanField(default=True)
+    created_date = models.DateTimeField(auto_now_add=True)
+    updated_date = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'merankabandi_province_payment_point'
+        unique_together = ('province', 'payment_point', 'payment_plan')
+        
+    def __str__(self):
+        benefit_plan_name = self.payment_plan.benefit_plan.name if self.payment_plan else "All plans"
+        return f"{self.province.name} - {self.payment_point.name} - {benefit_plan_name}"

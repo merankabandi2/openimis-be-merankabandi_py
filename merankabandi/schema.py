@@ -16,15 +16,19 @@ from merankabandi.gql_mutations import (
     CreateSectionMutation, UpdateSectionMutation, DeleteSectionMutation,
     CreateIndicatorMutation, UpdateIndicatorMutation, DeleteIndicatorMutation,
     CreateIndicatorAchievementMutation, UpdateIndicatorAchievementMutation, DeleteIndicatorAchievementMutation, 
-    GenerateProvincePayrollMutation, AddProvincePaymentPointMutation
+    GenerateProvincePayrollMutation, AddProvincePaymentPointMutation,
+    CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation
 )
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, 
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType,
-    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType,
+    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType
 )
-from merankabandi.models import BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining, Section, Indicator, IndicatorAchievement
+from merankabandi.models import (
+    BehaviorChangePromotion, MicroProject, MonetaryTransfer, 
+    SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
+)
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary
 from payment_cycle.gql_queries import PaymentCycleGQLType
@@ -42,7 +46,8 @@ from individual.models import GroupIndividual
 
 class Query(ExportableQueryMixin, graphene.ObjectType):
 
-    exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer', 'section', 'indicator', 'indicator_achievement']
+    exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer', 
+                        'section', 'indicator', 'indicator_achievement', 'province_payment_point']
 
     # Add the new query field
     benefit_consumption_by_province = graphene.List(
@@ -181,6 +186,15 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         indicator_id=graphene.Int(description="Filter by indicator ID"),
         date_from=graphene.Date(description="Filter by date from"),
         date_to=graphene.Date(description="Filter by date to"),
+    )
+
+    province_payment_point = OrderedDjangoFilterConnectionField(
+        ProvincePaymentPointGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        province_id=graphene.ID(description="Filter by province ID"),
+        payment_point_id=graphene.String(description="Filter by payment point ID"),
+        payment_plan_id=graphene.String(description="Filter by payment plan ID"),
+        is_active=graphene.Boolean(description="Filter by active status"),
     )
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
@@ -831,6 +845,27 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         return gql_optimizer.query(query, info)
 
 
+    def resolve_province_payment_point(self, info, **kwargs):
+        query = ProvincePaymentPoint.objects.all()
+        
+        province_id = kwargs.get("province_id")
+        if province_id:
+            query = query.filter(province_id=province_id)
+            
+        payment_point_id = kwargs.get("payment_point_id")
+        if payment_point_id:
+            query = query.filter(payment_point_id=payment_point_id)
+            
+        payment_plan_id = kwargs.get("payment_plan_id")
+        if payment_plan_id:
+            query = query.filter(payment_plan_id=payment_plan_id)
+            
+        is_active = kwargs.get("is_active")
+        if is_active is not None:
+            query = query.filter(is_active=is_active)
+            
+        return gql_optimizer.query(query, info)
+
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
         query_key = "uuid"
@@ -874,5 +909,10 @@ class Mutation(graphene.ObjectType):
     # Add province payroll generation mutation
     generate_province_payroll = GenerateProvincePayrollMutation.Field()
     
-    # Add province payment point mutation
+    # Add province payment point mutation (existing one)
     add_province_payment_point = AddProvincePaymentPointMutation.Field()
+    
+    # Add CRUD mutations for province payment points
+    create_province_payment_point = CreateProvincePaymentPointMutation.Field()
+    update_province_payment_point = UpdateProvincePaymentPointMutation.Field()
+    delete_province_payment_point = DeleteProvincePaymentPointMutation.Field()
