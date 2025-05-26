@@ -17,6 +17,10 @@ from social_protection.gql_queries import BenefitPlanGQLType
 
 class SensitizationTrainingGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
+    validation_status_display = graphene.String()
+    
+    def resolve_validation_status_display(self, info):
+        return self.get_validation_status_display()
 
     class Meta:
         model = SensitizationTraining
@@ -30,11 +34,20 @@ class SensitizationTrainingGQLType(DjangoObjectType):
             "male_participants": ["exact", "lt", "lte", "gt", "gte"],
             "female_participants": ["exact", "lt", "lte", "gt", "gte"],
             "twa_participants": ["exact", "lt", "lte", "gt", "gte"],
+            "validation_status": ["exact", "in"],
+            "validated_by": ["exact"],
+            "validation_date": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
 
 
 class BehaviorChangePromotionGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+    validation_status_display = graphene.String()
+    
+    def resolve_validation_status_display(self, info):
+        return self.get_validation_status_display()
+    
     class Meta:
         model = BehaviorChangePromotion
         interfaces = (graphene.relay.Node,)
@@ -45,11 +58,20 @@ class BehaviorChangePromotionGQLType(DjangoObjectType):
             "male_participants": ["exact", "lt", "lte", "gt", "gte"],
             "female_participants": ["exact", "lt", "lte", "gt", "gte"],
             "twa_participants": ["exact", "lt", "lte", "gt", "gte"],
+            "validation_status": ["exact", "in"],
+            "validated_by": ["exact"],
+            "validation_date": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
 
 
 class MicroProjectGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+    validation_status_display = graphene.String()
+    
+    def resolve_validation_status_display(self, info):
+        return self.get_validation_status_display()
+    
     class Meta:
         model = MicroProject
         interfaces = (graphene.relay.Node,)
@@ -68,6 +90,9 @@ class MicroProjectGQLType(DjangoObjectType):
             "livestock_poultry_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
             "livestock_cattle_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
             "commerce_services_beneficiaries": ["exact", "lt", "lte", "gt", "gte"],
+            "validation_status": ["exact", "in"],
+            "validated_by": ["exact"],
+            "validation_date": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
 

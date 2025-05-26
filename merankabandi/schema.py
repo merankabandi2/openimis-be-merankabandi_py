@@ -19,7 +19,8 @@ from merankabandi.gql_mutations import (
     CreateIndicatorMutation, UpdateIndicatorMutation, DeleteIndicatorMutation,
     CreateIndicatorAchievementMutation, UpdateIndicatorAchievementMutation, DeleteIndicatorAchievementMutation, 
     GenerateProvincePayrollMutation, AddProvincePaymentPointMutation,
-    CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation
+    CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
+    ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation
 )
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
@@ -147,6 +148,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         filterNotAttachedToGroup=graphene.Boolean(),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        jsonExt_Icontains=graphene.String(description="Filter by JSON extension field content"),
     )
 
     group_filtered = OrderedDjangoFilterConnectionField(
@@ -161,6 +163,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         benefitPlanId=graphene.String(),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        jsonExt_Icontains=graphene.String(description="Filter by JSON extension field content"),
     )
 
     tickets_by_resolution = graphene.List(
@@ -169,6 +172,31 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
         benefitPlan_Id=graphene.String(),
+    )
+    
+    # Add dedicated fields for gender and minority data
+    individual_male = OrderedDjangoFilterConnectionField(
+        IndividualGQLType,
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+        dateCreated_Gte=graphene.DateTime(),
+        dateCreated_Lte=graphene.DateTime(),
+    )
+    
+    individual_female = OrderedDjangoFilterConnectionField(
+        IndividualGQLType,
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+        dateCreated_Gte=graphene.DateTime(),
+        dateCreated_Lte=graphene.DateTime(),
+    )
+    
+    minority_households = OrderedDjangoFilterConnectionField(
+        GroupGQLType,
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+        dateCreated_Gte=graphene.DateTime(),
+        dateCreated_Lte=graphene.DateTime(),
     )
 
     section = OrderedDjangoFilterConnectionField(
@@ -625,6 +653,11 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_individual_location_filters(parent_location, parent_location_level))
 
+        # Handle JSON extension field filtering
+        json_ext_contains = kwargs.get("jsonExt_Icontains")
+        if json_ext_contains:
+            filters.append(Q(json_ext__icontains=json_ext_contains))
+
         query = IndividualGQLType.get_queryset(None, info)
         query = query.filter(*filters)
 
@@ -677,6 +710,11 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level))
 
+        # Handle JSON extension field filtering
+        json_ext_contains = kwargs.get("jsonExt_Icontains")
+        if json_ext_contains:
+            filters.append(Q(json_ext__icontains=json_ext_contains))
+
         query = GroupGQLType.get_queryset(None, info)
         query = query.filter(*filters).distinct()
 
@@ -688,6 +726,60 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
                 custom_filters,
                 query
             )
+        return gql_optimizer.query(query, info)
+
+    def resolve_individual_male(self, info, **kwargs):
+        Query._check_permissions(info.context.user, IndividualConfig.gql_individual_search_perms)
+        
+        filters = append_validity_filter(**kwargs)
+        
+        # Always filter for male individuals
+        filters.append(Q(json_ext__sexe='M'))
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_individual_location_filters(parent_location, parent_location_level))
+        
+        query = IndividualGQLType.get_queryset(None, info)
+        query = query.filter(*filters)
+        
+        return gql_optimizer.query(query, info)
+    
+    def resolve_individual_female(self, info, **kwargs):
+        Query._check_permissions(info.context.user, IndividualConfig.gql_individual_search_perms)
+        
+        filters = append_validity_filter(**kwargs)
+        
+        # Always filter for female individuals
+        filters.append(Q(json_ext__sexe='F'))
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_individual_location_filters(parent_location, parent_location_level))
+        
+        query = IndividualGQLType.get_queryset(None, info)
+        query = query.filter(*filters)
+        
+        return gql_optimizer.query(query, info)
+    
+    def resolve_minority_households(self, info, **kwargs):
+        Query._check_permissions(info.context.user, IndividualConfig.gql_group_search_perms)
+        
+        filters = append_validity_filter(**kwargs)
+        
+        # Always filter for Mutwa households
+        filters.append(Q(json_ext__menage_mutwa='OUI'))
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level))
+        
+        query = GroupGQLType.get_queryset(None, info)
+        query = query.filter(*filters).distinct()
+        
         return gql_optimizer.query(query, info)
 
     def resolve_tickets_by_resolution(self, info, **kwargs):
@@ -921,3 +1013,8 @@ class Mutation(graphene.ObjectType):
     create_province_payment_point = CreateProvincePaymentPointMutation.Field()
     update_province_payment_point = UpdateProvincePaymentPointMutation.Field()
     delete_province_payment_point = DeleteProvincePaymentPointMutation.Field()
+    
+    # Add validation mutations for KoboToolbox data
+    validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()
+    validate_behavior_change = ValidateBehaviorChangeMutation.Field()
+    validate_microproject = ValidateMicroProjectMutation.Field()

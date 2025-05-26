@@ -15,6 +15,12 @@ class SensitizationTraining(models.Model):
         ('module_mip__mesures_d_inclusio', 'Module MIP (Mesures d\'Inclusion Productive)'),
         ('module_mach__mesures_d_accompa', 'Module MACH (Mesures d\'Accompagnement pour le développement du Capital Humain)')
     ]
+    
+    VALIDATION_STATUS_CHOICES = [
+        ('PENDING', 'Pending Validation'),
+        ('VALIDATED', 'Validated'),
+        ('REJECTED', 'Rejected')
+    ]
 
     id = models.UUIDField(primary_key=True)
     sensitization_date = models.DateField(verbose_name="Date de la sensibilisation/Formation")
@@ -62,6 +68,38 @@ class SensitizationTraining(models.Model):
         verbose_name="Observations",
         null=True,
         blank=True
+    )
+    
+    # Validation fields
+    validation_status = models.CharField(
+        max_length=20,
+        choices=VALIDATION_STATUS_CHOICES,
+        default='PENDING',
+        verbose_name='Validation Status'
+    )
+    validated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='validated_trainings',
+        verbose_name='Validated By'
+    )
+    validation_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Date'
+    )
+    validation_comment = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Comment'
+    )
+    kobo_submission_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name='Kobo Submission ID'
     )
 
 
@@ -127,10 +165,19 @@ class SensitizationTraining(models.Model):
 
             # Additional fields
             observations=kobo_data.get('Observation'),
+            
+            # Kobo metadata
+            kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
 
 
 class BehaviorChangePromotion(models.Model):
+    VALIDATION_STATUS_CHOICES = [
+        ('PENDING', 'Pending Validation'),
+        ('VALIDATED', 'Validated'),
+        ('REJECTED', 'Rejected')
+    ]
+    
     # Metadata
     id = models.UUIDField(primary_key=True)
     # Location
@@ -157,6 +204,38 @@ class BehaviorChangePromotion(models.Model):
         verbose_name="Commentaires",
         blank=True,
         null=True
+    )
+    
+    # Validation fields
+    validation_status = models.CharField(
+        max_length=20,
+        choices=VALIDATION_STATUS_CHOICES,
+        default='PENDING',
+        verbose_name='Validation Status'
+    )
+    validated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='validated_behavior_changes',
+        verbose_name='Validated By'
+    )
+    validation_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Date'
+    )
+    validation_comment = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Comment'
+    )
+    kobo_submission_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name='Kobo Submission ID'
     )
     
     class Meta:
@@ -206,6 +285,8 @@ class BehaviorChangePromotion(models.Model):
             # Additional fields
             comments=kobo_data.get('Commentaires'),
             
+            # Kobo metadata
+            kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
 
 
@@ -219,6 +300,12 @@ class OtherProjectType(models.Model):
         return f"{self.name} ({self.beneficiary_count} bénéficiaires)"
 
 class MicroProject(models.Model):
+    VALIDATION_STATUS_CHOICES = [
+        ('PENDING', 'Pending Validation'),
+        ('VALIDATED', 'Validated'),
+        ('REJECTED', 'Rejected')
+    ]
+    
     id = models.UUIDField(primary_key=True)
     
     # Location
@@ -250,6 +337,38 @@ class MicroProject(models.Model):
     livestock_poultry_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
     livestock_cattle_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
     commerce_services_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
+    
+    # Validation fields
+    validation_status = models.CharField(
+        max_length=20,
+        choices=VALIDATION_STATUS_CHOICES,
+        default='PENDING',
+        verbose_name='Validation Status'
+    )
+    validated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='validated_microprojects',
+        verbose_name='Validated By'
+    )
+    validation_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Date'
+    )
+    validation_comment = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Validation Comment'
+    )
+    kobo_submission_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name='Kobo Submission ID'
+    )
 
     class Meta:
         verbose_name = "Micro-projet"
@@ -289,7 +408,10 @@ class MicroProject(models.Model):
             livestock_rabbit_beneficiaries=int(kobo_data.get('group_fb09e52/Lapins', 0)),
             livestock_poultry_beneficiaries=int(kobo_data.get('group_fb09e52/Volailles', 0)),
             livestock_cattle_beneficiaries=int(kobo_data.get('group_fb09e52/Bovins', 0)),
-            commerce_services_beneficiaries=int(kobo_data.get('group_fb09e52/Commerce_et_services', 0)), 
+            commerce_services_beneficiaries=int(kobo_data.get('group_fb09e52/Commerce_et_services', 0)),
+            
+            # Kobo metadata
+            kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
         
         # Handle other project types

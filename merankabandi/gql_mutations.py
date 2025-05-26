@@ -554,3 +554,130 @@ class DeleteProvincePaymentPointMutation(BaseHistoryModelDeleteMutationMixin, Ba
 
     class Input(DeleteProvincePaymentPointInputType):
         pass
+
+
+# Validation mutations for KoboToolbox data
+class ValidateKoboDataInputType(OpenIMISMutation.Input):
+    id = graphene.UUID(required=True, description="ID of the record to validate")
+    status = graphene.String(required=True, description="VALIDATED or REJECTED")
+    comment = graphene.String(required=False, description="Validation comment")
+
+
+class ValidateSensitizationTrainingMutation(BaseMutation):
+    _mutation_class = "ValidateSensitizationTrainingMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+        # TODO: Add specific permission check for validation
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.services_validation import KoboDataValidationService
+        
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        
+        training_id = data.get('id')
+        status = data.get('status')
+        comment = data.get('comment')
+        
+        if status not in ['VALIDATED', 'REJECTED']:
+            raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
+        
+        success, training, error = KoboDataValidationService.validate_sensitization_training(
+            user=user,
+            training_id=training_id,
+            status=status,
+            comment=comment
+        )
+        
+        if not success:
+            raise ValidationError(error)
+        
+        return {"success": success}
+
+    class Input(ValidateKoboDataInputType):
+        pass
+
+
+class ValidateBehaviorChangeMutation(BaseMutation):
+    _mutation_class = "ValidateBehaviorChangeMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+        # TODO: Add specific permission check for validation
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.services_validation import KoboDataValidationService
+        
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        
+        behavior_change_id = data.get('id')
+        status = data.get('status')
+        comment = data.get('comment')
+        
+        if status not in ['VALIDATED', 'REJECTED']:
+            raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
+        
+        success, behavior_change, error = KoboDataValidationService.validate_behavior_change(
+            user=user,
+            behavior_change_id=behavior_change_id,
+            status=status,
+            comment=comment
+        )
+        
+        if not success:
+            raise ValidationError(error)
+        
+        return {"success": success}
+
+    class Input(ValidateKoboDataInputType):
+        pass
+
+
+class ValidateMicroProjectMutation(BaseMutation):
+    _mutation_class = "ValidateMicroProjectMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+        # TODO: Add specific permission check for validation
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.services_validation import KoboDataValidationService
+        
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        
+        microproject_id = data.get('id')
+        status = data.get('status')
+        comment = data.get('comment')
+        
+        if status not in ['VALIDATED', 'REJECTED']:
+            raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
+        
+        success, microproject, error = KoboDataValidationService.validate_microproject(
+            user=user,
+            microproject_id=microproject_id,
+            status=status,
+            comment=comment
+        )
+        
+        if not success:
+            raise ValidationError(error)
+        
+        return {"success": success}
+
+    class Input(ValidateKoboDataInputType):
+        pass
