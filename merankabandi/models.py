@@ -444,7 +444,7 @@ class IndicatorAchievement(models.Model):
     date = models.DateField(null=True, blank=True)  # New field to specify the date of the indicator value
 
     def __str__(self):
-        return f"{self.indicator.name} - {self.achieved} at {self.timestamp}"
+        return f"{self.indicator.name} - {self.achieved} at {self.date}"
 
 class ProvincePaymentPoint(UUIDModel):
     """

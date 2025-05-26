@@ -10,6 +10,8 @@ from core.custom_filters import CustomFilterWizardStorage
 from core.schema import OrderedDjangoFilterConnectionField
 from core.services import wait_for_mutation
 from core.utils import append_validity_filter
+from merankabandi.apps import MerankabandiConfig
+from merankabandi.gql_mutations import get_merankabandi_config
 
 from merankabandi.gql_mutations import (
     CreateMonetaryTransferMutation, DeleteMonetaryTransferMutation, UpdateMonetaryTransferMutation,
@@ -816,9 +818,11 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         return result
 
     def resolve_section(self, info, **kwargs):
+        Query._check_permissions(info.context.user, get_merankabandi_config().gql_section_search_perms)
         return gql_optimizer.query(Section.objects.all(), info)
 
     def resolve_indicator(self, info, **kwargs):
+        Query._check_permissions(info.context.user, get_merankabandi_config().gql_indicator_search_perms)
         query = Indicator.objects.all()
         
         section_id = kwargs.get("section_id")
@@ -828,6 +832,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         return gql_optimizer.query(query, info)
 
     def resolve_indicator_achievement(self, info, **kwargs):
+        Query._check_permissions(info.context.user, get_merankabandi_config().gql_indicator_achievement_search_perms)
         query = IndicatorAchievement.objects.all()
         
         indicator_id = kwargs.get("indicator_id")

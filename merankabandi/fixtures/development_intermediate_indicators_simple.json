@@ -1,0 +1,181 @@
+[
+  {
+    "model": "merankabandi.section",
+    "pk": 1,
+    "fields": {
+      "name": "Renforcer les capacités de gestion"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 2,
+    "fields": {
+      "name": "Renforcer les filets de sécurité"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 3,
+    "fields": {
+      "name": "Promouvoir l'inclusion productive et l'accès à l'emploi"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 4,
+    "fields": {
+      "name": "Apporter une réponse immédiate et efficace à une crise ou une urgence éligible"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 5,
+    "fields": {
+      "name": "Indicateurs intermédiaires"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 1,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inscrits au Registre social national (nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "250000.00",
+      "observation": "Ménages appuyés de la s/c 1.1, 1.2, compo 4 et 6"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 2,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inscrits au Registre social national - réfugiés, ventilés par sexe (Nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "15000.00",
+      "observation": "Ménages de 2 camps des réfugiés de la Province Ruyigi (Bwagiriza et Nyankanda)"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 3,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inclus dans le registre social national - communautés d'accueil, ventilés par sexe (nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "25000.00",
+      "observation": "5 633 transferts monétaires aux ménages des communautés hôtes en communes Butezi (966), Bweru (360) et Ryigi (1 241) en Province Ruyigi, Gasorwe (1 800) en Province Munynga et Kiremba (1 266) en Province Ngozi"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 4,
+    "fields": {
+      "section": 1,
+      "name": "Proportion des ménages inscrits dans la base de données des bénéficiaires vivant sous le seuil d'extrême pauvreté (Pourcentage)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "80.00",
+      "observation": ""
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 5,
+    "fields": {
+      "section": 2,
+      "name": "Bénéficiaires des programmes de protection sociale (CRI, nombre)",
+      "pbc": "",
+      "baseline": "56090.00",
+      "target": "305000.00",
+      "observation": "Ménages appuyés de la s/c 1.1, 1.2, de la compo 4 et 6 + les bénéficiaires de la vague1"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 6,
+    "fields": {
+      "section": 3,
+      "name": "Bénéficiaires d'interventions axées sur l'emploi (CRI, nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "150000.00",
+      "observation": ""
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 7,
+    "fields": {
+      "section": 4,
+      "name": "Agriculteurs ayant bénéficié d'actifs ou de services agricoles (CRI, nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "50000.00",
+      "observation": "Bénéficiaires de la composante 6 (CERC)"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 8,
+    "fields": {
+      "section": 5,
+      "name": "Système de gestion des informations sur la protection sociale mis en place (Oui / Non)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "1.00",
+      "observation": "La plateforme technique est disponible"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 9,
+    "fields": {
+      "section": 5,
+      "name": "Plan de communication développé (Oui / Non)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "1.00",
+      "observation": "La stratégie de communication est disponible"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 10,
+    "fields": {
+      "section": 5,
+      "name": "Pourcentage des bénéficiaires satisfaits du processus d'inscription au programme",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "80.00",
+      "observation": "Enquête de perception réalisée en mars 2023"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 11,
+    "fields": {
+      "section": 5,
+      "name": "Pourcentage des plaintes résolues",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "90.00",
+      "observation": "Rapport du mécanisme de gestion des plaintes du 1er trimestre 2023"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 12,
+    "fields": {
+      "section": 5,
+      "name": "Des activités de développement des compétences mises en œuvre (Oui / Non)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "1.00",
+      "observation": "Formation en cours sur les métiers dans 5 provinces"
+    }
+  }
+]

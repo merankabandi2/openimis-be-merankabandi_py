@@ -4,6 +4,8 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from django.apps import apps
+
 from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationMixin, BaseMutation, \
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
@@ -14,6 +16,11 @@ from merankabandi.services import (
     IndicatorAchievementService, ProvincePaymentPointService
 )
 from payroll.apps import PayrollConfig
+
+
+def get_merankabandi_config():
+    """Get the MerankabandiConfig instance"""
+    return apps.get_app_config('merankabandi')
 
 
 class CreateMonetaryTransferInputType(OpenIMISMutation.Input):
@@ -128,7 +135,8 @@ class CreateSectionMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_section_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -149,7 +157,8 @@ class UpdateSectionMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_section_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -170,7 +179,8 @@ class DeleteSectionMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_section_delete_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -211,7 +221,8 @@ class CreateIndicatorMutation(BaseHistoryModelCreateMutationMixin, BaseMutation)
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -232,7 +243,8 @@ class UpdateIndicatorMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation)
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -253,7 +265,8 @@ class DeleteIndicatorMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation)
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_delete_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -292,7 +305,8 @@ class CreateIndicatorAchievementMutation(BaseHistoryModelCreateMutationMixin, Ba
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_achievement_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -313,7 +327,8 @@ class UpdateIndicatorAchievementMutation(BaseHistoryModelUpdateMutationMixin, Ba
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_achievement_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -334,7 +349,8 @@ class DeleteIndicatorAchievementMutation(BaseHistoryModelDeleteMutationMixin, Ba
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                get_merankabandi_config().gql_indicator_achievement_delete_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod

@@ -21,6 +21,10 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from oauth2_provider.contrib.rest_framework import TokenHasScope
 import logging
+import subprocess
+import threading
+from django.http import JsonResponse
+from datetime import date
 
 from .serializers import (
     IndividualPaymentRequestSerializer,
@@ -923,3 +927,67 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+def _run_generate_cards_command(location_type, location_id, location_name):
+    """Run the generate_cards command in a background thread"""
+    output_file = f"{location_type}_{location_id}_{date.today().strftime('%Y%m%d')}.pdf"
+    
+    if location_type == 'province':
+        cmd = ['python', 'manage.py', 'generate_cards', '--province', location_name, '--output', output_file]
+    elif location_type == 'commune':
+        cmd = ['python', 'manage.py', 'generate_cards', '--commune', location_name, '--output', output_file]
+    elif location_type == 'colline':
+        cmd = ['python', 'manage.py', 'generate_cards', '--colline', location_name, '--output', output_file]
+    else:
+        return
+    
+    # Run the command in a background process
+    subprocess.Popen(cmd, 
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=settings.BASE_DIR)
+
+def trigger_background_card_generation(request, location_id, location_type=None):
+    """View for triggering card generation as a background task"""
+    try:
+        from location.models import Location
+        
+        location = Location.objects.get(id=location_id)
+        location_name = location.name
+        
+        # If location type is not specified, determine it from the database
+        if not location_type:
+            location_type = location.type
+            if location_type == 'D':
+                location_type = 'province'
+            elif location_type == 'W':
+                location_type = 'commune'
+            elif location_type == 'V':
+                location_type = 'colline'
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "message": f"Unsupported location type: {location_type}"
+                }, status=400)
+                
+        # Start background task
+        thread = threading.Thread(
+            target=_run_generate_cards_command,
+            args=(location_type, location_id, location_name)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return JsonResponse({
+            "success": True,
+            "message": f"Card generation for {location_type} {location_name} started in the background. The PDF will be available shortly.",
+            "location_id": location_id,
+            "location_name": location_name,
+            "location_type": location_type
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": f"Error starting background card generation: {str(e)}"
+        }, status=500)

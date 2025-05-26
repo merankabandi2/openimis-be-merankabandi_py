@@ -22,4 +22,6 @@ urlpatterns = [
     path('beneficiary-photo/<str:type>/<str:id>/', views.beneficiary_photo_view, name='beneficiary_photo'),
     path('', include(router.urls)),
     path('location/<str:location_id>/cards/', views.generate_location_cards_view, name='generate_location_cards'),
+    path('location/<str:location_id>/generate-cards-background/', views.trigger_background_card_generation, name='generate_cards_background'),
+    path('location/<str:location_id>/generate-cards-background/<str:location_type>/', views.trigger_background_card_generation, name='generate_cards_background_with_type'),
 ]

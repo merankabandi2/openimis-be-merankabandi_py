@@ -1,0 +1,155 @@
+[
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 1,
+    "fields": {
+      "indicator": 1,
+      "achieved": "3395",
+      "date": "2023-03-31",
+      "comment": "Données du premier trimestre 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000001",
+      "date_created": "2023-04-01T00:00:00Z",
+      "date_updated": "2023-04-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 2,
+    "fields": {
+      "indicator": 3,
+      "achieved": "5633",
+      "date": "2023-03-31",
+      "comment": "Transferts monétaires aux ménages des communautés hôtes",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000002",
+      "date_created": "2023-04-01T00:00:00Z",
+      "date_updated": "2023-04-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 3,
+    "fields": {
+      "indicator": 5,
+      "achieved": "210636",
+      "date": "2023-06-30",
+      "comment": "Bénéficiaires cumulés au Q2 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000003",
+      "date_created": "2023-07-01T00:00:00Z",
+      "date_updated": "2023-07-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 4,
+    "fields": {
+      "indicator": 7,
+      "achieved": "50717",
+      "date": "2023-06-30",
+      "comment": "Bénéficiaires de la composante 6 (CERC)",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000004",
+      "date_created": "2023-07-01T00:00:00Z",
+      "date_updated": "2023-07-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 5,
+    "fields": {
+      "indicator": 8,
+      "achieved": "Oui",
+      "date": "2023-01-15",
+      "comment": "Système MIS opérationnel",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000005",
+      "date_created": "2023-01-15T00:00:00Z",
+      "date_updated": "2023-01-15T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 6,
+    "fields": {
+      "indicator": 9,
+      "achieved": "Oui",
+      "date": "2022-12-20",
+      "comment": "Stratégie de communication validée et adoptée",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000006",
+      "date_created": "2022-12-20T00:00:00Z",
+      "date_updated": "2022-12-20T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 7,
+    "fields": {
+      "indicator": 10,
+      "achieved": "73",
+      "date": "2023-03-31",
+      "comment": "Résultat de l'enquête de perception Q1 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000007",
+      "date_created": "2023-04-01T00:00:00Z",
+      "date_updated": "2023-04-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 8,
+    "fields": {
+      "indicator": 11,
+      "achieved": "82",
+      "date": "2023-03-31",
+      "comment": "Taux de résolution des plaintes Q1 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000008",
+      "date_created": "2023-04-01T00:00:00Z",
+      "date_updated": "2023-04-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicatorachievement",
+    "pk": 9,
+    "fields": {
+      "indicator": 12,
+      "achieved": "Oui",
+      "date": "2023-02-15",
+      "comment": "Formations lancées dans 5 provinces",
+      "uuid": "e1f4d8a0-1234-4567-8901-200000000009",
+      "date_created": "2023-02-15T00:00:00Z",
+      "date_updated": "2023-02-15T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  }
+]

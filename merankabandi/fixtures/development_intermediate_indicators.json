@@ -1,0 +1,300 @@
+[
+  {
+    "model": "merankabandi.section",
+    "pk": 1,
+    "fields": {
+      "name": "Renforcer les capacités de gestion",
+      "uuid": "e1f4d8a0-1234-4567-8901-000000000001",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 2,
+    "fields": {
+      "name": "Renforcer les filets de sécurité",
+      "uuid": "e1f4d8a0-1234-4567-8901-000000000002",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 3,
+    "fields": {
+      "name": "Promouvoir l'inclusion productive et l'accès à l'emploi",
+      "uuid": "e1f4d8a0-1234-4567-8901-000000000003",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 4,
+    "fields": {
+      "name": "Apporter une réponse immédiate et efficace à une crise ou une urgence éligible",
+      "uuid": "e1f4d8a0-1234-4567-8901-000000000004",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 5,
+    "fields": {
+      "name": "Indicateurs intermédiaires",
+      "uuid": "e1f4d8a0-1234-4567-8901-000000000005",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 1,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inscrits au Registre social national (nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "250000.00",
+      "observation": "Ménages appuyés de la s/c 1.1, 1.2, compo 4 et 6",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000001",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 2,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inscrits au Registre social national - réfugiés, ventilés par sexe (Nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "15000.00",
+      "observation": "Ménages de 2 camps des réfugiés de la Province Ruyigi (Bwagiriza et Nyankanda)",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000002",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 3,
+    "fields": {
+      "section": 1,
+      "name": "Ménages des zones ciblées inclus dans le registre social national - communautés d'accueil, ventilés par sexe (nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "25000.00",
+      "observation": "5 633 transferts monétaires aux ménages des communautés hôtes en communes Butezi (966), Bweru (360) et Ryigi (1 241) en Province Ruyigi, Gasorwe (1 800) en Province Munynga et Kiremba (1 266) en Province Ngozi",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000003",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 4,
+    "fields": {
+      "section": 1,
+      "name": "Proportion des ménages inscrits dans la base de données des bénéficiaires vivant sous le seuil d'extrême pauvreté (Pourcentage)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "80.00",
+      "observation": "",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000004",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 5,
+    "fields": {
+      "section": 2,
+      "name": "Bénéficiaires des programmes de protection sociale (CRI, nombre)",
+      "pbc": "",
+      "baseline": "56090.00",
+      "target": "305000.00",
+      "observation": "Ménages appuyés de la s/c 1.1, 1.2, de la compo 4 et 6 + les bénéficiaires de la vague1",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000005",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 6,
+    "fields": {
+      "section": 3,
+      "name": "Bénéficiaires d'interventions axées sur l'emploi (CRI, nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "150000.00",
+      "observation": "",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000006",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 7,
+    "fields": {
+      "section": 4,
+      "name": "Agriculteurs ayant bénéficié d'actifs ou de services agricoles (CRI, nombre)",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "50000.00",
+      "observation": "Bénéficiaires de la composante 6 (CERC)",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000007",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 8,
+    "fields": {
+      "section": 5,
+      "name": "Système de gestion des informations sur la protection sociale mis en place (Oui / Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui",
+      "observation": "La plateforme technique est disponible",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000008",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 9,
+    "fields": {
+      "section": 5,
+      "name": "Plan de communication développé (Oui / Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui",
+      "observation": "La stratégie de communication est disponible",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000009",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 10,
+    "fields": {
+      "section": 5,
+      "name": "Pourcentage des bénéficiaires satisfaits du processus d'inscription au programme",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "80.00",
+      "observation": "Enquête de perception réalisée en mars 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000010",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 11,
+    "fields": {
+      "section": 5,
+      "name": "Pourcentage des plaintes résolues",
+      "pbc": "",
+      "baseline": "0.00",
+      "target": "90.00",
+      "observation": "Rapport du mécanisme de gestion des plaintes du 1er trimestre 2023",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000011",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 12,
+    "fields": {
+      "section": 5,
+      "name": "Des activités de développement des compétences mises en œuvre (Oui / Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui",
+      "observation": "Formation en cours sur les métiers dans 5 provinces",
+      "uuid": "e1f4d8a0-1234-4567-8901-100000000012",
+      "date_created": "2024-01-01T00:00:00Z",
+      "date_updated": "2024-01-01T00:00:00Z",
+      "is_deleted": false,
+      "version": 1,
+      "user_created": 1,
+      "user_updated": 1
+    }
+  }
+]
