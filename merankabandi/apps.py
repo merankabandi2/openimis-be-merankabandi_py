@@ -68,6 +68,7 @@ class MerankabandiConfig(AppConfig):
     def ready(self):
         self.__register_filters_and_payment_methods()
         self.__load_config()
+        self.__setup_dashboard_optimization()
 
     def __register_filters_and_payment_methods(self):
         PaymentsMethodRegistryPoint.register_payment_method(
@@ -99,3 +100,23 @@ class MerankabandiConfig(AppConfig):
         self.gql_indicator_achievement_create_perms = cfg.get("gql_indicator_achievement_create_perms", GQL_INDICATOR_ACHIEVEMENT_CREATE_PERMS)
         self.gql_indicator_achievement_update_perms = cfg.get("gql_indicator_achievement_update_perms", GQL_INDICATOR_ACHIEVEMENT_UPDATE_PERMS)
         self.gql_indicator_achievement_delete_perms = cfg.get("gql_indicator_achievement_delete_perms", GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS)
+    
+    def __setup_dashboard_optimization(self):
+        """Set up dashboard optimization on app ready"""
+        from django.conf import settings
+        
+        # Only set up if optimization is enabled
+        if getattr(settings, 'DASHBOARD_OPTIMIZATION', {}).get('ENABLED', True):
+            from django.db import connection
+            
+            # Check if we're using PostgreSQL
+            if 'postgresql' in connection.vendor:
+                # The migration will handle creating the views
+                # Just log that optimization is enabled
+                import logging
+                logger = logging.getLogger('merankabandi.dashboard')
+                logger.info("Dashboard optimization enabled for PostgreSQL")
+            else:
+                import logging
+                logger = logging.getLogger('merankabandi.dashboard')
+                logger.warning("Dashboard optimization requires PostgreSQL, currently using: %s", connection.vendor)

@@ -186,7 +186,7 @@ class BenefitConsumptionByProvinceGQLType(graphene.ObjectType):
     province_name = graphene.String()
     province_code = graphene.String()
     total_paid = graphene.Int()
-    total_amount = graphene.Decimal()
+    total_amount = graphene.Float()
     beneficiaries_active = graphene.Int()
     beneficiaries_suspended = graphene.Int()
     beneficiaries_selected = graphene.Int()

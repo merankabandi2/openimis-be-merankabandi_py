@@ -26,6 +26,8 @@ import threading
 from django.http import JsonResponse
 from datetime import date
 
+from .monetary_transfer_import_service import MonetaryTransferImportService
+
 from .serializers import (
     IndividualPaymentRequestSerializer,
     PaymentAccountAcknowledgmentSerializer,
@@ -991,3 +993,100 @@ def trigger_background_card_generation(request, location_id, location_type=None)
             "success": False,
             "message": f"Error starting background card generation: {str(e)}"
         }, status=500)
+
+
+class MonetaryTransferViewSet(viewsets.ViewSet):
+    """
+    ViewSet for MonetaryTransfer Excel import/export operations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'], url_path='import')
+    def import_excel(self, request):
+        """
+        POST: Import MonetaryTransfer data from Excel file
+        """
+        try:
+            # Check if file is included in request
+            if 'file' not in request.FILES:
+                return Response(
+                    {
+                        'success': False,
+                        'error': 'No file uploaded'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            file = request.FILES['file']
+            
+            # Process import
+            result = MonetaryTransferImportService.import_from_excel(
+                file=file,
+                user=request.user
+            )
+            
+            # Return result
+            return Response(result, status=status.HTTP_200_OK if result['success'] else status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error in MonetaryTransfer import: {str(e)}")
+            return Response(
+                {
+                    'success': False,
+                    'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='export')
+    def export_excel(self, request):
+        """
+        GET: Export MonetaryTransfer data to Excel
+        Query params: start_date, end_date, location_id, programme_id, payment_agency_id
+        """
+        try:
+            # Get filters from query params
+            filters = {
+                'start_date': request.query_params.get('start_date'),
+                'end_date': request.query_params.get('end_date'),
+                'location_id': request.query_params.get('location_id'),
+                'programme_id': request.query_params.get('programme_id'),
+                'payment_agency_id': request.query_params.get('payment_agency_id'),
+            }
+            
+            # Remove None values
+            filters = {k: v for k, v in filters.items() if v is not None}
+            
+            # Generate Excel file
+            response = MonetaryTransferImportService.export_to_excel(filters=filters)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in MonetaryTransfer export: {str(e)}")
+            return Response(
+                {
+                    'success': False,
+                    'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'], url_path='template')
+    def download_template(self, request):
+        """
+        GET: Download Excel template for import
+        """
+        try:
+            response = MonetaryTransferImportService.get_import_template()
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating template: {str(e)}")
+            return Response(
+                {
+                    'success': False,
+                    'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

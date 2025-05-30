@@ -6,6 +6,11 @@ from gettext import gettext as _
 from django.contrib.auth.models import AnonymousUser
 from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value
 
+# Import optimized dashboard queries and mutations
+from .optimized_gql_queries import OptimizedDashboardQuery
+from .optimized_gql_mutations import DashboardMutations
+from .payment_reporting_gql import PaymentReportingQuery
+
 from core.custom_filters import CustomFilterWizardStorage
 from core.schema import OrderedDjangoFilterConnectionField
 from core.services import wait_for_mutation
@@ -47,7 +52,7 @@ from individual.apps import IndividualConfig
 from individual.gql_queries import IndividualGQLType, GroupGQLType
 from individual.models import GroupIndividual
 
-class Query(ExportableQueryMixin, graphene.ObjectType):
+class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery, graphene.ObjectType):
 
     exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer', 
                         'section', 'indicator', 'indicator_achievement', 'province_payment_point']
@@ -57,6 +62,41 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         BenefitConsumptionByProvinceGQLType,
         year=graphene.Int(description="Filter by year"),
         benefitPlan_Id=graphene.String(description="Filter by benefit plan ID"),
+    )
+    
+    # Define the monetary transfers dashboard queries
+    benefits_summary_filtered = graphene.Field(
+        BenefitsSummaryGQLType,
+        year=graphene.Int(description="Filter by year"),
+        benefitPlanUuid=graphene.String(description="Filter by benefit plan ID"),
+        parentLocation=graphene.String(description="Filter by location UUID"),
+        parentLocationLevel=graphene.Int(description="Location level for filtering"),
+    )
+    
+    group_beneficiary_filtered = OrderedDjangoFilterConnectionField(
+        GroupBeneficiaryGQLType,
+        year=graphene.Int(description="Filter by year"),
+        parentLocation=graphene.String(description="Filter by location UUID"),
+        parentLocationLevel=graphene.Int(description="Location level for filtering"),
+    )
+    
+    group_filtered = OrderedDjangoFilterConnectionField(
+        GroupGQLType,
+        parentLocation=graphene.String(description="Filter by location UUID"),
+        parentLocationLevel=graphene.Int(description="Location level for filtering"),
+    )
+    
+    individual_filtered = OrderedDjangoFilterConnectionField(
+        IndividualGQLType,
+        parentLocation=graphene.String(description="Filter by location UUID"),
+        parentLocationLevel=graphene.Int(description="Location level for filtering"),
+    )
+    
+    monetary_transfer_beneficiary_data = graphene.List(
+        MonetaryTransferBeneficiaryDataGQLType,
+        year=graphene.Int(description="Filter by year"),
+        parentLocation=graphene.String(description="Filter by location UUID"),
+        parentLocationLevel=graphene.Int(description="Location level for filtering"),
     )
     
     payment_cycle_filtered = OrderedDjangoFilterConnectionField(
@@ -402,8 +442,8 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
                                  PayrollConfig.gql_payroll_search_perms)
         filters = append_validity_filter(**kwargs)
 
-        parent_location = kwargs.get('parent_location')
-        parent_location_level = kwargs.get('parent_location_level')
+        parent_location = kwargs.get('parentLocation')
+        parent_location_level = kwargs.get('parentLocationLevel')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_individual_location_filters(parent_location, parent_location_level, prefix='individual__'))
 
@@ -552,8 +592,8 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         if payment_cycle_uuid:
             filters.append(Q(payrollbenefitconsumption__payroll__payment_cycle_id=payment_cycle_uuid))
 
-        parent_location = kwargs.get('parent_location')
-        parent_location_level = kwargs.get('parent_location_level')
+        parent_location = kwargs.get('parentLocation')
+        parent_location_level = kwargs.get('parentLocationLevel')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_individual_location_filters(parent_location, parent_location_level, prefix='individual__'))
 
@@ -604,10 +644,20 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
 
         filters = _build_filters(info, **kwargs)
         
-        parent_location = kwargs.get('parent_location')
-        parent_location_level = kwargs.get('parent_location_level')
+        parent_location = kwargs.get('parentLocation')
+        parent_location_level = kwargs.get('parentLocationLevel')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='group__'))
+        
+        # Handle year filter
+        year = kwargs.get('year')
+        if year:
+            filters.append(Q(date_valid_from__year__lte=year) & Q(Q(date_valid_to__year__gte=year) | Q(date_valid_to__isnull=True)))
+        
+        # Handle benefit plan filter
+        benefit_plan_id = kwargs.get('benefitPlan_Id')
+        if benefit_plan_id:
+            filters.append(Q(benefit_plan_id=benefit_plan_id))
 
         query = GroupBeneficiary.get_queryset(None, info.context.user)
         query = _apply_custom_filters(query.filter(*filters), **kwargs)
@@ -648,8 +698,8 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
             subquery = GroupIndividual.objects.filter(individual=OuterRef('pk')).values('individual')
             filters.append(~Q(pk__in=Subquery(subquery)))
 
-        parent_location = kwargs.get('parent_location')
-        parent_location_level = kwargs.get('parent_location_level')
+        parent_location = kwargs.get('parentLocation')
+        parent_location_level = kwargs.get('parentLocationLevel')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_individual_location_filters(parent_location, parent_location_level))
 
@@ -705,8 +755,8 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
                 Q(groupbeneficiary__benefit_plan_id=benefit_plan_to_enroll)
             )
 
-        parent_location = kwargs.get('parent_location')
-        parent_location_level = kwargs.get('parent_location_level')
+        parent_location = kwargs.get('parentLocation')
+        parent_location_level = kwargs.get('parentLocationLevel')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level))
 
@@ -901,7 +951,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
                 'province_name': province.name,
                 'province_code': province.code,
                 'total_paid': total_paid,
-                'total_amount': total_amount,
+                'total_amount': float(total_amount) if total_amount else None,
                 'beneficiaries_active': active_count,
                 'beneficiaries_suspended': suspended_count,
                 'beneficiaries_selected': selected_count,
@@ -985,7 +1035,7 @@ class Query(ExportableQueryMixin, graphene.ObjectType):
         if type(user) is AnonymousUser or not user.id or not user.has_perms(perms):
             raise PermissionError("Unauthorized")
 
-class Mutation(graphene.ObjectType):
+class Mutation(DashboardMutations, graphene.ObjectType):
     create_monetary_transfer = CreateMonetaryTransferMutation.Field()
     update_monetary_transfer = UpdateMonetaryTransferMutation.Field()
     delete_monetary_transfer = DeleteMonetaryTransferMutation.Field()

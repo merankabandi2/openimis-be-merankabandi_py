@@ -1,6 +1,8 @@
 from django.urls import path, include
 from . import views
 from . import dashboard_views
+from . import optimized_dashboard_views
+from . import analytics_views
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -13,6 +15,16 @@ router.register(
     r'paymentaccount-attribution',
     views.PaymentAccountAttributionViewSet,
     basename='paymentaccount-attribution'
+)
+router.register(
+    r'monetary-transfers',
+    views.MonetaryTransferViewSet,
+    basename='monetary-transfers'
+)
+router.register(
+    r'data-exploration',
+    analytics_views.DataExplorationViewSet,
+    basename='data-exploration'
 )
 
 urlpatterns = [
@@ -40,6 +52,20 @@ urlpatterns = [
     
     # Automated aggregation endpoints
     path('indicators/auto-aggregate/', dashboard_views.auto_aggregate_indicators_api, name='auto_aggregate_indicators'),
+    
+    # OPTIMIZED DASHBOARD ENDPOINTS (Materialized Views)
+    path('dashboard/optimized/summary/', optimized_dashboard_views.optimized_dashboard_summary, name='optimized_dashboard_summary'),
+    path('dashboard/optimized/beneficiary-breakdown/', optimized_dashboard_views.optimized_beneficiary_breakdown, name='optimized_beneficiary_breakdown'),
+    path('dashboard/optimized/transfer-performance/', optimized_dashboard_views.optimized_transfer_performance, name='optimized_transfer_performance'),
+    path('dashboard/optimized/quarterly-trends/', optimized_dashboard_views.optimized_quarterly_trends, name='optimized_quarterly_trends'),
+    path('dashboard/optimized/grievances/', optimized_dashboard_views.optimized_grievance_dashboard, name='optimized_grievance_dashboard'),
+    path('dashboard/optimized/refresh/', optimized_dashboard_views.refresh_dashboard_views, name='refresh_dashboard_views'),
+    path('dashboard/optimized/stats/', optimized_dashboard_views.dashboard_view_stats, name='dashboard_view_stats'),
+    path('dashboard/optimized/health/', optimized_dashboard_views.OptimizedDashboardHealthView.as_view(), name='dashboard_health'),
+    
+    # Legacy endpoint redirects (backwards compatibility)
+    path('dashboard/fast/summary/', optimized_dashboard_views.redirect_to_optimized_summary, name='legacy_fast_summary'),
+    path('dashboard/fast/breakdown/', optimized_dashboard_views.redirect_to_optimized_breakdown, name='legacy_fast_breakdown'),
     
     # REST API router
     path('', include(router.urls)),
