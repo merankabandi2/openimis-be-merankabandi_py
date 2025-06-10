@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
     ]
 
     def create_materialized_views(apps, schema_editor):
+        return
         """Create all materialized views and indexes"""
         db_alias = schema_editor.connection.alias
         
