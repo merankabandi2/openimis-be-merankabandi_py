@@ -1,3 +1,4 @@
+import json
 import logging
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
@@ -65,6 +66,11 @@ class Command(BaseCommand):
             default=100,
             help='Number of households to process in a single transaction (default: 100)',
         )
+        parser.add_argument(
+            '--json-ext',
+            type=str,
+            help='Additional JSON fields to add to json_ext in format {"key": "value", "key2": "value2"}',
+        )
 
     def validate_benefit_plan(self, benefit_plan_id):
         """Validate that the benefit plan exists and is of GROUP type."""
@@ -75,6 +81,40 @@ class Command(BaseCommand):
             return benefit_plan
         except BenefitPlan.DoesNotExist:
             raise CommandError(f"Benefit plan with ID {benefit_plan_id} does not exist")
+
+    def parse_json_ext(self, json_ext_str):
+        """Parse and validate the JSON extension string."""
+        if not json_ext_str:
+            return {}
+        
+        try:
+            json_ext = json.loads(json_ext_str)
+            if not isinstance(json_ext, dict):
+                raise CommandError("--json-ext must be a valid JSON object/dictionary")
+            return json_ext
+        except json.JSONDecodeError as e:
+            raise CommandError(f"Invalid JSON format in --json-ext: {str(e)}")
+
+    def merge_json_ext(self, original_json_ext, additional_json_ext):
+        """Merge the original json_ext with additional fields."""
+        if not additional_json_ext:
+            return original_json_ext
+        
+        # Parse original json_ext if it's a string, otherwise use as-is
+        if isinstance(original_json_ext, str):
+            try:
+                merged = json.loads(original_json_ext) if original_json_ext else {}
+            except json.JSONDecodeError:
+                merged = {}
+        elif isinstance(original_json_ext, dict):
+            merged = original_json_ext.copy()
+        else:
+            merged = {}
+        
+        # Add/override with additional fields
+        merged.update(additional_json_ext)
+        
+        return merged
 
     def read_csv_file(self, file_path, code_column, delimiter=','):
         """Read household codes from CSV file."""
@@ -96,7 +136,7 @@ class Command(BaseCommand):
             is_deleted=False
         )
 
-    def process_households(self, codes, benefit_plan, status, user, dry_run=False, batch_size=100, skip_errors=True):
+    def process_households(self, codes, benefit_plan, status, user, additional_json_ext=None, dry_run=False, batch_size=100, skip_errors=True):
         """Process households and register them as beneficiaries."""
         results = {
             'total': len(codes),
@@ -148,13 +188,16 @@ class Command(BaseCommand):
                     for group in groups:
                         if group.id not in existing_group_ids:
                             try:
+                                # Merge original json_ext with additional fields
+                                merged_json_ext = self.merge_json_ext(group.json_ext, additional_json_ext)
+                                
                                 # Use the service to create beneficiaries, similar to how on_confirm_enrollment_of_group works
                                 create_result = service.create({
                                     'group_id': str(group.id),
                                     'benefit_plan_id': str(benefit_plan.id),
                                     'status': status,
                                     'date_valid_from': timezone.now().date(),
-                                    'json_ext': group.json_ext
+                                    'json_ext': merged_json_ext
                                 })
                                 
                                 if create_result.get('success', False):
@@ -196,8 +239,14 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
         skip_errors = options['skip_errors']
         batch_size = options['batch_size']
+        json_ext_str = options.get('json_ext')
         
         try:
+            # Parse and validate JSON extension
+            additional_json_ext = self.parse_json_ext(json_ext_str)
+            if additional_json_ext:
+                self.stdout.write(f"Additional JSON fields to add: {json.dumps(additional_json_ext)}")
+            
             # Validate benefit plan
             benefit_plan = self.validate_benefit_plan(benefit_plan_id)
             self.stdout.write(f"Using benefit plan: {benefit_plan.code} - {benefit_plan.name}")
@@ -220,7 +269,7 @@ class Command(BaseCommand):
             if skip_errors:
                 self.stdout.write(self.style.WARNING("SKIP ERRORS MODE - Will continue processing even when errors occur"))
                 
-            results = self.process_households(codes, benefit_plan, status, user, dry_run, batch_size, skip_errors)
+            results = self.process_households(codes, benefit_plan, status, user, additional_json_ext, dry_run, batch_size, skip_errors)
             
             # Print results
             self.stdout.write("\nImport Results:")
