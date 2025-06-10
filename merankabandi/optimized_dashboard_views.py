@@ -16,7 +16,7 @@ from django.core.cache import cache
 import json
 from datetime import datetime, date
 from .optimized_dashboard_service import OptimizedDashboardService
-from .materialized_views import MaterializedViewManager
+from .views_manager import MaterializedViewsManager
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -199,10 +199,10 @@ def refresh_dashboard_views(request):
         concurrent = request.data.get('concurrent', True)
         
         if view_name:
-            MaterializedViewManager.refresh_view(view_name, concurrent)
+            MaterializedViewsManager.refresh_single_view(view_name, concurrent)
             message = f"Refreshed view: {view_name}"
         else:
-            MaterializedViewManager.refresh_all_views(concurrent)
+            MaterializedViewsManager.refresh_all_views(category=None, concurrent=concurrent)
             message = "Refreshed all dashboard views"
         
         # Clear cache after refresh
@@ -229,7 +229,7 @@ def dashboard_view_stats(request):
     GET /api/merankabandi/dashboard/optimized/stats/
     """
     try:
-        stats = MaterializedViewManager.get_view_stats()
+        stats = MaterializedViewsManager.get_view_stats()
         
         formatted_stats = []
         for view_name, row_count, size_mb, last_refresh in stats:
@@ -298,7 +298,7 @@ class OptimizedDashboardHealthView(View):
     def check_materialized_views(self):
         """Check materialized views health"""
         try:
-            stats = MaterializedViewManager.get_view_stats()
+            stats = MaterializedViewsManager.get_view_stats()
             
             if not stats:
                 return {

@@ -705,10 +705,10 @@ class OptimizedDashboardService:
         """
         Check if views need refreshing and refresh them if necessary
         """
-        from .materialized_views import MaterializedViewManager
+        from .views_manager import MaterializedViewsManager
         
         # Check last refresh time
-        stats = MaterializedViewManager.get_view_stats()
+        stats = MaterializedViewsManager.get_view_stats()
         
         # If any view is older than 1 hour, refresh all views
         one_hour_ago = datetime.now() - timedelta(hours=1)
@@ -716,7 +716,7 @@ class OptimizedDashboardService:
         for view_name, row_count, size_mb, last_refresh in stats:
             if not last_refresh or last_refresh < one_hour_ago:
                 # Refresh in background (would typically use Celery)
-                MaterializedViewManager.refresh_all_views(concurrent=True)
+                MaterializedViewsManager.refresh_all_views(concurrent=True)
                 return True
         
         return False

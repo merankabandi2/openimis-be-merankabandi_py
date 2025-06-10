@@ -7,7 +7,7 @@ import graphene
 from graphene import String, Boolean, Int, Float
 from django.core.cache import cache
 from datetime import datetime
-from .materialized_views import MaterializedViewManager
+from .views_manager import MaterializedViewsManager
 from .optimized_dashboard_service import OptimizedDashboardService
 
 
@@ -117,7 +117,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 )
             
             # Refresh the view
-            MaterializedViewManager.refresh_view(view_name, concurrent)
+            MaterializedViewsManager.refresh_single_view(view_name, concurrent)
             
             # Clear related cache
             cache_pattern = f"gql_{view_name.replace('dashboard_', '')}"
@@ -167,13 +167,13 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                     )
             
             # Refresh all views
-            MaterializedViewManager.refresh_all_views(concurrent)
+            MaterializedViewsManager.refresh_all_views(concurrent=concurrent)
             
             # Clear all dashboard cache
             OptimizedDashboardService.clear_cache()
             
             # Count views
-            stats = MaterializedViewManager.get_view_stats()
+            stats = MaterializedViewsManager.get_view_stats()
             views_count = len(stats)
             
             end_time = datetime.now()
@@ -236,10 +236,10 @@ class OptimizedDashboardMutation(graphene.ObjectType):
         
         try:
             # Create all views and indexes
-            MaterializedViewManager.create_all_views()
+            MaterializedViewsManager.create_all_views()
             
             # Get statistics
-            stats = MaterializedViewManager.get_view_stats()
+            stats = MaterializedViewsManager.get_view_stats()
             views_count = len(stats)
             
             # Estimate indexes created (each view has multiple indexes)

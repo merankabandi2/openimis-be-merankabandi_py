@@ -9,7 +9,7 @@ from graphene_django import DjangoObjectType
 from django.core.cache import cache
 from datetime import datetime
 from .optimized_dashboard_service import OptimizedDashboardService
-from .materialized_views import MaterializedViewManager
+from .views_manager import MaterializedViewsManager
 from .vulnerable_groups_gql_queries import CommunityBreakdownType, LocationBreakdownType
 
 
@@ -522,7 +522,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             return cached_data
         
         try:
-            stats = MaterializedViewManager.get_view_stats()
+            stats = MaterializedViewsManager.get_view_stats()
             
             formatted_stats = []
             total_size = 0
@@ -571,7 +571,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             
             # Check materialized views
             try:
-                stats = MaterializedViewManager.get_view_stats()
+                stats = MaterializedViewsManager.get_view_stats()
                 if stats:
                     views_with_data = sum(1 for _, row_count, _, _ in stats if row_count and row_count > 0)
                     total_views = len(stats)
