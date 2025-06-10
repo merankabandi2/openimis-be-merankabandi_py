@@ -10,6 +10,7 @@ from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value
 from .optimized_gql_queries import OptimizedDashboardQuery
 from .optimized_gql_mutations import DashboardMutations
 from .payment_reporting_gql import PaymentReportingQuery
+from .vulnerable_groups_gql_queries import VulnerableGroupsQuery
 
 from core.custom_filters import CustomFilterWizardStorage
 from core.schema import OrderedDjangoFilterConnectionField
@@ -52,7 +53,7 @@ from individual.apps import IndividualConfig
 from individual.gql_queries import IndividualGQLType, GroupGQLType
 from individual.models import GroupIndividual
 
-class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery, graphene.ObjectType):
+class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery, VulnerableGroupsQuery, graphene.ObjectType):
 
     exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer', 
                         'section', 'indicator', 'indicator_achievement', 'province_payment_point']

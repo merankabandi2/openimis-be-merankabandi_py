@@ -115,6 +115,8 @@ class MonetaryTransferGQLType(DjangoObjectType):
             "paid_women": ["exact", "lt", "lte", "gt", "gte"],
             "paid_men": ["exact", "lt", "lte", "gt", "gte"],
             "paid_twa": ["exact", "lt", "lte", "gt", "gte"],
+            "planned_amount": ["exact", "lt", "lte", "gt", "gte"],
+            "transferred_amount": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
 

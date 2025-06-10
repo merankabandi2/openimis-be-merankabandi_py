@@ -2,10 +2,11 @@
 OpenSearch Documents for Materialized Views Self-Service Analytics
 """
 
-from django_opensearch_dsl import Document, Index, fields
+from django_opensearch_dsl import Document, fields
+from django_opensearch_dsl.indices import Index
 from django.db import connection
 from opensearch_reports.models import OpenSearchDashboard
-from opensearch_reports.services import BaseSyncDocument
+from opensearch_reports.service import BaseSyncDocument
 import uuid
 from datetime import datetime
 

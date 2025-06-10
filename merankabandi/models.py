@@ -470,6 +470,24 @@ class MonetaryTransfer(models.Model):
         default=0
     )
 
+    # Amount fields
+    planned_amount = models.DecimalField(
+        verbose_name="Montant prévu",
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        default=0,
+        help_text="Montant total prévu à distribuer (BIF)"
+    )
+    transferred_amount = models.DecimalField(
+        verbose_name="Montant transféré",
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        default=0,
+        help_text="Montant effectivement transféré (BIF)"
+    )
+
     
     class Meta:
         verbose_name = "Transfert Monétaire"

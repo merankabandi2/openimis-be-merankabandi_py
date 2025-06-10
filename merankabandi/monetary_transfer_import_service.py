@@ -33,6 +33,8 @@ class MonetaryTransferImportService:
         'Femmes payées': 'paid_women',
         'Hommes payés': 'paid_men',
         'Twa payés': 'paid_twa',
+        'Montant prévu': 'planned_amount',
+        'Montant transféré': 'transferred_amount',
     }
     
     # MIME types for Excel files
@@ -171,6 +173,8 @@ class MonetaryTransferImportService:
                         paid_women=int(row['Femmes payées'] or 0),
                         paid_men=int(row['Hommes payés'] or 0),
                         paid_twa=int(row['Twa payés'] or 0),
+                        planned_amount=float(row['Montant prévu'] or 0),
+                        transferred_amount=float(row['Montant transféré'] or 0),
                     )
                     
                     # Validate data
@@ -196,6 +200,15 @@ class MonetaryTransferImportService:
                         invalid_items.append({
                             'row': index + 2,
                             'error': "Paid Twa cannot exceed planned Twa",
+                            'data': row.to_dict()
+                        })
+                        failed += 1
+                        continue
+                    
+                    if monetary_transfer.transferred_amount > monetary_transfer.planned_amount:
+                        invalid_items.append({
+                            'row': index + 2,
+                            'error': "Transferred amount cannot exceed planned amount",
                             'data': row.to_dict()
                         })
                         failed += 1
@@ -277,9 +290,15 @@ class MonetaryTransferImportService:
                     'Hommes payés': transfer.paid_men,
                     'Twa payés': transfer.paid_twa,
                     'Total payés': transfer.total_paid,
+                    'Montant prévu': float(transfer.planned_amount),
+                    'Montant transféré': float(transfer.transferred_amount),
                     'Taux de paiement (%)': round(
                         (transfer.total_paid / transfer.total_planned * 100) 
                         if transfer.total_planned > 0 else 0, 2
+                    ),
+                    'Taux de transfert (%)': round(
+                        (transfer.transferred_amount / transfer.planned_amount * 100) 
+                        if transfer.planned_amount > 0 else 0, 2
                     ),
                 })
             
@@ -356,6 +375,8 @@ class MonetaryTransferImportService:
             'Femmes payées': [48, 72],
             'Hommes payés': [44, 78],
             'Twa payés': [5, 9],
+            'Montant prévu': [2500000, 3750000],
+            'Montant transféré': [2400000, 3600000],
         }
         
         # Create DataFrame

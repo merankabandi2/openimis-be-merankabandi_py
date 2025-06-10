@@ -10,6 +10,7 @@ from django.core.cache import cache
 from datetime import datetime
 from .optimized_dashboard_service import OptimizedDashboardService
 from .materialized_views import MaterializedViewManager
+from .vulnerable_groups_gql_queries import CommunityBreakdownType, LocationBreakdownType
 
 
 # GraphQL Types for Dashboard Data
@@ -35,17 +36,10 @@ class AgeBreakdownType(graphene.ObjectType):
     percentage = graphene.Float()
 
 
-class CommunityBreakdownType(graphene.ObjectType):
-    community_type = graphene.String()
-    count = graphene.Int()
-    percentage = graphene.Float()
+# CommunityBreakdownType moved to vulnerable_groups_gql_queries.py to avoid duplication
 
 
-class LocationBreakdownType(graphene.ObjectType):
-    province = graphene.String()
-    province_id = graphene.Int()
-    count = graphene.Int()
-    percentage = graphene.Float()
+# LocationBreakdownType moved to vulnerable_groups_gql_queries.py to avoid duplication
 
 
 class HouseholdBreakdownType(graphene.ObjectType):
