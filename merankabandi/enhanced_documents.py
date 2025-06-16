@@ -266,7 +266,9 @@ class DashboardVulnerableGroupsDocument(BaseSyncDocument):
 ENHANCED_VIEW_MAPPINGS = {
     # Original mappings
     'dashboard_beneficiary_summary': DashboardBeneficiaryDocument,
-    'dashboard_monetary_transfers': 'DashboardMonetaryTransferDocument',
+    'payment_reporting_unified_summary': 'DashboardUnifiedPaymentDocument',
+    'payment_reporting_unified_quarterly': 'DashboardUnifiedPaymentDocument',
+    'payment_reporting_unified_by_location': 'DashboardUnifiedPaymentDocument',
     'dashboard_grievances': 'DashboardGrievanceDocument',
     'dashboard_grievance_category_summary': 'DashboardGrievanceDocument',
     'dashboard_grievance_channel_summary': 'DashboardGrievanceDocument',

@@ -63,52 +63,53 @@ class DashboardBeneficiaryDocument(BaseSyncDocument):
         }
 
 
-class DashboardMonetaryTransferDocument(BaseSyncDocument):
+class DashboardUnifiedPaymentDocument(BaseSyncDocument):
     """
-    OpenSearch document for dashboard_monetary_transfers materialized view
+    OpenSearch document for payment_reporting_unified_summary materialized view
     """
-    # Transfer identification
-    transfer_id = fields.KeywordField()
-    transfer_type = fields.KeywordField()
+    # Payment identification
+    payment_id = fields.KeywordField()
+    payment_source = fields.KeywordField()  # BENEFIT_CONSUMPTION or MONETARY_TRANSFER
+    payment_status = fields.KeywordField()
     
     # Location
-    province = fields.KeywordField()
-    commune = fields.KeywordField()
-    zone = fields.KeywordField()
+    province_id = fields.KeywordField()
+    province_name = fields.KeywordField()
+    commune_id = fields.KeywordField()
+    commune_name = fields.KeywordField()
+    colline_id = fields.KeywordField()
+    colline_name = fields.KeywordField()
+    location_type = fields.KeywordField()
     
     # Program details
-    programme = fields.KeywordField()
-    benefit_plan = fields.KeywordField()
-    payment_agency = fields.KeywordField()
+    programme_id = fields.KeywordField()
+    programme_code = fields.KeywordField()
+    programme_name = fields.KeywordField()
+    payment_point_name = fields.KeywordField()
     
-    # Transfer metrics
-    planned_women = fields.IntegerField()
-    planned_men = fields.IntegerField()
-    planned_twa = fields.IntegerField()
-    planned_total = fields.IntegerField()
-    
-    paid_women = fields.IntegerField()
-    paid_men = fields.IntegerField()
-    paid_twa = fields.IntegerField()
-    paid_total = fields.IntegerField()
+    # Payment metrics
+    total_beneficiaries = fields.IntegerField()
+    total_female = fields.IntegerField()
+    total_male = fields.IntegerField()
+    total_twa = fields.IntegerField()
+    total_amount_paid = fields.FloatField()
     
     # Performance metrics
-    payment_rate = fields.FloatField()
-    women_payment_rate = fields.FloatField()
-    men_payment_rate = fields.FloatField()
-    twa_payment_rate = fields.FloatField()
+    female_percentage = fields.FloatField()
+    twa_percentage = fields.FloatField()
+    avg_amount_per_beneficiary = fields.FloatField()
     
     # Dates
-    transfer_date = fields.DateField()
+    payment_date = fields.DateField()
     month = fields.IntegerField()
     year = fields.IntegerField()
-    quarter = fields.KeywordField()
+    quarter = fields.IntegerField()
     
     # Aggregation fields
     report_date = fields.DateField()
     
     class Index:
-        name = 'dashboard_monetary_transfers'
+        name = 'dashboard_unified_payments'
         settings = {
             'number_of_shards': 1,
             'number_of_replicas': 0,
@@ -375,7 +376,9 @@ class MaterializedViewSyncService:
         """
         view_mappings = {
             'dashboard_beneficiary_summary': DashboardBeneficiaryDocument,
-            'dashboard_monetary_transfers': DashboardMonetaryTransferDocument,
+            'payment_reporting_unified_summary': DashboardUnifiedPaymentDocument,
+            'payment_reporting_unified_quarterly': DashboardUnifiedPaymentDocument,
+            'payment_reporting_unified_by_location': DashboardUnifiedPaymentDocument,
             'dashboard_grievances': DashboardGrievanceDocument,
             'dashboard_grievance_category_summary': DashboardGrievanceDocument,
             'dashboard_grievance_channel_summary': DashboardGrievanceDocument,

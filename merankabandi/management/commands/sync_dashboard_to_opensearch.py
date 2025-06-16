@@ -84,7 +84,9 @@ class Command(BaseCommand):
         
         view_mappings = {
             'dashboard_beneficiary_summary': 'DashboardBeneficiaryDocument',
-            'dashboard_monetary_transfers': 'DashboardMonetaryTransferDocument',
+            'payment_reporting_unified_summary': 'DashboardUnifiedPaymentDocument',
+            'payment_reporting_unified_quarterly': 'DashboardUnifiedPaymentDocument',
+            'payment_reporting_unified_by_location': 'DashboardUnifiedPaymentDocument',
             'dashboard_grievances': 'DashboardGrievanceDocument',
             'dashboard_grievance_category_summary': 'DashboardGrievanceDocument',
             'dashboard_grievance_channel_summary': 'DashboardGrievanceDocument',
@@ -107,7 +109,7 @@ class Command(BaseCommand):
         # Import and get the document class
         from merankabandi.documents import (
             DashboardBeneficiaryDocument,
-            DashboardMonetaryTransferDocument,
+            DashboardUnifiedPaymentDocument,
             DashboardGrievanceDocument,
             DashboardActivitiesDocument,
             DashboardIndicatorsDocument,
@@ -116,7 +118,7 @@ class Command(BaseCommand):
         
         document_classes = {
             'DashboardBeneficiaryDocument': DashboardBeneficiaryDocument,
-            'DashboardMonetaryTransferDocument': DashboardMonetaryTransferDocument,
+            'DashboardUnifiedPaymentDocument': DashboardUnifiedPaymentDocument,
             'DashboardGrievanceDocument': DashboardGrievanceDocument,
             'DashboardActivitiesDocument': DashboardActivitiesDocument,
             'DashboardIndicatorsDocument': DashboardIndicatorsDocument,
