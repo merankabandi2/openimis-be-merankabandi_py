@@ -34,7 +34,7 @@ class Command(BaseCommand):
             '--status', 
             type=str, 
             default='POTENTIAL', 
-            choices=['ACTIVE', 'POTENTIAL', 'SUSPENDED'],
+            choices=['ACTIVE', 'POTENTIAL', 'SUSPENDED', 'VALIDATED'],
             help='Status for the beneficiaries (default: POTENTIAL)'
         )
         parser.add_argument(
@@ -70,6 +70,11 @@ class Command(BaseCommand):
             '--json-ext',
             type=str,
             help='Additional JSON fields to add to json_ext in format {"key": "value", "key2": "value2"}',
+        )
+        parser.add_argument(
+            '--update-existing',
+            action='store_true',
+            help='Update the status of existing beneficiaries (default: False)',
         )
 
     def validate_benefit_plan(self, benefit_plan_id):
@@ -136,13 +141,14 @@ class Command(BaseCommand):
             is_deleted=False
         )
 
-    def process_households(self, codes, benefit_plan, status, user, additional_json_ext=None, dry_run=False, batch_size=100, skip_errors=True):
+    def process_households(self, codes, benefit_plan, status, user, additional_json_ext=None, dry_run=False, batch_size=100, skip_errors=True, update_existing=False):
         """Process households and register them as beneficiaries."""
         results = {
             'total': len(codes),
             'found': 0,
             'already_registered': 0,
             'newly_registered': 0,
+            'updated': 0,
             'not_found': 0,
             'errors': 0,
             'not_found_codes': [],
@@ -172,19 +178,46 @@ class Command(BaseCommand):
                 group__in=groups,
                 benefit_plan=benefit_plan,
                 is_deleted=False
-            ).values_list('group_id', flat=True)
-            existing_group_ids = set(existing_beneficiaries)
+            )
+            existing_group_ids = set(existing_beneficiaries.values_list('group_id', flat=True))
             results['already_registered'] += len(existing_group_ids)
             
             # Skip actual registration if dry run
             if dry_run:
                 continue
                 
-            # Process groups not already registered using the service
+            # Process groups using the service
             try:
                 with transaction.atomic():
                     newly_registered = 0
+                    updated = 0
                     
+                    # If update_existing is True, update existing beneficiaries first
+                    if update_existing and existing_group_ids:
+                        for beneficiary in existing_beneficiaries:
+                            if beneficiary.status != status:
+                                try:
+                                    update_result = service.update({
+                                        'id': str(beneficiary.id),
+                                        'status': status
+                                    })
+                                    
+                                    if update_result.get('success', False):
+                                        updated += 1
+                                    else:
+                                        results['errors'] += 1
+                                        results['error_details'].append(
+                                            f"Error updating beneficiary for group {beneficiary.group.code}: {update_result.get('message', 'Unknown error')}"
+                                        )
+                                        if not skip_errors:
+                                            raise CommandError(f"Failed to update beneficiary for group {beneficiary.group.code}: {update_result.get('message', 'Unknown error')}")
+                                except Exception as e:
+                                    results['errors'] += 1
+                                    results['error_details'].append(f"Error updating beneficiary for group {beneficiary.group.code}: {str(e)}")
+                                    if not skip_errors:
+                                        raise
+                    
+                    # Process groups not already registered
                     for group in groups:
                         if group.id not in existing_group_ids:
                             try:
@@ -216,6 +249,7 @@ class Command(BaseCommand):
                                     raise
                     
                     results['newly_registered'] += newly_registered
+                    results['updated'] += updated
             except CommandError:
                 # Re-raise CommandError even with skip_errors=True to ensure intentional errors are seen
                 raise
@@ -240,6 +274,7 @@ class Command(BaseCommand):
         skip_errors = options['skip_errors']
         batch_size = options['batch_size']
         json_ext_str = options.get('json_ext')
+        update_existing = options['update_existing']
         
         try:
             # Parse and validate JSON extension
@@ -269,7 +304,7 @@ class Command(BaseCommand):
             if skip_errors:
                 self.stdout.write(self.style.WARNING("SKIP ERRORS MODE - Will continue processing even when errors occur"))
                 
-            results = self.process_households(codes, benefit_plan, status, user, additional_json_ext, dry_run, batch_size, skip_errors)
+            results = self.process_households(codes, benefit_plan, status, user, additional_json_ext, dry_run, batch_size, skip_errors, update_existing)
             
             # Print results
             self.stdout.write("\nImport Results:")
@@ -279,8 +314,12 @@ class Command(BaseCommand):
             
             if not dry_run:
                 self.stdout.write(self.style.SUCCESS(f"Newly registered to benefit plan: {results['newly_registered']}"))
+                if update_existing and results['updated'] > 0:
+                    self.stdout.write(self.style.SUCCESS(f"Updated status for existing beneficiaries: {results['updated']}"))
             else:
                 self.stdout.write(f"Would register to benefit plan: {results['found'] - results['already_registered']}")
+                if update_existing:
+                    self.stdout.write(f"Would update status for existing beneficiaries: Check individual beneficiary statuses")
                 
             self.stdout.write(self.style.WARNING(f"Households not found in system: {results['not_found']}"))
             

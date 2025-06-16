@@ -919,7 +919,6 @@ class OptimizedDashboardService:
             try:
                 cursor.execute("""
                     SELECT 
-                        id,
                         date_of_incident AS "dateOfIncident",
                         channel,
                         category,
@@ -928,13 +927,13 @@ class OptimizedDashboardService:
                         description,
                         priority,
                         flags,
-                        date_created AS "dateCreated",
-                        date_updated AS "dateUpdated",
-                        reporter_type AS "reporterType",
-                        reporter_id AS "reporterId",
-                        reporter_first_name AS "reporterFirstName",
-                        reporter_last_name AS "reporterLastName",
-                        reporter_type_name AS "reporterTypeName",
+                        "DateCreated" AS "dateCreated",
+                        "DateUpdated" AS "dateUpdated",
+                        "reporterType" AS "reporterType",
+                        "reporterId",
+                        "reporterFirstName",
+                        "reporterLastName",
+                        "reporterTypeName",
                         CASE 
                             WHEN reporter IS NOT NULL AND reporter::text != '' 
                             THEN json_extract_path_text(reporter::json, 'gender')
@@ -942,7 +941,7 @@ class OptimizedDashboardService:
                         END as gender
                     FROM grievance_social_protection_ticket
                     WHERE "isDeleted" = false
-                    ORDER BY date_created DESC
+                    ORDER BY "DateCreated" DESC
                     LIMIT 50
                 """)
                 
