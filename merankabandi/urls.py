@@ -32,6 +32,11 @@ router.register(
     enhanced_analytics_views.EnhancedDataExplorationViewSet,
     basename='enhanced-analytics'
 )
+router.register(
+    r'group-beneficiary',
+    views.GroupBeneficiaryCheckViewSet,
+    basename='group-beneficiary'
+)
 
 urlpatterns = [
     # Existing card generation endpoints

@@ -4,7 +4,7 @@ from django.template.loader import render_to_string
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
-from social_protection.models import GroupBeneficiary as Beneficiary 
+from social_protection.models import GroupBeneficiary as Beneficiary, Group
 from individual.models import GroupIndividual, Individual
 from django.conf import settings
 from django.http import FileResponse, HttpResponseForbidden
@@ -396,10 +396,16 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
     def create(self, request):
         """
         POST: Verify and attribute phone number to beneficiary
+        Supports both single and batch operations (50-100 items)
         """
 
         application_name = request.auth.application.name
-        # Validate request data
+        
+        # Check if this is a batch request
+        if isinstance(request.data, list):
+            return self._handle_batch_creation(request)
+        
+        # Single request handling
         request_serializer = PhoneNumberAttributionRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
             return Response(
@@ -442,6 +448,68 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         })
         response_serializer.is_valid()
         return Response(response_serializer.validated_data)
+    
+    def _handle_batch_creation(self, request):
+        """
+        Handle batch phone number attribution
+        """
+        batch_data = request.data
+        
+        # Validate batch size
+        if len(batch_data) > 100:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'batch_size_exceeded',
+                    'message': 'Batch size cannot exceed 100 items'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = []
+        errors = []
+        success_count = 0
+        
+        for idx, item in enumerate(batch_data):
+            # Validate individual item
+            request_serializer = PhoneNumberAttributionRequestSerializer(data=item)
+            if not request_serializer.is_valid():
+                errors.append({
+                    'index': idx,
+                    'socialid': item.get('socialid', 'unknown'),
+                    'error': request_serializer.errors
+                })
+                continue
+            
+            # Process phone number attribution
+            success, beneficiary, error_message = PhoneNumberAttributionService.process_phone_attribution(
+                request_serializer.validated_data,
+                request.user
+            )
+            
+            if success:
+                success_count += 1
+                results.append({
+                    'index': idx,
+                    'socialid': request_serializer.validated_data['socialid'],
+                    'status': 'SUCCESS'
+                })
+            else:
+                errors.append({
+                    'index': idx,
+                    'socialid': request_serializer.validated_data['socialid'],
+                    'error': error_message
+                })
+        
+        # Return batch response
+        return Response({
+            'status': 'BATCH_COMPLETED',
+            'total_items': len(batch_data),
+            'success_count': success_count,
+            'error_count': len(errors),
+            'results': results,
+            'errors': errors
+        })
     
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
@@ -538,9 +606,15 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
     def create(self, request):
         """
         POST: Handle acknowledgment or attribution based on payload
+        Supports both single and batch operations (50-100 items)
         """
         application_name = request.auth.application.name
-        # Determine operation type based on payload
+        
+        # Check if this is a batch request
+        if isinstance(request.data, list):
+            return self._handle_batch_creation(request)
+        
+        # Single request handling
         payload = request.data
         
         if 'tp_account_number' in payload:
@@ -556,6 +630,117 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    def _handle_batch_creation(self, request):
+        """
+        Handle batch payment account operations
+        """
+        batch_data = request.data
+        
+        # Validate batch size
+        if len(batch_data) > 100:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'batch_size_exceeded',
+                    'message': 'Batch size cannot exceed 100 items'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = []
+        errors = []
+        success_count = 0
+        
+        for idx, item in enumerate(batch_data):
+            # Determine operation type
+            if 'tp_account_number' in item:
+                result = self._process_batch_attribution(idx, item)
+            elif 'status' in item and item.get('status') in ['ACCEPTED', 'REJECTED']:
+                result = self._process_batch_acknowledgment(idx, item)
+            else:
+                errors.append({
+                    'index': idx,
+                    'socialid': item.get('socialid', 'unknown'),
+                    'error': 'Could not determine operation type from payload'
+                })
+                continue
+            
+            if result['success']:
+                success_count += 1
+                results.append(result)
+            else:
+                errors.append(result)
+        
+        # Return batch response
+        return Response({
+            'status': 'BATCH_COMPLETED',
+            'total_items': len(batch_data),
+            'success_count': success_count,
+            'error_count': len(errors),
+            'results': results,
+            'errors': errors
+        })
+    
+    def _process_batch_acknowledgment(self, idx, item):
+        """Process individual acknowledgment in batch"""
+        serializer = PaymentAccountAcknowledgmentSerializer(data=item)
+        if not serializer.is_valid():
+            return {
+                'success': False,
+                'index': idx,
+                'socialid': item.get('socialid', 'unknown'),
+                'error': serializer.errors
+            }
+        
+        success, beneficiary, error_message = PaymentAccountAttributionService.process_acknowledgment(
+            serializer.validated_data
+        )
+        
+        if success:
+            return {
+                'success': True,
+                'index': idx,
+                'socialid': serializer.validated_data['socialid'],
+                'status': 'ACKNOWLEDGED'
+            }
+        else:
+            return {
+                'success': False,
+                'index': idx,
+                'socialid': serializer.validated_data['socialid'],
+                'error': error_message
+            }
+    
+    def _process_batch_attribution(self, idx, item):
+        """Process individual attribution in batch"""
+        serializer = PaymentAccountAttributionSerializer(data=item)
+        if not serializer.is_valid():
+            return {
+                'success': False,
+                'index': idx,
+                'socialid': item.get('socialid', 'unknown'),
+                'error': serializer.errors
+            }
+        
+        success, beneficiary, error_message = PaymentAccountAttributionService.process_account_attribution(
+            serializer.validated_data
+        )
+        
+        if success:
+            return {
+                'success': True,
+                'index': idx,
+                'socialid': serializer.validated_data['socialid'],
+                'status': 'ATTRIBUTED'
+            }
+        else:
+            return {
+                'success': False,
+                'index': idx,
+                'socialid': serializer.validated_data['socialid'],
+                'error': error_message
+            }
             
     def handle_acknowledgment(self, request):
         """
@@ -764,8 +949,13 @@ class PaymentRequestViewSet(viewsets.ViewSet):
     def create(self, request):
         """
         POST: Handle both acknowledgment and payment status updates
-        Determines operation type based on payload
+        Supports both single and batch operations (50-100 items)
         """
+        # Check if this is a batch request
+        if isinstance(request.data, list):
+            return self._handle_batch_creation(request)
+            
+        # Single request handling
         # Determine operation type based on presence of status field
         operation = None
         if 'status' in request.data:
@@ -872,6 +1062,140 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    def _handle_batch_creation(self, request):
+        """
+        Handle batch payment request operations
+        """
+        batch_data = request.data
+        user = request.user
+        
+        # Validate batch size
+        if len(batch_data) > 100:
+            return Response(
+                {
+                    'status': 'FAILURE',
+                    'error_code': 'batch_size_exceeded',
+                    'message': 'Batch size cannot exceed 100 items'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = []
+        errors = []
+        success_count = 0
+        
+        for idx, item in enumerate(batch_data):
+            # Determine operation type
+            operation = None
+            if 'status' in item:
+                if item['status'] in ['ACCEPTED', 'REJECTED']:
+                    operation = 'acknowledge'
+                elif item['status'] in ['PAID', 'FAILED']:
+                    operation = 'update_status'
+            
+            if not operation:
+                errors.append({
+                    'index': idx,
+                    'code': item.get('code', 'unknown'),
+                    'error': 'Could not determine operation type from payload'
+                })
+                continue
+            
+            # Process based on operation type
+            if operation == 'acknowledge':
+                result = self._process_batch_acknowledgment(idx, item, user)
+            else:
+                result = self._process_batch_status_update(idx, item, user)
+            
+            if result['success']:
+                success_count += 1
+                results.append(result)
+            else:
+                errors.append(result)
+        
+        # Return batch response
+        return Response({
+            'status': 'BATCH_COMPLETED',
+            'total_items': len(batch_data),
+            'success_count': success_count,
+            'error_count': len(errors),
+            'results': results,
+            'errors': errors
+        })
+    
+    def _process_batch_acknowledgment(self, idx, item, user):
+        """Process individual acknowledgment in batch"""
+        serializer = PaymentAcknowledgmentSerializer(data=item)
+        if not serializer.is_valid():
+            return {
+                'success': False,
+                'index': idx,
+                'code': item.get('code', 'unknown'),
+                'error': serializer.errors
+            }
+        
+        data = serializer.validated_data
+        success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
+            user,
+            code=data['code'],
+            status=data['status'],
+            transaction_reference=data.get('transaction_reference'),
+            status_code=data.get('status_code'),
+            error_message=data.get('error_message')
+        )
+        
+        if success:
+            return {
+                'success': True,
+                'index': idx,
+                'code': data['code'],
+                'status': 'ACKNOWLEDGED'
+            }
+        else:
+            return {
+                'success': False,
+                'index': idx,
+                'code': data['code'],
+                'error': error_message
+            }
+    
+    def _process_batch_status_update(self, idx, item, user):
+        """Process individual status update in batch"""
+        serializer = PaymentStatusUpdateSerializer(data=item)
+        if not serializer.is_valid():
+            return {
+                'success': False,
+                'index': idx,
+                'code': item.get('code', 'unknown'),
+                'error': serializer.errors
+            }
+        
+        data = serializer.validated_data
+        success, benefit, error_message = PaymentApiService.update_payment_status(
+            user,
+            code=data['code'],
+            status=data['status'],
+            transaction_reference=data.get('transaction_reference'),
+            transaction_date=data.get('transaction_date'),
+            error_code=data.get('error_code'),
+            error_message=data.get('error_message')
+        )
+        
+        if success:
+            return {
+                'success': True,
+                'index': idx,
+                'code': data['code'],
+                'status': data['status']
+            }
+        else:
+            return {
+                'success': False,
+                'index': idx,
+                'code': data['code'],
+                'error': error_message
+            }
     
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
@@ -1087,6 +1411,93 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
                 {
                     'success': False,
                     'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GroupBeneficiaryCheckViewSet(viewsets.ViewSet):
+    """
+    API endpoint to check if a household code exists and is registered as a beneficiary household
+    """
+    permission_classes = [TokenHasScope]
+    required_scopes = ['beneficiary:status_check']
+    
+    def get_required_scopes(self, request):
+        """Return appropriate scopes based on request method"""
+        # Only require the beneficiary:status_check scope for all operations
+        return ['beneficiary:status_check']
+    
+    @action(detail=False, methods=['post'], url_path='check')
+    def check_group_beneficiary(self, request):
+        """
+        POST: Check if a household with given socialID exists and is registered as a beneficiary household
+        Returns true if the household exists and is registered as a beneficiary, false otherwise
+        
+        Request body:
+        - socialID: The household's social ID (required)
+        - colline: Filter by colline (household location name) (optional)
+        - commune: Filter by commune (colline's parent name) (optional)
+        - firstname: Filter by primary recipient's first name (optional)
+        - lastname: Filter by primary recipient's last name (optional)
+        
+        Example: POST /api/group-beneficiary/check/
+        Body: {"socialID": "BDI001234", "colline": "Rohero", "commune": "Mukaza"}
+        Response: {"exists": true, "socialID": "BDI001234"}
+        """
+        try:
+            # Get socialID from request body
+            social_id = request.data.get('socialID')
+            if not social_id:
+                return Response(
+                    {
+                        "error": "socialID is required",
+                        "exists": False
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Start with base query
+            query = Beneficiary.objects.filter(group__code=social_id)
+            
+            # Apply optional filters from request body
+            colline = request.data.get('colline')
+            if colline:
+                query = query.filter(group__location__name__iexact=colline)
+            
+            commune = request.data.get('commune')
+            if commune:
+                query = query.filter(group__location__parent__name__iexact=commune)
+            
+            firstname = request.data.get('firstname')
+            if firstname:
+                query = query.filter(
+                    group__groupindividuals__recipient_type='PRIMARY',
+                    group__groupindividuals__individual__first_name__iexact=firstname
+                )
+            
+            lastname = request.data.get('lastname')
+            if lastname:
+                query = query.filter(
+                    group__groupindividuals__recipient_type='PRIMARY',
+                    group__groupindividuals__individual__last_name__iexact=lastname
+                )
+            
+            # Check if any record exists with all the filters
+            exists = query.exists()
+            
+            return Response({
+                "exists": exists,
+                "socialID": social_id
+            })
+            
+        except Exception as e:
+            logger.error(f"Error checking beneficiary household for socialID {request.data.get('socialID')}: {str(e)}")
+            return Response(
+                {
+                    "error": "Error checking beneficiary household",
+                    "socialID": request.data.get('socialID'),
+                    "exists": False
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
