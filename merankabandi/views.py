@@ -986,7 +986,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 status=data['status'],
                 transaction_reference=data.get('transaction_reference'),
                 status_code=data.get('status_code'),
-                error_message=data.get('error_message')
+                message=data.get('message')
             )
             
             if not success:
@@ -1030,7 +1030,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 transaction_reference=data.get('transaction_reference'),
                 transaction_date=data.get('transaction_date'),
                 error_code=data.get('error_code'),
-                error_message=data.get('error_message')
+                message=data.get('message')
             )
             
             if not success:
@@ -1142,7 +1142,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             status=data['status'],
             transaction_reference=data.get('transaction_reference'),
             status_code=data.get('status_code'),
-            error_message=data.get('error_message')
+            message=data.get('message')
         )
         
         if success:
@@ -1179,7 +1179,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             transaction_reference=data.get('transaction_reference'),
             transaction_date=data.get('transaction_date'),
             error_code=data.get('error_code'),
-            error_message=data.get('error_message')
+            message=data.get('message')
         )
         
         if success:
