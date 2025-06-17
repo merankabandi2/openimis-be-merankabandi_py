@@ -914,65 +914,7 @@ class OptimizedDashboardService:
             except:
                 # Fallback or view doesn't exist
                 pass
-            
-            # Get recent tickets
-            try:
-                cursor.execute("""
-                    SELECT 
-                        date_of_incident AS "dateOfIncident",
-                        channel,
-                        category,
-                        status,
-                        title,
-                        description,
-                        priority,
-                        flags,
-                        "DateCreated" AS "dateCreated",
-                        "DateUpdated" AS "dateUpdated",
-                        "reporterType" AS "reporterType",
-                        "reporterId",
-                        "reporterFirstName",
-                        "reporterLastName",
-                        "reporterTypeName",
-                        CASE 
-                            WHEN reporter IS NOT NULL AND reporter::text != '' 
-                            THEN json_extract_path_text(reporter::json, 'gender')
-                            ELSE NULL 
-                        END as gender
-                    FROM grievance_social_protection_ticket
-                    WHERE "isDeleted" = false
-                    ORDER BY "DateCreated" DESC
-                    LIMIT 50
-                """)
-                
-                recent_tickets = []
-                for row in cursor.fetchall():
-                    ticket = {
-                        'id': str(row[0]),
-                        'dateOfIncident': row[1].isoformat() if row[1] else None,
-                        'channel': row[2],
-                        'category': row[3],
-                        'status': row[4],
-                        'title': row[5],
-                        'description': row[6],
-                        'priority': row[7],
-                        'flags': row[8],
-                        'dateCreated': row[9].isoformat() if row[9] else None,
-                        'dateUpdated': row[10].isoformat() if row[10] else None,
-                        'reporterType': row[11],
-                        'reporterId': str(row[12]) if row[12] else None,
-                        'reporterFirstName': row[13],
-                        'reporterLastName': row[14],
-                        'reporterTypeName': row[15],
-                        'gender': row[16]
-                    }
-                    recent_tickets.append(ticket)
-                data['recent_tickets'] = recent_tickets
-            except Exception as e:
-                # Fallback or error
-                print(f"Error fetching recent tickets: {e}")
-                pass
-            
+
         cache.set(cache_key, data, cls.CACHE_TTL['summary'])
         return data
     
