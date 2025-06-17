@@ -17,6 +17,11 @@ router.register(
     basename='paymentaccount-attribution'
 )
 router.register(
+    r'payment-request',
+    views.PaymentRequestViewSet,
+    basename='payment-request'
+)
+router.register(
     r'monetary-transfers',
     views.MonetaryTransferViewSet,
     basename='monetary-transfers'
@@ -31,6 +36,7 @@ router.register(
     views.GroupBeneficiaryCheckViewSet,
     basename='group-beneficiary'
 )
+
 
 urlpatterns = [
     # Existing card generation endpoints
