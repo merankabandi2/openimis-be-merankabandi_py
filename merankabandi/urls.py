@@ -3,7 +3,6 @@ from . import views
 from . import dashboard_views
 from . import optimized_dashboard_views
 from . import analytics_views
-from . import enhanced_analytics_views
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -26,11 +25,6 @@ router.register(
     r'data-exploration',
     analytics_views.DataExplorationViewSet,
     basename='data-exploration'
-)
-router.register(
-    r'enhanced-analytics',
-    enhanced_analytics_views.EnhancedDataExplorationViewSet,
-    basename='enhanced-analytics'
 )
 router.register(
     r'group-beneficiary',
