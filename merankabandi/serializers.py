@@ -149,15 +149,15 @@ class PhoneNumberAttributionSerializer(serializers.Serializer):
     msisdn = serializers.CharField(required=True)
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
-        # Validate that error_code and error_message are provided if status is REJECTED
+        # Validate that error_code and message are provided if status is REJECTED
         if data.get('status') == 'REJECTED':
             if not data.get('error_code'):
                 raise serializers.ValidationError("error_code is required when status is REJECTED")
-            if not data.get('error_message'):
-                raise serializers.ValidationError("error_message is required when status is REJECTED")
+            if not data.get('message'):
+                raise serializers.ValidationError("message is required when status is REJECTED")
         return data
         
     def save(self, beneficiary):
@@ -176,7 +176,7 @@ class PhoneNumberAttributionSerializer(serializers.Serializer):
             
             if data['status'] == 'REJECTED':
                 json_ext['moyen_telecom']['error_code'] = data['error_code']
-                json_ext['moyen_telecom']['error_message'] = data['error_message']
+                json_ext['moyen_telecom']['message'] = data['message']
             
             beneficiary.json_ext = json_ext
             beneficiary.save()
@@ -195,7 +195,7 @@ class PhoneNumberAttributionRequestSerializer(serializers.Serializer):
     msisdn = serializers.CharField(required=False)
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED', 'SUCCESS', 'FAILURE'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         """
@@ -205,8 +205,8 @@ class PhoneNumberAttributionRequestSerializer(serializers.Serializer):
         if data.get('status') == 'REJECTED':
             if not data.get('error_code'):
                 raise serializers.ValidationError("error_code is required when status is REJECTED")
-            if not data.get('error_message'):
-                raise serializers.ValidationError("error_message is required when status is REJECTED")
+            if not data.get('message'):
+                raise serializers.ValidationError("message is required when status is REJECTED")
         if data.get('status') == 'SUCCESS':
             if not data.get('msisdn'):
                 raise serializers.ValidationError("msisdn is required when status is SUCCESS")
@@ -241,15 +241,15 @@ class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
     msisdn = serializers.CharField(required=True)
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
-        # Validate that error_code and error_message are provided if status is REJECTED
+        # Validate that error_code and message are provided if status is REJECTED
         if data.get('status') == 'REJECTED':
             if not data.get('error_code'):
                 raise serializers.ValidationError("error_code is required when status is REJECTED")
-            if not data.get('error_message'):
-                raise serializers.ValidationError("error_message is required when status is REJECTED")
+            if not data.get('message'):
+                raise serializers.ValidationError("message is required when status is REJECTED")
         return data
         
     def save(self, beneficiary):
@@ -267,7 +267,7 @@ class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
             
             if data['status'] == 'REJECTED':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
-                json_ext['moyen_paiement']['error_message'] = data['error_message']
+                json_ext['moyen_paiement']['message'] = data['message']
             
             beneficiary.json_ext = json_ext
             beneficiary.save()
@@ -287,15 +287,15 @@ class PaymentAccountAttributionSerializer(serializers.Serializer):
     tp_account_number = serializers.CharField(required=True)
     status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
-        # Validate that error_code and error_message are provided if status is FAILURE
+        # Validate that error_code and message are provided if status is FAILURE
         if data.get('status') == 'FAILURE':
             if not data.get('error_code'):
                 raise serializers.ValidationError("error_code is required when status is FAILURE")
-            if not data.get('error_message'):
-                raise serializers.ValidationError("error_message is required when status is FAILURE")
+            if not data.get('message'):
+                raise serializers.ValidationError("message is required when status is FAILURE")
         return data
         
     def save(self, beneficiary):
@@ -315,7 +315,7 @@ class PaymentAccountAttributionSerializer(serializers.Serializer):
             
             if data['status'] == 'FAILURE':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
-                json_ext['moyen_paiement']['error_message'] = data['error_message']
+                json_ext['moyen_paiement']['message'] = data['message']
             
             beneficiary.json_ext = json_ext
             beneficiary.save()
@@ -331,7 +331,7 @@ class ResponseSerializer(serializers.Serializer):
     """
     status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'])
     error_code = serializers.CharField(required=False, allow_null=True)
-    error_message = serializers.CharField(required=False, allow_null=True)
+    message = serializers.CharField(required=False, allow_null=True)
 
 class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
     """
@@ -393,11 +393,11 @@ class PaymentAcknowledgmentSerializer(serializers.Serializer):
     payment_agency_id = serializers.CharField(required=True)
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     status_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
     
     def validate(self, data):
         """Validate the acknowledgment data"""
-        # Ensure status_code and error_message are provided if status is REJECTED
+        # Ensure status_code and message are provided if status is REJECTED
         if data.get('status') == 'REJECTED':
             if not data.get('status_code'):
                 raise serializers.ValidationError({
@@ -417,7 +417,7 @@ class PaymentStatusUpdateSerializer(serializers.Serializer):
     transaction_reference = serializers.CharField(required=False, allow_blank=True)
     transaction_date = serializers.CharField(required=False, allow_blank=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
-    error_message = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
     
     def validate(self, data):
         """Validate the payment status update data"""
