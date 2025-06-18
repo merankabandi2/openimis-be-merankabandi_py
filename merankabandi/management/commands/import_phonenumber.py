@@ -53,6 +53,20 @@ class Command(BaseCommand):
     def find_beneficiary(self, cni, photo_url=None):
         """Find a beneficiary using CNI number or group code extracted from photo URL"""
         try:
+            # using the group code from photo URL
+            if photo_url:
+                group_code = self.extract_group_code_from_photo_url(photo_url)
+                if group_code:
+                    logger.info(f"Trying to find beneficiary using group code {group_code} from photo URL")
+                    beneficiary = GroupBeneficiary.objects.raw("""
+                        SELECT gb.* FROM social_protection_groupbeneficiary gb
+                        JOIN individual_group g ON gb.group_id = g."UUID"
+                        WHERE g.code = %s
+                        LIMIT 1
+                    """, [group_code])
+                    
+                    return next(iter(beneficiary), None)
+            
             # If CNI is provided, try to find beneficiary by CNI
             if cni:
                 beneficiary = GroupBeneficiary.objects.raw("""
@@ -69,20 +83,6 @@ class Command(BaseCommand):
                 result = next(iter(beneficiary), None)
                 if result:
                     return result
-            
-            # If CNI lookup failed or wasn't provided, try using the group code from photo URL
-            if photo_url:
-                group_code = self.extract_group_code_from_photo_url(photo_url)
-                if group_code:
-                    logger.info(f"Trying to find beneficiary using group code {group_code} from photo URL")
-                    beneficiary = GroupBeneficiary.objects.raw("""
-                        SELECT gb.* FROM social_protection_groupbeneficiary gb
-                        JOIN individual_group g ON gb.group_id = g."UUID"
-                        WHERE g.code = %s
-                        LIMIT 1
-                    """, [group_code])
-                    
-                    return next(iter(beneficiary), None)
             
             return None
         except Exception as e:
@@ -184,7 +184,7 @@ class Command(BaseCommand):
         try:
             # First, count total rows for progress reporting
             total_rows = 0
-            with open(csv_file, 'r', newline='', encoding='utf-8') as file:
+            with open(csv_file, 'r', newline='', encoding='utf-8-sig') as file:
                 total_rows = sum(1 for _ in csv.DictReader(file))
             
             self.stdout.write(f"Found {total_rows} rows to process")

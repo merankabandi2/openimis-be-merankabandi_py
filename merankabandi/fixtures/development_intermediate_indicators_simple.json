@@ -31,7 +31,35 @@
     "model": "merankabandi.section",
     "pk": 5,
     "fields": {
-      "name": "Indicateurs intermédiaires"
+      "name": "Extension des filets de sécurité au territoire national"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 6,
+    "fields": {
+      "name": "Activités productives et accès à l'emploi"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 7,
+    "fields": {
+      "name": "Développement des systèmes de protection sociale"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 8,
+    "fields": {
+      "name": "Intégration des réfugiés et des communautés d'accueil dans les systèmes nationaux de protection sociale"
+    }
+  },
+  {
+    "model": "merankabandi.section",
+    "pk": 9,
+    "fields": {
+      "name": "Gestion et mise en œuvre du projet"
     }
   },
   {
@@ -41,9 +69,8 @@
       "section": 1,
       "name": "Ménages des zones ciblées inscrits au Registre social national (nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "250000.00",
-      "observation": "Ménages appuyés de la s/c 1.1, 1.2, compo 4 et 6"
+      "baseline": "0",
+      "target": "250000"
     }
   },
   {
@@ -53,9 +80,8 @@
       "section": 1,
       "name": "Ménages des zones ciblées inscrits au Registre social national - réfugiés, ventilés par sexe (Nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "15000.00",
-      "observation": "Ménages de 2 camps des réfugiés de la Province Ruyigi (Bwagiriza et Nyankanda)"
+      "baseline": "0",
+      "target": "15000"
     }
   },
   {
@@ -65,9 +91,8 @@
       "section": 1,
       "name": "Ménages des zones ciblées inclus dans le registre social national - communautés d'accueil, ventilés par sexe (nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "25000.00",
-      "observation": "5 633 transferts monétaires aux ménages des communautés hôtes en communes Butezi (966), Bweru (360) et Ryigi (1 241) en Province Ruyigi, Gasorwe (1 800) en Province Munynga et Kiremba (1 266) en Province Ngozi"
+      "baseline": "0",
+      "target": "25000"
     }
   },
   {
@@ -77,9 +102,8 @@
       "section": 1,
       "name": "Proportion des ménages inscrits dans la base de données des bénéficiaires vivant sous le seuil d'extrême pauvreté (Pourcentage)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "80.00",
-      "observation": ""
+      "baseline": "0",
+      "target": "80"
     }
   },
   {
@@ -89,93 +113,294 @@
       "section": 2,
       "name": "Bénéficiaires des programmes de protection sociale (CRI, nombre)",
       "pbc": "",
-      "baseline": "56090.00",
-      "target": "305000.00",
-      "observation": "Ménages appuyés de la s/c 1.1, 1.2, de la compo 4 et 6 + les bénéficiaires de la vague1"
+      "baseline": "56090",
+      "target": "305000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 6,
     "fields": {
-      "section": 3,
-      "name": "Bénéficiaires d'interventions axées sur l'emploi (CRI, nombre)",
+      "section": 2,
+      "name": "Bénéficiaires des programmes de protection sociale - Femmes (CRI, nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "150000.00",
-      "observation": ""
+      "baseline": "50000",
+      "target": "240000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 7,
     "fields": {
-      "section": 4,
-      "name": "Agriculteurs ayant bénéficié d'actifs ou de services agricoles (CRI, nombre)",
+      "section": 2,
+      "name": "Bénéficiaires des programmes de filets de sécurité - Transferts monétaires inconditionnels (nombre) (CRI, Nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "50000.00",
-      "observation": "Bénéficiaires de la composante 6 (CERC)"
+      "baseline": "56090",
+      "target": "200000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 8,
     "fields": {
-      "section": 5,
-      "name": "Système de gestion des informations sur la protection sociale mis en place (Oui / Non)",
+      "section": 2,
+      "name": "Bénéficiaires des programmes de filets de sécurité - transferts monétaires d'urgence, ventilés par sexe (Nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "1.00",
-      "observation": "La plateforme technique est disponible"
+      "baseline": "0",
+      "target": "100000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 9,
     "fields": {
-      "section": 5,
-      "name": "Plan de communication développé (Oui / Non)",
+      "section": 2,
+      "name": "Bénéficiaires des programmes de filets de sécurité - réfugiés, ventilés par sexe (Nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "1.00",
-      "observation": "La stratégie de communication est disponible"
+      "baseline": "0",
+      "target": "8000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 10,
     "fields": {
-      "section": 5,
-      "name": "Pourcentage des bénéficiaires satisfaits du processus d'inscription au programme",
+      "section": 2,
+      "name": "Bénéficiaires des programmes de filets de sécurité - communautés d'accueil, ventilés par sexe (Nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "80.00",
-      "observation": "Enquête de perception réalisée en mars 2023"
+      "baseline": "0",
+      "target": "12000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 11,
     "fields": {
-      "section": 5,
-      "name": "Pourcentage des plaintes résolues",
+      "section": 3,
+      "name": "Bénéficiaires d'interventions axées sur l'emploi (CRI, nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "90.00",
-      "observation": "Rapport du mécanisme de gestion des plaintes du 1er trimestre 2023"
+      "baseline": "0",
+      "target": "150000"
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 12,
     "fields": {
-      "section": 5,
-      "name": "Des activités de développement des compétences mises en œuvre (Oui / Non)",
+      "section": 3,
+      "name": "Bénéficiaires d'interventions axées sur l'emploi - Femmes (CRI, nombre)",
       "pbc": "",
-      "baseline": "0.00",
-      "target": "1.00",
-      "observation": "Formation en cours sur les métiers dans 5 provinces"
+      "baseline": "0",
+      "target": "120000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 13,
+    "fields": {
+      "section": 3,
+      "name": "Bénéficiaires des interventions axées sur l'emploi - réfugiés, ventilés par sexe (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "8000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 14,
+    "fields": {
+      "section": 3,
+      "name": "Bénéficiaires des interventions axées sur l'emploi - communautés d'accueil, ventilés par sexe (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "12000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 15,
+    "fields": {
+      "section": 4,
+      "name": "Agriculteurs ayant bénéficié d'actifs ou de services agricoles (CRI, nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "50000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 16,
+    "fields": {
+      "section": 5,
+      "name": "Nombre de provinces mettant en œuvre des transferts monétaires (Nombre)",
+      "pbc": "",
+      "baseline": "4",
+      "target": "18"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 17,
+    "fields": {
+      "section": 5,
+      "name": "Bénéficiaires recevant des paiements selon le calendrier établi dans le manuel opérationnel (Pourcentage)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "90"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 18,
+    "fields": {
+      "section": 5,
+      "name": "Proportion de ménages bénéficiaires dans les collines bénéficiaires participant à des activités de promotion du changement de comportement (Pourcentage)",
+      "pbc": "",
+      "baseline": "90",
+      "target": "95"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 19,
+    "fields": {
+      "section": 5,
+      "name": "Nombre de sessions de feedback par province organisées avec les bénéficiaires afin d'informer sur la manière dont les contributions et les idées des bénéficiaires ont été incorporées dans la conception et la mise en œuvre du projet (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "5"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 20,
+    "fields": {
+      "section": 6,
+      "name": "Bénéficiaires ayant un plan d'affaires approuvé (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "130000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 21,
+    "fields": {
+      "section": 6,
+      "name": "Bénéficiaires ayant un plan d'affaires approuvé - femmes (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "100000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 22,
+    "fields": {
+      "section": 6,
+      "name": "Bénéficiaires ayant un plan d'affaires approuvé - batwa (Nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "4000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 23,
+    "fields": {
+      "section": 6,
+      "name": "Nombre d'activités d'inclusion productive approuvées ayant un impact direct sur la résilience au changement climatique (nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "100000"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 24,
+    "fields": {
+      "section": 6,
+      "name": "Proportion de ménages bénéficiaires ayant augmenté leur consommation alimentaire de plus de 10 % par rapport au groupe de contrôle (Pourcentage)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "80"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 25,
+    "fields": {
+      "section": 6,
+      "name": "Pourcentage de femmes bénéficiaires mettant en œuvre une activité génératrice de revenus autre que l'agriculture de subsistance (Pourcentage)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "80"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 26,
+    "fields": {
+      "section": 7,
+      "name": "Décret approuvant l'élaboration d'un registre social unifié (Oui/Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 27,
+    "fields": {
+      "section": 7,
+      "name": "Amélioration du système d'information de gestion pour développer les interventions au niveau national (Oui/Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 28,
+    "fields": {
+      "section": 7,
+      "name": "Bénéficiaires recevant des transferts de protection sociale par le biais de paiements numériques (Pourcentage)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "90"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 29,
+    "fields": {
+      "section": 8,
+      "name": "Approbation d'une stratégie de protection sociale intégrant les réfugiés et les communautés d'accueil comme groupes cibles (Oui/Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 30,
+    "fields": {
+      "section": 9,
+      "name": "GRM en place et utilisé pour suivre les tendances en matière de retour d'information, y compris à l'aide des téléphones portables fournis par le projet, avec des réclamations traitées et clôturées et des rapports mensuels en cours de préparation (Oui/Non)",
+      "pbc": "",
+      "baseline": "Non",
+      "target": "Oui"
+    }
+  },
+  {
+    "model": "merankabandi.indicator",
+    "pk": 31,
+    "fields": {
+      "section": 9,
+      "name": "Évaluation du processus effectuée (nombre)",
+      "pbc": "",
+      "baseline": "0",
+      "target": "4"
     }
   }
 ]

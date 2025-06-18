@@ -17,15 +17,6 @@ from .gql_config import (
 MODULE_NAME = 'merankabandi'
 
 DEFAULT_CONFIG = {
-    # Payment Point permissions (from Payroll module)
-    "gql_payment_point_search_perms": ["201001"],
-    "gql_payment_point_create_perms": ["201002"],
-    "gql_payment_point_update_perms": ["201003"],
-    "gql_payment_point_delete_perms": ["201004"],
-    # Payroll permissions (from Payroll module)
-    "gql_payroll_search_perms": ["202001"],
-    "gql_payroll_create_perms": ["202002"],
-    "gql_payroll_delete_perms": ["202004"],
     # Section permissions (Merankabandi specific)
     "gql_section_search_perms": GQL_SECTION_SEARCH_PERMS,
     "gql_section_create_perms": GQL_SECTION_CREATE_PERMS,

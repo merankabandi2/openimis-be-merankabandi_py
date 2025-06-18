@@ -69,10 +69,23 @@ SELECT
     COUNT(DISTINCT ig."UUID") AS total_households,
     COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
     
-    -- Payment data (count payrolls as transfers)
-    COUNT(DISTINCT p."UUID") AS total_transfers,
-    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount_paid,
-    
+    -- Payment data - count distinct payrolls that have consumptions in this location
+    (SELECT COUNT(DISTINCT p2."UUID") 
+     FROM payroll_payroll p2
+     JOIN payroll_payrollbenefitconsumption pbc2 ON pbc2.payroll_id = p2."UUID" AND pbc2."isDeleted" = false
+     JOIN payroll_benefitconsumption bc2 ON bc2."UUID" = pbc2.benefit_id AND bc2."isDeleted" = false
+     JOIN individual_individual i2 ON i2."UUID" = bc2.individual_id AND i2."isDeleted" = false
+     JOIN individual_groupindividual gi2 ON gi2.individual_id = i2."UUID" AND gi2."isDeleted" = false
+     JOIN individual_group ig2 ON ig2."UUID" = gi2.group_id AND ig2."isDeleted" = false
+     WHERE p2."isDeleted" = false
+     AND ig2.location_id IN (SELECT ig3.location_id FROM individual_group ig3 
+                            JOIN social_protection_groupbeneficiary gb3 ON gb3.group_id = ig3."UUID"
+                            WHERE gb3.benefit_plan_id = bp."UUID" AND gb3."isDeleted" = false
+                            AND ig3.location_id = l1."LocationId")) AS total_transfers,
+    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
+    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
+
     -- Grievance data (would need to be joined from grievance tables)
     0 AS total_grievances,
     0 AS resolved_grievances,
@@ -153,8 +166,20 @@ SELECT
     END AS twa_percentage,
     COUNT(DISTINCT ig."UUID") AS total_households,
     COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
-    COUNT(DISTINCT p."UUID") AS total_transfers,
-    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount_paid,
+    -- Count distinct payrolls for this location (all benefit plans)
+    (SELECT COUNT(DISTINCT p2."UUID") 
+     FROM payroll_payroll p2
+     JOIN payroll_payrollbenefitconsumption pbc2 ON pbc2.payroll_id = p2."UUID" AND pbc2."isDeleted" = false
+     JOIN payroll_benefitconsumption bc2 ON bc2."UUID" = pbc2.benefit_id AND bc2."isDeleted" = false
+     JOIN individual_individual i2 ON i2."UUID" = bc2.individual_id AND i2."isDeleted" = false
+     JOIN individual_groupindividual gi2 ON gi2.individual_id = i2."UUID" AND gi2."isDeleted" = false
+     JOIN individual_group ig2 ON ig2."UUID" = gi2.group_id AND ig2."isDeleted" = false
+     WHERE p2."isDeleted" = false
+     AND ig2.location_id = l1."LocationId") AS total_transfers,
+    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
+    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
+
     0 AS total_grievances,
     0 AS resolved_grievances,
     COUNT(DISTINCT l3."LocationId") AS active_provinces,
@@ -226,7 +251,11 @@ SELECT
     COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
     -- Payment data for ALL (count payrolls as transfers)
     (SELECT COUNT(DISTINCT pp."UUID") FROM payroll_payroll pp WHERE pp."isDeleted" = false) AS total_transfers,
-    (SELECT COALESCE(SUM(bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_paid,
+
+    (SELECT COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_paid,
+    (SELECT COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_unpaid,
+    (SELECT COALESCE(SUM(bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount,
+
     -- Grievance data
     0 AS total_grievances,
     0 AS resolved_grievances,
@@ -273,7 +302,9 @@ payment_stats AS (
     -- Get payment statistics
     SELECT 
         COUNT(DISTINCT pp."UUID") AS total_transfers,
-        COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount_paid
+        COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
+        COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+        COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount
     FROM payroll_payroll pp
     LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = pp."UUID" AND pbc."isDeleted" = false
     LEFT JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
