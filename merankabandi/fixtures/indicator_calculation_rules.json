@@ -1,0 +1,191 @@
+[
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 1,
+    "fields": {
+      "indicator": 1,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_households_registered",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 2,
+    "fields": {
+      "indicator": 2,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_households_refugees",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 3,
+    "fields": {
+      "indicator": 3,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_households_host",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 4,
+    "fields": {
+      "indicator": 4,
+      "calculation_type": "MANUAL",
+      "calculation_method": "",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 5,
+    "fields": {
+      "indicator": 5,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_beneficiaries_total",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 6,
+    "fields": {
+      "indicator": 6,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_beneficiaries_women",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 7,
+    "fields": {
+      "indicator": 7,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_beneficiaries_transfers",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 8,
+    "fields": {
+      "indicator": 8,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_beneficiaries_emergency",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 9,
+    "fields": {
+      "indicator": 9,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_beneficiaries_refugees",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 10,
+    "fields": {
+      "indicator": 10,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_beneficiaries_host",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 11,
+    "fields": {
+      "indicator": 11,
+      "calculation_type": "SYSTEM",
+      "calculation_method": "count_employment_interventions",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 12,
+    "fields": {
+      "indicator": 12,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_employment_women",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 13,
+    "fields": {
+      "indicator": 13,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_employment_refugees",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 14,
+    "fields": {
+      "indicator": 14,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_employment_host",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 15,
+    "fields": {
+      "indicator": 15,
+      "calculation_type": "MANUAL",
+      "calculation_method": "count_agricultural_beneficiaries",
+      "calculation_config": {},
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 16,
+    "fields": {
+      "indicator": 16,
+      "calculation_type": "MIXED",
+      "calculation_method": "count_provinces_with_transfers",
+      "calculation_config": {
+        "combine_method": "max"
+      },
+      "is_active": true
+    }
+  },
+  {
+    "model": "merankabandi.indicatorcalculationrule",
+    "pk": 17,
+    "fields": {
+      "indicator": 17,
+      "calculation_type": "MANUAL",
+      "calculation_method": "calculate_payment_timeliness",
+      "calculation_config": {},
+      "is_active": true
+    }
+  }
+]

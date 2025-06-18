@@ -9,7 +9,8 @@ from core.utils import DefaultStorageFileHandler
 from location.gql_queries import LocationGQLType
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining, 
-    Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
+    Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
+    ResultFrameworkSnapshot, IndicatorCalculationRule
 )
 from payroll.gql_queries import PaymentPointGQLType
 from social_protection.gql_queries import BenefitPlanGQLType
@@ -256,3 +257,55 @@ class ProvincePaymentPointGQLType(DjangoObjectType):
             **prefix_filterset("payment_point__", PaymentPointGQLType._meta.filter_fields),
         }
         connection_class = ExtendedConnection
+
+
+class ResultFrameworkSnapshotGQLType(DjangoObjectType):
+    """GraphQL type for Result Framework Snapshots"""
+    class Meta:
+        model = ResultFrameworkSnapshot
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "name": ["exact", "icontains"],
+            "status": ["exact", "in"],
+            "snapshot_date": ["exact", "lt", "lte", "gt", "gte"],
+            "created_by": ["exact"],
+        }
+        connection_class = ExtendedConnection
+        
+    def resolve_created_by(self, info):
+        return self.created_by
+
+
+class IndicatorCalculationRuleGQLType(DjangoObjectType):
+    """GraphQL type for Indicator Calculation Rules"""
+    class Meta:
+        model = IndicatorCalculationRule
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "indicator": ["exact"],
+            "calculation_type": ["exact", "in"],
+            "is_active": ["exact"],
+        }
+        connection_class = ExtendedConnection
+
+
+# Additional GraphQL types for result framework operations
+class IndicatorCalculationResultType(graphene.ObjectType):
+    """Result of indicator calculation"""
+    value = graphene.Float()
+    calculation_type = graphene.String()
+    system_value = graphene.Float()
+    manual_value = graphene.Float()
+    error = graphene.String()
+    date = graphene.Date()
+    gender_breakdown = graphene.JSONString()
+    
+    
+class DashboardFiltersInputType(graphene.InputObjectType):
+    """Input filters for dashboard queries"""
+    date_from = graphene.Date()
+    date_to = graphene.Date()
+    location_id = graphene.ID()
+    indicator_ids = graphene.List(graphene.Int)

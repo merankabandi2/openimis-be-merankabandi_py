@@ -38,8 +38,12 @@ class Command(BaseCommand):
         parser.add_argument(
             '--concurrent',
             action='store_true',
-            default=True,
-            help='Use concurrent refresh (default: True, requires unique indexes)'
+            help='Use concurrent refresh (requires unique indexes)'
+        )
+        parser.add_argument(
+            '--no-concurrent',
+            action='store_true',
+            help='Disable concurrent refresh'
         )
         parser.add_argument(
             '--dry-run',
@@ -51,7 +55,10 @@ class Command(BaseCommand):
         action = options['action']
         category = options['category'] if options['category'] != 'all' else None
         view_name = options.get('view')
-        concurrent = options['concurrent']
+        # Handle concurrent/no-concurrent logic
+        concurrent = False  # Default is non-concurrent
+        if options.get('concurrent'):
+            concurrent = True
         dry_run = options['dry_run']
 
         self.stdout.write(f"=== Materialized Views Manager ===")

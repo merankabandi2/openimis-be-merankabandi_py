@@ -604,3 +604,47 @@ class ProvincePaymentPoint(UUIDModel):
     def __str__(self):
         benefit_plan_name = self.payment_plan.benefit_plan.name if self.payment_plan else "All plans"
         return f"{self.province.name} - {self.payment_point.name} - {benefit_plan_name}"
+
+
+class ResultFrameworkSnapshot(models.Model):
+    """Model for storing result framework snapshots"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    snapshot_date = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    data = models.JSONField()  # Complete snapshot data
+    document_path = models.CharField(max_length=500, blank=True)
+    status = models.CharField(max_length=20, choices=[
+        ('DRAFT', 'Draft'),
+        ('FINALIZED', 'Finalized'),
+        ('ARCHIVED', 'Archived')
+    ], default='DRAFT')
+    
+    class Meta:
+        verbose_name = "Result Framework Snapshot"
+        verbose_name_plural = "Result Framework Snapshots"
+        ordering = ['-snapshot_date']
+        
+    def __str__(self):
+        return f"{self.name} - {self.snapshot_date.strftime('%Y-%m-%d')}"
+
+
+class IndicatorCalculationRule(models.Model):
+    """Configuration for automated indicator calculations"""
+    indicator = models.OneToOneField(Indicator, on_delete=models.CASCADE, related_name='calculation_rule')
+    calculation_type = models.CharField(max_length=50, choices=[
+        ('SYSTEM', 'System Calculated'),
+        ('MANUAL', 'Manual Entry'),
+        ('MIXED', 'Mixed System/Manual')
+    ])
+    calculation_method = models.CharField(max_length=100, blank=True, help_text="Method name for system calculations")
+    calculation_config = models.JSONField(default=dict, help_text="Configuration for calculations")
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Indicator Calculation Rule"
+        verbose_name_plural = "Indicator Calculation Rules"
+        
+    def __str__(self):
+        return f"{self.indicator.name} - {self.calculation_type}"

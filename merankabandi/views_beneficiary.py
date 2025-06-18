@@ -82,8 +82,8 @@ SELECT
                             JOIN social_protection_groupbeneficiary gb3 ON gb3.group_id = ig3."UUID"
                             WHERE gb3.benefit_plan_id = bp."UUID" AND gb3."isDeleted" = false
                             AND ig3.location_id = l1."LocationId")) AS total_transfers,
-    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
-    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
+    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
     COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
 
     -- Grievance data (would need to be joined from grievance tables)
@@ -176,8 +176,8 @@ SELECT
      JOIN individual_group ig2 ON ig2."UUID" = gi2.group_id AND ig2."isDeleted" = false
      WHERE p2."isDeleted" = false
      AND ig2.location_id = l1."LocationId") AS total_transfers,
-    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
-    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
+    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
     COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
 
     0 AS total_grievances,
@@ -252,8 +252,8 @@ SELECT
     -- Payment data for ALL (count payrolls as transfers)
     (SELECT COUNT(DISTINCT pp."UUID") FROM payroll_payroll pp WHERE pp."isDeleted" = false) AS total_transfers,
 
-    (SELECT COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_paid,
-    (SELECT COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_unpaid,
+    (SELECT COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_paid,
+    (SELECT COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_unpaid,
     (SELECT COALESCE(SUM(bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount,
 
     -- Grievance data
@@ -302,8 +302,8 @@ payment_stats AS (
     -- Get payment statistics
     SELECT 
         COUNT(DISTINCT pp."UUID") AS total_transfers,
-        COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_paid,
-        COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN  bc."Amount"::numeric), 0) AS total_amount_unpaid,
+        COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
+        COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
         COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount
     FROM payroll_payroll pp
     LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = pp."UUID" AND pbc."isDeleted" = false
