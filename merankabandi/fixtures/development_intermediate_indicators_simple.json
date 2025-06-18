@@ -24,40 +24,33 @@
     "model": "merankabandi.section",
     "pk": 4,
     "fields": {
-      "name": "Apporter une réponse immédiate et efficace à une crise ou une urgence éligible"
+      "name": "Extension des filets de sécurité au territoire national"
     }
   },
   {
     "model": "merankabandi.section",
     "pk": 5,
     "fields": {
-      "name": "Extension des filets de sécurité au territoire national"
+      "name": "Activités productives et accès à l'emploi"
     }
   },
   {
     "model": "merankabandi.section",
     "pk": 6,
     "fields": {
-      "name": "Activités productives et accès à l'emploi"
+      "name": "Développement des systèmes de protection sociale"
     }
   },
   {
     "model": "merankabandi.section",
     "pk": 7,
     "fields": {
-      "name": "Développement des systèmes de protection sociale"
-    }
-  },
-  {
-    "model": "merankabandi.section",
-    "pk": 8,
-    "fields": {
       "name": "Intégration des réfugiés et des communautés d'accueil dans les systèmes nationaux de protection sociale"
     }
   },
   {
     "model": "merankabandi.section",
-    "pk": 9,
+    "pk": 8,
     "fields": {
       "name": "Gestion et mise en œuvre du projet"
     }
@@ -220,7 +213,7 @@
     "model": "merankabandi.indicator",
     "pk": 15,
     "fields": {
-      "section": 4,
+      "section": 3,
       "name": "Agriculteurs ayant bénéficié d'actifs ou de services agricoles (CRI, nombre)",
       "pbc": "",
       "baseline": "0",
@@ -231,7 +224,7 @@
     "model": "merankabandi.indicator",
     "pk": 16,
     "fields": {
-      "section": 5,
+      "section": 4,
       "name": "Nombre de provinces mettant en œuvre des transferts monétaires (Nombre)",
       "pbc": "",
       "baseline": "4",
@@ -242,7 +235,7 @@
     "model": "merankabandi.indicator",
     "pk": 17,
     "fields": {
-      "section": 5,
+      "section": 4,
       "name": "Bénéficiaires recevant des paiements selon le calendrier établi dans le manuel opérationnel (Pourcentage)",
       "pbc": "",
       "baseline": "0",
@@ -253,7 +246,7 @@
     "model": "merankabandi.indicator",
     "pk": 18,
     "fields": {
-      "section": 5,
+      "section": 4,
       "name": "Proportion de ménages bénéficiaires dans les collines bénéficiaires participant à des activités de promotion du changement de comportement (Pourcentage)",
       "pbc": "",
       "baseline": "90",
@@ -264,7 +257,7 @@
     "model": "merankabandi.indicator",
     "pk": 19,
     "fields": {
-      "section": 5,
+      "section": 4,
       "name": "Nombre de sessions de feedback par province organisées avec les bénéficiaires afin d'informer sur la manière dont les contributions et les idées des bénéficiaires ont été incorporées dans la conception et la mise en œuvre du projet (Nombre)",
       "pbc": "",
       "baseline": "0",
@@ -275,7 +268,7 @@
     "model": "merankabandi.indicator",
     "pk": 20,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Bénéficiaires ayant un plan d'affaires approuvé (Nombre)",
       "pbc": "",
       "baseline": "0",
@@ -286,7 +279,7 @@
     "model": "merankabandi.indicator",
     "pk": 21,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Bénéficiaires ayant un plan d'affaires approuvé - femmes (Nombre)",
       "pbc": "",
       "baseline": "0",
@@ -297,7 +290,7 @@
     "model": "merankabandi.indicator",
     "pk": 22,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Bénéficiaires ayant un plan d'affaires approuvé - batwa (Nombre)",
       "pbc": "",
       "baseline": "0",
@@ -308,7 +301,7 @@
     "model": "merankabandi.indicator",
     "pk": 23,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Nombre d'activités d'inclusion productive approuvées ayant un impact direct sur la résilience au changement climatique (nombre)",
       "pbc": "",
       "baseline": "0",
@@ -319,7 +312,7 @@
     "model": "merankabandi.indicator",
     "pk": 24,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Proportion de ménages bénéficiaires ayant augmenté leur consommation alimentaire de plus de 10 % par rapport au groupe de contrôle (Pourcentage)",
       "pbc": "",
       "baseline": "0",
@@ -330,7 +323,7 @@
     "model": "merankabandi.indicator",
     "pk": 25,
     "fields": {
-      "section": 6,
+      "section": 5,
       "name": "Pourcentage de femmes bénéficiaires mettant en œuvre une activité génératrice de revenus autre que l'agriculture de subsistance (Pourcentage)",
       "pbc": "",
       "baseline": "0",
@@ -341,29 +334,29 @@
     "model": "merankabandi.indicator",
     "pk": 26,
     "fields": {
-      "section": 7,
+      "section": 6,
       "name": "Décret approuvant l'élaboration d'un registre social unifié (Oui/Non)",
       "pbc": "",
-      "baseline": "Non",
-      "target": "Oui"
+      "baseline": 0,
+      "target": 1
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 27,
     "fields": {
-      "section": 7,
+      "section": 6,
       "name": "Amélioration du système d'information de gestion pour développer les interventions au niveau national (Oui/Non)",
       "pbc": "",
-      "baseline": "Non",
-      "target": "Oui"
+      "baseline": 0,
+      "target": 1
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 28,
     "fields": {
-      "section": 7,
+      "section": 6,
       "name": "Bénéficiaires recevant des transferts de protection sociale par le biais de paiements numériques (Pourcentage)",
       "pbc": "",
       "baseline": "0",
@@ -374,29 +367,29 @@
     "model": "merankabandi.indicator",
     "pk": 29,
     "fields": {
-      "section": 8,
+      "section": 7,
       "name": "Approbation d'une stratégie de protection sociale intégrant les réfugiés et les communautés d'accueil comme groupes cibles (Oui/Non)",
       "pbc": "",
-      "baseline": "Non",
-      "target": "Oui"
+      "baseline": 0,
+      "target": 1
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 30,
     "fields": {
-      "section": 9,
+      "section": 8,
       "name": "GRM en place et utilisé pour suivre les tendances en matière de retour d'information, y compris à l'aide des téléphones portables fournis par le projet, avec des réclamations traitées et clôturées et des rapports mensuels en cours de préparation (Oui/Non)",
       "pbc": "",
-      "baseline": "Non",
-      "target": "Oui"
+      "baseline": 0,
+      "target": 1
     }
   },
   {
     "model": "merankabandi.indicator",
     "pk": 31,
     "fields": {
-      "section": 9,
+      "section": 8,
       "name": "Évaluation du processus effectuée (nombre)",
       "pbc": "",
       "baseline": "0",

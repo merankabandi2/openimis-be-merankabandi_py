@@ -32,22 +32,31 @@ class ResultFrameworkService:
     
     def __init__(self):
         self.calculation_methods = {
+            # Development indicators (sections 1-3)
             'count_households_registered': self._count_households_registered,
             'count_households_refugees': self._count_households_refugees,
             'count_households_host': self._count_households_host,
-            'count_beneficiaries_total': self._count_beneficiaries_total,
+            'count_beneficiaries_social_protection': self._count_beneficiaries_social_protection,
             'count_beneficiaries_women': self._count_beneficiaries_women,
-            'count_beneficiaries_transfers': self._count_beneficiaries_transfers,
-            'count_beneficiaries_emergency': self._count_beneficiaries_emergency,
+            'count_beneficiaries_unconditional_transfers': self._count_beneficiaries_unconditional_transfers,
+            'count_beneficiaries_emergency_transfers': self._count_beneficiaries_emergency_transfers,
             'count_beneficiaries_refugees': self._count_beneficiaries_refugees,
-            'count_beneficiaries_host': self._count_beneficiaries_host,
-            'count_employment_interventions': self._count_employment_interventions,
-            'count_employment_women': self._count_employment_women,
-            'count_employment_refugees': self._count_employment_refugees,
-            'count_employment_host': self._count_employment_host,
-            'count_agricultural_beneficiaries': self._count_agricultural_beneficiaries,
+            'count_beneficiaries_host_communities': self._count_beneficiaries_host_communities,
+            'count_beneficiaries_employment': self._count_beneficiaries_employment,
+            'count_beneficiaries_employment_women': self._count_beneficiaries_employment_women,
+            'count_beneficiaries_employment_refugees': self._count_beneficiaries_employment_refugees,
+            'count_beneficiaries_employment_host': self._count_beneficiaries_employment_host,
+            'count_farmers_received_services': self._count_farmers_received_services,
+            
+            # Intermediate indicators (sections 4-8)
             'count_provinces_with_transfers': self._count_provinces_with_transfers,
             'calculate_payment_timeliness': self._calculate_payment_timeliness,
+            'calculate_behavior_change_participation': self._calculate_behavior_change_participation,
+            'count_approved_business_plans': self._count_approved_business_plans,
+            'count_approved_business_plans_women': self._count_approved_business_plans_women,
+            'count_approved_business_plans_batwa': self._count_approved_business_plans_batwa,
+            'count_climate_resilient_activities': self._count_climate_resilient_activities,
+            'calculate_digital_payment_percentage': self._calculate_digital_payment_percentage,
         }
     
     def calculate_indicator_value(self, indicator_id, date_from=None, date_to=None, location=None):
@@ -190,7 +199,7 @@ class ResultFrameworkService:
         count = query.count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
     
-    def _count_beneficiaries_total(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_social_protection(self, indicator, date_from, date_to, location, config):
         """Count total beneficiaries (Indicator 5)"""
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
@@ -226,7 +235,7 @@ class ResultFrameworkService:
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
     
-    def _count_beneficiaries_transfers(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_unconditional_transfers(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of unconditional transfers (Indicator 7)"""
         # Filter by benefit plan code for unconditional transfers
         query = GroupBeneficiary.objects.filter(
@@ -247,7 +256,7 @@ class ResultFrameworkService:
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
     
-    def _count_employment_interventions(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_employment(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of employment interventions (Indicator 11)"""
         # Count from training and microproject participants
         training_query = SensitizationTraining.objects.filter(validation_status='VALIDATED')
@@ -293,7 +302,7 @@ class ResultFrameworkService:
         # For now, return manual value
         return self._get_latest_achievement(indicator, date_from, date_to)
     
-    def _count_beneficiaries_emergency(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_emergency_transfers(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
@@ -332,7 +341,7 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM'}
         return self._get_latest_achievement(indicator, date_from, date_to)
     
-    def _count_beneficiaries_host(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_host_communities(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
@@ -351,7 +360,7 @@ class ResultFrameworkService:
         count = query.count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
     
-    def _count_employment_women(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_employment_women(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
         
@@ -369,7 +378,7 @@ class ResultFrameworkService:
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
     
-    def _count_employment_refugees(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_employment_refugees(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
         
@@ -388,7 +397,7 @@ class ResultFrameworkService:
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
     
-    def _count_employment_host(self, indicator, date_from, date_to, location, config):
+    def _count_beneficiaries_employment_host(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
         
@@ -407,7 +416,7 @@ class ResultFrameworkService:
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
 
-    def _count_agricultural_beneficiaries(self, indicator, date_from, date_to, location, config):
+    def _count_farmers_received_services(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
         
@@ -424,6 +433,139 @@ class ResultFrameworkService:
         )['total'] or 0
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
+    
+    def _calculate_behavior_change_participation(self, indicator, date_from, date_to, location, config):
+        """Calculate percentage of beneficiaries participating in behavior change activities (Indicator 18)"""
+        # Count beneficiaries participating in sensitization trainings
+        training_query = SensitizationTraining.objects.filter(validation_status='VALIDATED')
+        
+        if date_from:
+            training_query = training_query.filter(report_date__gte=date_from)
+        if date_to:
+            training_query = training_query.filter(report_date__lte=date_to)
+        if location:
+            training_query = training_query.filter(location__parent__parent=location)
+        
+        # Get total participants
+        total_participants = training_query.aggregate(
+            total=Sum('male_participants') + Sum('female_participants')
+        )['total'] or 0
+        
+        # Get total beneficiaries in the area
+        beneficiary_query = GroupBeneficiary.objects.filter(
+            is_deleted=False,
+            status__in=['ACTIVE', 'VALIDATED']
+        )
+        if location:
+            beneficiary_query = beneficiary_query.filter(group__location__parent__parent=location)
+        
+        total_beneficiaries = beneficiary_query.count()
+        
+        if total_beneficiaries > 0:
+            percentage = (total_participants / total_beneficiaries) * 100
+            return {'value': min(percentage, 100), 'calculation_type': 'SYSTEM'}
+        
+        return {'value': 0, 'calculation_type': 'SYSTEM'}
+    
+    def _count_approved_business_plans(self, indicator, date_from, date_to, location, config):
+        """Count beneficiaries with approved business plans (Indicator 20)"""
+        # Count from microprojects with approved status
+        query = MicroProject.objects.filter(
+            validation_status='VALIDATED',
+            json_ext__business_plan_approved=True
+        )
+        
+        if date_from:
+            query = query.filter(report_date__gte=date_from)
+        if date_to:
+            query = query.filter(report_date__lte=date_to)
+        if location:
+            query = query.filter(location__parent__parent=location)
+        
+        # Sum all participants
+        total = query.aggregate(
+            total=Sum('male_participants') + Sum('female_participants')
+        )['total'] or 0
+        
+        return {'value': total, 'calculation_type': 'MIXED'}
+    
+    def _count_approved_business_plans_women(self, indicator, date_from, date_to, location, config):
+        """Count female beneficiaries with approved business plans (Indicator 21)"""
+        query = MicroProject.objects.filter(
+            validation_status='VALIDATED',
+            json_ext__business_plan_approved=True
+        )
+        
+        if date_from:
+            query = query.filter(report_date__gte=date_from)
+        if date_to:
+            query = query.filter(report_date__lte=date_to)
+        if location:
+            query = query.filter(location__parent__parent=location)
+        
+        total = query.aggregate(total=Sum('female_participants'))['total'] or 0
+        
+        return {'value': total, 'calculation_type': 'MIXED'}
+    
+    def _count_approved_business_plans_batwa(self, indicator, date_from, date_to, location, config):
+        """Count Batwa beneficiaries with approved business plans (Indicator 22)"""
+        # This would need specific tracking of Batwa beneficiaries
+        # For now, use manual entry
+        return self._get_latest_achievement(indicator, date_from, date_to)
+    
+    def _count_climate_resilient_activities(self, indicator, date_from, date_to, location, config):
+        """Count climate-resilient productive activities (Indicator 23)"""
+        query = MicroProject.objects.filter(
+            validation_status='VALIDATED',
+            json_ext__climate_resilient=True
+        )
+        
+        if date_from:
+            query = query.filter(report_date__gte=date_from)
+        if date_to:
+            query = query.filter(report_date__lte=date_to)
+        if location:
+            query = query.filter(location__parent__parent=location)
+        
+        count = query.count()
+        return {'value': count, 'calculation_type': 'MIXED'}
+    
+    def _calculate_digital_payment_percentage(self, indicator, date_from, date_to, location, config):
+        """Calculate percentage of beneficiaries receiving digital payments (Indicator 28)"""
+        # Count beneficiaries with digital payment method
+        query = BenefitConsumption.objects.filter(
+            individual__is_deleted=False,
+            json_ext__payment_method='DIGITAL'
+        )
+        
+        if date_from:
+            query = query.filter(date_created__gte=date_from)
+        if date_to:
+            query = query.filter(date_created__lte=date_to)
+        if location:
+            query = query.filter(individual__group__location__parent__parent=location)
+        
+        digital_count = query.values('individual').distinct().count()
+        
+        # Get total beneficiaries who received payments
+        total_query = BenefitConsumption.objects.filter(
+            individual__is_deleted=False
+        )
+        
+        if date_from:
+            total_query = total_query.filter(date_created__gte=date_from)
+        if date_to:
+            total_query = total_query.filter(date_created__lte=date_to)
+        if location:
+            total_query = total_query.filter(individual__group__location__parent__parent=location)
+        
+        total_count = total_query.values('individual').distinct().count()
+        
+        if total_count > 0:
+            percentage = (digital_count / total_count) * 100
+            return {'value': percentage, 'calculation_type': 'SYSTEM'}
+        
+        return {'value': 0, 'calculation_type': 'SYSTEM'}
     
     def create_snapshot(self, name, description, user, date_from=None, date_to=None):
         """Create a complete snapshot of the result framework"""
