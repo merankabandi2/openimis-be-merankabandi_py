@@ -32,18 +32,11 @@ from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, 
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType,
-    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType,
-    ResultFrameworkSnapshotGQLType, IndicatorCalculationRuleGQLType, IndicatorCalculationResultType
+    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType
 )
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, 
-    SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
-    ResultFrameworkSnapshot, IndicatorCalculationRule
-)
-from merankabandi.result_framework_service import ResultFrameworkService
-from merankabandi.result_framework_mutations import (
-    CreateResultFrameworkSnapshotMutation, UpdateIndicatorAchievementMutation,
-    GenerateResultFrameworkDocumentMutation, FinalizeSnapshotMutation
+    SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
 )
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary
@@ -273,25 +266,6 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         payment_point_id=graphene.String(description="Filter by payment point ID"),
         payment_plan_id=graphene.String(description="Filter by payment plan ID"),
         is_active=graphene.Boolean(description="Filter by active status"),
-    )
-    
-    # Result Framework queries
-    result_framework_snapshot = OrderedDjangoFilterConnectionField(
-        ResultFrameworkSnapshotGQLType,
-        orderBy=graphene.List(of_type=graphene.String),
-    )
-    
-    indicator_calculation_rule = OrderedDjangoFilterConnectionField(
-        IndicatorCalculationRuleGQLType,
-        orderBy=graphene.List(of_type=graphene.String),
-    )
-    
-    calculate_indicator_value = graphene.Field(
-        IndicatorCalculationResultType,
-        indicator_id=graphene.Int(required=True),
-        date_from=graphene.Date(),
-        date_to=graphene.Date(),
-        location_id=graphene.ID(),
     )
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
@@ -1039,40 +1013,6 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
             query = query.filter(is_active=is_active)
             
         return gql_optimizer.query(query, info)
-    
-    def resolve_result_framework_snapshot(self, info, **kwargs):
-        # Add permission check if needed
-        return gql_optimizer.query(ResultFrameworkSnapshot.objects.all(), info)
-    
-    def resolve_indicator_calculation_rule(self, info, **kwargs):
-        # Add permission check if needed
-        return gql_optimizer.query(IndicatorCalculationRule.objects.all(), info)
-    
-    def resolve_calculate_indicator_value(self, info, indicator_id, date_from=None, date_to=None, location_id=None):
-        """Calculate indicator value using the service"""
-        service = ResultFrameworkService()
-        
-        location = None
-        if location_id:
-            from location.models import Location
-            location = Location.objects.get(id=location_id)
-        
-        result = service.calculate_indicator_value(
-            indicator_id=indicator_id,
-            date_from=date_from,
-            date_to=date_to,
-            location=location
-        )
-        
-        return IndicatorCalculationResultType(
-            value=result.get('value', 0),
-            calculation_type=result.get('calculation_type', 'UNKNOWN'),
-            system_value=result.get('system_value'),
-            manual_value=result.get('manual_value'),
-            error=result.get('error'),
-            date=result.get('date'),
-            gender_breakdown=result.get('gender_breakdown')
-        )
 
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
@@ -1129,9 +1069,3 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()
     validate_behavior_change = ValidateBehaviorChangeMutation.Field()
     validate_microproject = ValidateMicroProjectMutation.Field()
-    
-    # Result framework mutations
-    create_result_framework_snapshot = CreateResultFrameworkSnapshotMutation.Field()
-    update_indicator_achievement_manual = UpdateIndicatorAchievementMutation.Field()
-    generate_result_framework_document = GenerateResultFrameworkDocumentMutation.Field()
-    finalize_snapshot = FinalizeSnapshotMutation.Field()
