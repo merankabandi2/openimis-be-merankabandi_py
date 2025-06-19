@@ -154,8 +154,8 @@ class MaterializedViewsManager:
                     # Check if view exists
                     cursor.execute("""
                         SELECT COUNT(*) 
-                        FROM information_schema.tables 
-                        WHERE table_name = %s AND table_type = 'MATERIALIZED VIEW'
+                        FROM pg_matviews 
+                        WHERE matviewname = %s AND schemaname = 'public'
                     """, [view_name])
                     
                     exists = cursor.fetchone()[0] > 0
