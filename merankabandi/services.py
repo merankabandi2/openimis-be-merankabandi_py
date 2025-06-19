@@ -511,14 +511,17 @@ class PaymentAccountAttributionService:
     @staticmethod
     def get_system_user():
         """Get or create system user for API operations"""
-        from django.contrib.auth.models import User
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         user = User.objects.filter(username='system').first()
         if not user:
-            user = User.objects.create_user(
+            user = User.objects.create(
                 username='system',
                 email='system@openimis.org',
                 is_active=True
             )
+            user.set_unusable_password()
+            user.save()
         return user
     
     @staticmethod
