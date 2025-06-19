@@ -509,6 +509,19 @@ class PaymentAccountAttributionService:
     """
     
     @staticmethod
+    def get_system_user():
+        """Get or create system user for API operations"""
+        from django.contrib.auth.models import User
+        user = User.objects.filter(username='system').first()
+        if not user:
+            user = User.objects.create_user(
+                username='system',
+                email='system@openimis.org',
+                is_active=True
+            )
+        return user
+    
+    @staticmethod
     def find_beneficiary_by_identifiers(cni, socialid):
         """
         Find a beneficiary using CNI and Social ID
@@ -590,17 +603,22 @@ class PaymentAccountAttributionService:
     
     @classmethod
     @transaction.atomic
-    def process_acknowledgment(cls, data, user):
+    def process_acknowledgment(cls, data, user=None):
         """
         Process payment account acknowledgment request
         
         Args:
             data (dict): Validated acknowledgment data
+            user: User performing the operation (optional, will use system user if not provided)
             
         Returns:
             tuple: (success (bool), beneficiary or None, error_message or None)
         """
         try:
+            # Get system user if no user provided
+            if not user:
+                user = cls.get_system_user()
+            
             # Find the beneficiary
             beneficiary = cls.find_beneficiary_by_identifiers(
                 data['cni'], 
@@ -651,17 +669,21 @@ class PaymentAccountAttributionService:
     
     @classmethod
     @transaction.atomic
-    def process_account_attribution(cls, data, user):
+    def process_account_attribution(cls, data, user=None):
         """
         Process payment account attribution request
         
         Args:
             data (dict): Validated account attribution data
+            user: User performing the operation (optional, will use system user if not provided)
             
         Returns:
             tuple: (success (bool), beneficiary or None, error_message or None)
         """
         try:
+            # Get system user if no user provided
+            if not user:
+                user = cls.get_system_user()
             # Find the beneficiary
             beneficiary = cls.find_beneficiary_by_identifiers(
                 data['cni'], 

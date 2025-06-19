@@ -34,7 +34,9 @@ from .serializers import (
     PaymentAccountAttributionListSerializer,
     PaymentAccountAttributionSerializer,
     PaymentAcknowledgmentSerializer,
-    PaymentStatusUpdateSerializer,
+    PaymentConsolidationSerializer,
+    PaymentBatchAcknowledgmentSerializer,
+    PaymentBatchConsolidationSerializer,
     PhoneNumberAttributionRequestSerializer,
     BeneficiaryPhoneDataSerializer,
     ResponseSerializer
@@ -655,9 +657,9 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         for idx, item in enumerate(batch_data):
             # Determine operation type
             if 'tp_account_number' in item:
-                result = self._process_batch_attribution(idx, item)
+                result = self._process_batch_attribution(idx, item, request)
             elif 'status' in item and item.get('status') in ['ACCEPTED', 'REJECTED']:
-                result = self._process_batch_acknowledgment(idx, item)
+                result = self._process_batch_acknowledgment(idx, item, request)
             else:
                 errors.append({
                     'index': idx,
@@ -682,7 +684,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             'errors': errors
         })
     
-    def _process_batch_acknowledgment(self, idx, item):
+    def _process_batch_acknowledgment(self, idx, item, request):
         """Process individual acknowledgment in batch"""
         serializer = PaymentAccountAcknowledgmentSerializer(data=item)
         if not serializer.is_valid():
@@ -712,7 +714,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'error': error_message
             }
     
-    def _process_batch_attribution(self, idx, item):
+    def _process_batch_attribution(self, idx, item, request):
         """Process individual attribution in batch"""
         serializer = PaymentAccountAttributionSerializer(data=item)
         if not serializer.is_valid():
