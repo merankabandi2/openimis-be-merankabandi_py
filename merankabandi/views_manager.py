@@ -57,6 +57,7 @@ class MaterializedViewsManager:
             categories_to_process = cls.ALL_VIEWS
         
         with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '30min'")
             for cat_name, views in categories_to_process.items():
                 logger.info(f"Creating {cat_name} views...")
                 for view_name, view_config in views.items():
@@ -97,6 +98,7 @@ class MaterializedViewsManager:
             view_names = cls.get_all_view_names()
         
         with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '30min'")
             for view_name in view_names:
                 try:
                     refresh_sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY' if concurrent else ''} {view_name}"
@@ -146,6 +148,7 @@ class MaterializedViewsManager:
         stats = {}
         
         with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '30min'")
             for view_name in view_names:
                 try:
                     # Check if view exists
@@ -203,6 +206,7 @@ class MaterializedViewsManager:
         
         try:
             with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = '30min'")
                 # Drop existing view
                 cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {view_name} CASCADE")
                 
@@ -229,6 +233,7 @@ class MaterializedViewsManager:
         """Refresh a single view by name"""
         try:
             with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = '30min'")
                 refresh_sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY' if concurrent else ''} {view_name}"
                 cursor.execute(refresh_sql)
                 logger.info(f"✓ Refreshed view: {view_name}")
