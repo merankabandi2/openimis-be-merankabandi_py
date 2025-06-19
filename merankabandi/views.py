@@ -920,7 +920,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         
         # Get payment requests with new filters
         queryset = PaymentApiService.get_individual_payment_requests(
-            payment_provider_id=application_name,
+            payment_provider=application_name,
             payment_cycle_id=payment_cycle,
             commune=commune,
             programme=programme,
@@ -998,7 +998,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 code=data['numero_interne_paiement'],
                 status=data['status'],
                 transaction_reference=data['retour_transactionid'],
-                payment_agency_id=application_name,
+                payment_agency=application_name,
                 error_code=data.get('error_code'),
                 message=data.get('message')
             )
@@ -1042,7 +1042,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 status=data['status'],
                 error_code=data.get('error_code'),
                 message=data.get('message'),
-                payment_agency_id=application_name
+                payment_agency=application_name
             )
             
             if not success:
@@ -1151,7 +1151,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             user,
             code=data['code'],
             status=data['status'],
-            payment_agency_id=application_name,
+            payment_agency=application_name,
             error_code=data.get('error_code'),
             message=data.get('message')
         )
@@ -1190,7 +1190,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             user,
             code=data['code'],
             status=data['status'],
-            payment_agency_id=application_name,
+            payment_agency=application_name,
             transaction_reference=data.get('transaction_reference'),
             transaction_date=data.get('transaction_date'),
             error_code=data.get('error_code'),
@@ -1223,7 +1223,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             
             # Get payment requests
             payment_requests = PaymentApiService.get_individual_payment_requests(
-                payment_provider_id=application_name
+                payment_provider=application_name
             )
             
             # Calculate statistics

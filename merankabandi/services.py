@@ -737,14 +737,14 @@ class PaymentApiService:
     """
     
     @classmethod
-    def get_individual_payment_requests(cls, payment_provider_id=None, payment_cycle_id=None, 
+    def get_individual_payment_requests(cls, payment_provider=None, payment_cycle_id=None, 
                                       commune=None, programme=None, start_date=None, end_date=None):
         """
         Get individual payment requests for payment provider.
         Returns payment requests awaiting payment for the current payment cycle.
         
         Args:
-            payment_provider_id (int, optional): Filter by payment provider ID
+            payment_provider (str): Filter by payment provider
             payment_cycle_id (int, optional): Filter by payment cycle ID
             commune (str, optional): Filter by commune name
             programme (str, optional): Filter by programme name
@@ -759,8 +759,8 @@ class PaymentApiService:
             payroll_query = Payroll.objects.filter(status=PayrollStatus.APPROVE_FOR_PAYMENT)
             
             # Filter by payment provider if specified
-            if payment_provider_id:
-                payroll_query = payroll_query.filter(payment_point_id=payment_provider_id)
+            if payment_provider:
+                payroll_query = payroll_query.filter(payment_point__name__icontains=payment_provider)
                 
             # Filter by payment cycle if specified
             if payment_cycle_id:
@@ -823,7 +823,7 @@ class PaymentApiService:
     @classmethod
     @transaction.atomic
     def acknowledge_payment_request(cls, user, code, status, transaction_reference=None, 
-                                  payment_agency_id=None, error_code=None, message=None):
+                                  payment_agency=None, error_code=None, message=None):
         """
         Acknowledge receipt of payment request by payment provider
         
@@ -832,7 +832,7 @@ class PaymentApiService:
             code (str): Payment request code
             status (str): "ACCEPTED" or "REJECTED"
             transaction_reference (str, optional): Transaction reference from provider
-            payment_agency_id (str, optional): Payment agency ID
+            payment_agency (str, optional): Payment agency ID
             error_code (str, optional): Error code if rejected
             message (str, optional): Error message if rejected
             
@@ -850,12 +850,12 @@ class PaymentApiService:
                 return False, None, f"Payment request with code {code} not found or not in valid state"
             
             # Verify payment provider has access to this benefit consumption
-            if payment_agency_id:
+            if payment_agency:
                 # Check if benefit consumption is linked to a payroll with this payment provider
                 from payroll.models import PayrollBenefitConsumption, Payroll
                 has_access = PayrollBenefitConsumption.objects.filter(
                     benefit_consumption=benefit,
-                    payroll__payment_point__name=payment_agency_id,
+                    payroll__payment_point__name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
                 
@@ -876,9 +876,9 @@ class PaymentApiService:
             if transaction_reference:
                 json_ext['payment_provider']['transaction_reference'] = transaction_reference
                 
-            if payment_agency_id:
-                json_ext['payment_provider']['agency_id'] = payment_agency_id
-            
+            if payment_agency:
+                json_ext['payment_provider']['agence'] = payment_agency
+
             if status == 'ACCEPTED':
                 # Keep status as APPROVE_FOR_PAYMENT when acknowledged
                 pass
@@ -907,7 +907,7 @@ class PaymentApiService:
     
     @classmethod
     @transaction.atomic
-    def update_payment_status(cls, user, code, status, payment_agency_id=None,
+    def update_payment_status(cls, user, code, status, payment_agency=None,
                            transaction_reference=None, transaction_date=None, 
                            error_code=None, message=None):
         """
@@ -917,7 +917,7 @@ class PaymentApiService:
             user: User performing the update
             code (str): Payment request code
             status (str): "PAID", "FAILED", or "REJECTED"
-            payment_agency_id (str, optional): Payment agency ID
+            payment_agency (str, optional): Payment agency
             transaction_reference (str, optional): Transaction reference if paid
             transaction_date (str, optional): Transaction date if paid
             error_code (str, optional): Error code if failed
@@ -948,9 +948,9 @@ class PaymentApiService:
             json_ext['payment_reconciliation']['status'] = status
             json_ext['payment_reconciliation']['date'] = datetime.now().isoformat()
             
-            if payment_agency_id:
-                json_ext['payment_reconciliation']['agency_id'] = payment_agency_id
-            
+            if payment_agency:
+                json_ext['payment_reconciliation']['agence'] = payment_agency
+
             if status == 'PAID':
                 if not transaction_reference:
                     return False, benefit, "Transaction reference is required when status is PAID"
@@ -991,7 +991,7 @@ class PaymentApiService:
     @transaction.atomic
     def consolidate_payment(cls, user, transaction_reference, payment_date, 
                           receipt_number=None, status='SUCCESS', error_code=None, message=None,
-                          payment_agency_id=None):
+                          payment_agency=None):
         """
         Consolidate payment after completion
         
@@ -1003,7 +1003,7 @@ class PaymentApiService:
             status (str): "SUCCESS" or "FAILURE"
             error_code (str, optional): Error code if failed
             message (str, optional): Error message if failed
-            payment_agency_id (str, optional): Payment agency ID for access control
+            payment_agency (str, optional): Payment agency ID for access control
             
         Returns:
             tuple: (success (bool), benefit or None, message or None)
@@ -1020,12 +1020,12 @@ class PaymentApiService:
             benefit = benefits.first()
             
             # Verify payment provider has access to this benefit consumption
-            if payment_agency_id:
+            if payment_agency:
                 # Check if benefit consumption is linked to a payroll with this payment provider
                 from payroll.models import PayrollBenefitConsumption, Payroll
                 has_access = PayrollBenefitConsumption.objects.filter(
                     benefit_consumption=benefit,
-                    payroll__payment_point__name=payment_agency_id,
+                    payroll__payment_point__name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
                 
