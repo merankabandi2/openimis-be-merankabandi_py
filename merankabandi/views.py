@@ -903,26 +903,32 @@ class PaymentRequestViewSet(viewsets.ViewSet):
     def list(self, request):
         """
         GET: List individual payment requests for payment agency
-        Optional filters: payment_provider_id, payment_cycle_id, commune
+        Query parameters: commune, payment_cycle, programme, start_date, end_date
         """
 
         application_name = request.auth.application.name
-        # Get filter parameters
-        payment_cycle_id = request.query_params.get('payment_cycle_id')
+        # Get filter parameters from query params
         commune = request.query_params.get('commune')
+        payment_cycle = request.query_params.get('payment_cycle')
+        programme = request.query_params.get('programme')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
         
-        # Get payment requests
+        # Get payment requests with new filters
         queryset = PaymentApiService.get_individual_payment_requests(
             payment_provider_id=application_name,
-            payment_cycle_id=payment_cycle_id,
-            commune=commune
+            payment_cycle_id=payment_cycle,
+            commune=commune,
+            programme=programme,
+            start_date=start_date,
+            end_date=end_date
         )
         
         # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
         
-        # Serialize data
+        # Serialize data with new field names
         serializer = IndividualPaymentRequestSerializer(page, many=True)
         
         return paginator.get_paginated_response(serializer.data)
@@ -948,23 +954,25 @@ class PaymentRequestViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """
-        POST: Handle both acknowledgment and payment status updates
-        Supports both single and batch operations (50-100 items)
+        POST: Handle acknowledgment and consolidation operations
+        Supports both single and batch operations (up to 100 items)
         """
         # Check if this is a batch request
         if isinstance(request.data, list):
             return self._handle_batch_creation(request)
             
         # Single request handling
-        # Determine operation type based on presence of status field
+        # Determine operation type based on fields present
         operation = None
-        if 'status' in request.data:
-            if request.data['status'] in ['ACCEPTED', 'REJECTED']:
+        if 'numero_interne_paiement' in request.data and 'retour_transactionid' in request.data:
+            if 'status' in request.data and request.data['status'] in ['ACCEPTED', 'REJECTED']:
                 operation = 'acknowledge'
-            elif request.data['status'] in ['PAID', 'FAILED']:
-                operation = 'update_status'
+        elif 'retour_transactionid' in request.data and 'payment_date' in request.data:
+            if 'status' in request.data and request.data['status'] in ['SUCCESS', 'FAILURE']:
+                operation = 'consolidate'
 
         user = request.user
+        
         # Handle acknowledgment
         if operation == 'acknowledge':
             serializer = PaymentAcknowledgmentSerializer(data=request.data)
@@ -972,93 +980,89 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 return Response(
                     {
                         'status': 'FAILURE',
-                        'error_code': 'invalid_data',
-                        'message': serializer.errors
+                        'error_code': 'INVALID_DATA',
+                        'message': str(serializer.errors)
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             # Process acknowledgment
             data = serializer.validated_data
+            application_name = request.auth.application.name if request.auth else None
             success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
                 user,
-                code=data['code'],
+                code=data['numero_interne_paiement'],
                 status=data['status'],
-                transaction_reference=data.get('transaction_reference'),
-                status_code=data.get('status_code'),
-                message=data.get('message')
-            )
-            
-            if not success:
-                response_status = status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
-                return Response(
-                    {
-                        'status': 'FAILURE',
-                        'error_code': 'acknowledgment_failed',
-                        'message': error_message
-                    },
-                    status=response_status
-                )
-            
-            # Return success response
-            response_serializer = ResponseSerializer(data={
-                'status': 'SUCCESS',
-                'message': 'Payment request acknowledgment successful'
-            })
-            response_serializer.is_valid()
-            return Response(response_serializer.validated_data)
-        
-        # Handle payment status update
-        elif operation == 'update_status':
-            serializer = PaymentStatusUpdateSerializer(data=request.data)
-            if not serializer.is_valid():
-                return Response(
-                    {
-                        'status': 'FAILURE',
-                        'error_code': 'invalid_data',
-                        'message': serializer.errors
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Process status update
-            data = serializer.validated_data
-            success, benefit, error_message = PaymentApiService.update_payment_status(
-                user,
-                code=data['code'],
-                status=data['status'],
-                transaction_reference=data.get('transaction_reference'),
-                transaction_date=data.get('transaction_date'),
+                transaction_reference=data['retour_transactionid'],
+                payment_agency_id=application_name,
                 error_code=data.get('error_code'),
                 message=data.get('message')
             )
             
             if not success:
-                response_status = status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
                 return Response(
                     {
                         'status': 'FAILURE',
-                        'error_code': 'status_update_failed',
-                        'message': error_message
+                        'error_code': 'INVALID_TRANSACTION_ID' if benefit is None else 'ACKNOWLEDGMENT_FAILED'
                     },
-                    status=response_status
+                    status=status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
                 )
             
             # Return success response
-            response_serializer = ResponseSerializer(data={
+            return Response({
                 'status': 'SUCCESS',
-                'message': f'Payment status updated to {data["status"]} successfully'
+                'error_code': ''
             })
-            response_serializer.is_valid()
-            return Response(response_serializer.validated_data)
         
-        # Invalid operation or missing status field
+        # Handle consolidation
+        elif operation == 'consolidate':
+            serializer = PaymentConsolidationSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'INVALID_DATA',
+                        'message': str(serializer.errors)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process consolidation
+            data = serializer.validated_data
+            application_name = request.auth.application.name if request.auth else None
+            success, benefit, error_message = PaymentApiService.consolidate_payment(
+                user,
+                transaction_reference=data['retour_transactionid'],
+                payment_date=data['payment_date'],
+                receipt_number=data.get('receipt_number'),
+                status=data['status'],
+                error_code=data.get('error_code'),
+                message=data.get('message'),
+                payment_agency_id=application_name
+            )
+            
+            if not success:
+                return Response(
+                    {
+                        'status': 'FAILURE',
+                        'error_code': 'INVALID_TRANSACTION_ID' if benefit is None else 'CONSOLIDATION_FAILED'
+                    },
+                    status=status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Return success response
+            return Response({
+                'status': 'SUCCESS',
+                'error_code': ''
+            })
+        
+        # Invalid operation
         else:
             return Response(
                 {
                     'status': 'FAILURE',
-                    'error_code': 'invalid_operation',
-                    'message': 'Could not determine operation type from payload. Status must be one of: ACCEPTED, REJECTED, PAID, FAILED'
+                    'error_code': 'INVALID_OPERATION',
+                    'message': 'Could not determine operation type. Check required fields for acknowledgment or consolidation.'
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -1075,7 +1079,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             return Response(
                 {
                     'status': 'FAILURE',
-                    'error_code': 'batch_size_exceeded',
+                    'error_code': 'BATCH_SIZE_EXCEEDED',
                     'message': 'Batch size cannot exceed 100 items'
                 },
                 status=status.HTTP_400_BAD_REQUEST
@@ -1086,13 +1090,13 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         success_count = 0
         
         for idx, item in enumerate(batch_data):
-            # Determine operation type
+            # Determine operation type based on status in batch items
             operation = None
             if 'status' in item:
                 if item['status'] in ['ACCEPTED', 'REJECTED']:
                     operation = 'acknowledge'
-                elif item['status'] in ['PAID', 'FAILED']:
-                    operation = 'update_status'
+                elif item['status'] in ['PAID', 'FAILED', 'REJECTED']:
+                    operation = 'consolidate'
             
             if not operation:
                 errors.append({
@@ -1104,9 +1108,9 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             
             # Process based on operation type
             if operation == 'acknowledge':
-                result = self._process_batch_acknowledgment(idx, item, user)
+                result = self._process_batch_acknowledgment(idx, item, user, request)
             else:
-                result = self._process_batch_status_update(idx, item, user)
+                result = self._process_batch_consolidation(idx, item, user, request)
             
             if result['success']:
                 success_count += 1
@@ -1124,24 +1128,27 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'errors': errors
         })
     
-    def _process_batch_acknowledgment(self, idx, item, user):
+    def _process_batch_acknowledgment(self, idx, item, user, request):
         """Process individual acknowledgment in batch"""
-        serializer = PaymentAcknowledgmentSerializer(data=item)
+        serializer = PaymentBatchAcknowledgmentSerializer(data=item)
         if not serializer.is_valid():
             return {
                 'success': False,
                 'index': idx,
                 'code': item.get('code', 'unknown'),
-                'error': serializer.errors
+                'error': str(serializer.errors)
             }
         
         data = serializer.validated_data
+        # Get application name from the request
+        application_name = request.auth.application.name if request.auth else None
+        
         success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
             user,
             code=data['code'],
             status=data['status'],
-            transaction_reference=data.get('transaction_reference'),
-            status_code=data.get('status_code'),
+            payment_agency_id=application_name,
+            error_code=data.get('error_code'),
             message=data.get('message')
         )
         
@@ -1157,25 +1164,29 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'code': data['code'],
-                'error': error_message
+                'error': error_message or 'Error processing payment acknowledgment'
             }
     
-    def _process_batch_status_update(self, idx, item, user):
-        """Process individual status update in batch"""
-        serializer = PaymentStatusUpdateSerializer(data=item)
+    def _process_batch_consolidation(self, idx, item, user, request):
+        """Process individual consolidation in batch"""
+        serializer = PaymentBatchConsolidationSerializer(data=item)
         if not serializer.is_valid():
             return {
                 'success': False,
                 'index': idx,
                 'code': item.get('code', 'unknown'),
-                'error': serializer.errors
+                'error': str(serializer.errors)
             }
         
         data = serializer.validated_data
+        # Get application name from the request
+        application_name = request.auth.application.name if request.auth else None
+        
         success, benefit, error_message = PaymentApiService.update_payment_status(
             user,
             code=data['code'],
             status=data['status'],
+            payment_agency_id=application_name,
             transaction_reference=data.get('transaction_reference'),
             transaction_date=data.get('transaction_date'),
             error_code=data.get('error_code'),
@@ -1194,7 +1205,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'code': data['code'],
-                'error': error_message
+                'error': error_message or 'Error processing payment status update'
             }
     
     @action(detail=False, methods=['get'], url_path='stats')

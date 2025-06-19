@@ -712,7 +712,8 @@ class PaymentApiService:
     """
     
     @classmethod
-    def get_individual_payment_requests(cls, payment_provider_id=None, payment_cycle_id=None, commune=None):
+    def get_individual_payment_requests(cls, payment_provider_id=None, payment_cycle_id=None, 
+                                      commune=None, programme=None, start_date=None, end_date=None):
         """
         Get individual payment requests for payment provider.
         Returns payment requests awaiting payment for the current payment cycle.
@@ -721,6 +722,9 @@ class PaymentApiService:
             payment_provider_id (int, optional): Filter by payment provider ID
             payment_cycle_id (int, optional): Filter by payment cycle ID
             commune (str, optional): Filter by commune name
+            programme (str, optional): Filter by programme name
+            start_date (str, optional): Filter by start date
+            end_date (str, optional): Filter by end date
             
         Returns:
             QuerySet: BenefitConsumption objects ready for payment
@@ -743,6 +747,18 @@ class PaymentApiService:
                     Q(location__name__iexact=commune) | 
                     Q(location__code__iexact=commune)
                 )
+            
+            # Filter by programme if specified
+            if programme:
+                payroll_query = payroll_query.filter(
+                    benefit_plan__name__icontains=programme
+                )
+                
+            # Filter by date range if specified
+            if start_date:
+                payroll_query = payroll_query.filter(date_created__gte=start_date)
+            if end_date:
+                payroll_query = payroll_query.filter(date_created__lte=end_date)
                 
             # Get payroll IDs
             payroll_ids = payroll_query.values_list('id', flat=True)
@@ -751,7 +767,7 @@ class PaymentApiService:
             benefit_query = BenefitConsumption.objects.filter(
                 payrollbenefitconsumption__payroll_id__in=payroll_ids,
                 status=BenefitConsumptionStatus.ACCEPTED
-            ).select_related('individual')
+            ).select_related('individual').distinct()
             
             return benefit_query
             
@@ -781,15 +797,19 @@ class PaymentApiService:
     
     @classmethod
     @transaction.atomic
-    def acknowledge_payment_request(cls, user, code, status, transaction_reference=None, error_code=None, error_message=None):
+    def acknowledge_payment_request(cls, user, code, status, transaction_reference=None, 
+                                  payment_agency_id=None, error_code=None, message=None):
         """
         Acknowledge receipt of payment request by payment provider
         
         Args:
+            user: User performing the acknowledgment
             code (str): Payment request code
             status (str): "ACCEPTED" or "REJECTED"
+            transaction_reference (str, optional): Transaction reference from provider
+            payment_agency_id (str, optional): Payment agency ID
             error_code (str, optional): Error code if rejected
-            error_message (str, optional): Error message if rejected
+            message (str, optional): Error message if rejected
             
         Returns:
             tuple: (success (bool), benefit or None, error_message or None)
@@ -804,37 +824,50 @@ class PaymentApiService:
             if not benefit:
                 return False, None, f"Payment request with code {code} not found or not in valid state"
             
-            benefit.status = status
+            # Verify payment provider has access to this benefit consumption
+            if payment_agency_id:
+                # Check if benefit consumption is linked to a payroll with this payment provider
+                from payroll.models import PayrollBenefitConsumption, Payroll
+                has_access = PayrollBenefitConsumption.objects.filter(
+                    benefit_consumption=benefit,
+                    payroll__payment_point__name=payment_agency_id,
+                    payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
+                ).exists()
+                
+                if not has_access:
+                    return False, None, f"Payment request {code} not found or not accessible"
 
             # Update payment request with acknowledgment info
             json_ext = benefit.json_ext or {}
             
             # Ensure payment_provider field exists
-            if 'payment_request' not in json_ext:
-                json_ext['payment_request'] = {}
+            if 'payment_provider' not in json_ext:
+                json_ext['payment_provider'] = {}
                 
             # Update acknowledgment info
-            json_ext['payment_request']['acknowledgment_status'] = status
-            json_ext['payment_request']['acknowledgment_date'] = datetime.now().isoformat()
+            json_ext['payment_provider']['acknowledgment_status'] = status
+            json_ext['payment_provider']['acknowledgment_date'] = datetime.now().isoformat()
+            
+            if transaction_reference:
+                json_ext['payment_provider']['transaction_reference'] = transaction_reference
+                
+            if payment_agency_id:
+                json_ext['payment_provider']['agency_id'] = payment_agency_id
             
             if status == 'ACCEPTED':
-                if not transaction_reference:
-                    return False, benefit, "Transaction reference is required when status is ACCEPTED"
+                # Keep status as APPROVE_FOR_PAYMENT when acknowledged
+                pass
                 
-                benefit.receipt = transaction_reference
-                json_ext['payment_request']['transaction_reference'] = transaction_reference
-
-            if status == 'REJECTED':
+            elif status == 'REJECTED':
                 if not error_code:
-                    return False, benefit, "Status code is required when status is REJECTED"
+                    return False, benefit, "Error code is required when status is REJECTED"
                     
-                json_ext['payment_request']['error_code'] = error_code
-                json_ext['payment_request']['error_message'] = error_message or ""
+                json_ext['payment_provider']['error_code'] = error_code
+                json_ext['payment_provider']['message'] = message or ""
                 
                 # Update benefit status to rejected
+                benefit.status = BenefitConsumptionStatus.REJECTED
                 
-            # If accepted, keep the status as APPROVE_FOR_PAYMENT
-            
             # Save changes
             benefit.json_ext = json_ext
             benefit.save(user=user)
@@ -849,18 +882,21 @@ class PaymentApiService:
     
     @classmethod
     @transaction.atomic
-    def update_payment_status(cls, user, code, status, transaction_reference=None,
-                           transaction_date=None, error_code=None, error_message=None):
+    def update_payment_status(cls, user, code, status, payment_agency_id=None,
+                           transaction_reference=None, transaction_date=None, 
+                           error_code=None, message=None):
         """
         Update payment status after payment execution
         
         Args:
+            user: User performing the update
             code (str): Payment request code
-            status (str): "PAID" or "FAILED"
+            status (str): "PAID", "FAILED", or "REJECTED"
+            payment_agency_id (str, optional): Payment agency ID
             transaction_reference (str, optional): Transaction reference if paid
             transaction_date (str, optional): Transaction date if paid
             error_code (str, optional): Error code if failed
-            error_message (str, optional): Error message if failed
+            message (str, optional): Error message if failed
             
         Returns:
             tuple: (success (bool), benefit or None, error_message or None)
@@ -887,6 +923,9 @@ class PaymentApiService:
             json_ext['payment_reconciliation']['status'] = status
             json_ext['payment_reconciliation']['date'] = datetime.now().isoformat()
             
+            if payment_agency_id:
+                json_ext['payment_reconciliation']['agency_id'] = payment_agency_id
+            
             if status == 'PAID':
                 if not transaction_reference:
                     return False, benefit, "Transaction reference is required when status is PAID"
@@ -898,12 +937,12 @@ class PaymentApiService:
                 # Update benefit status to reconciled
                 benefit.status = BenefitConsumptionStatus.RECONCILED
                 
-            elif status == 'FAILED':
+            elif status in ['FAILED', 'REJECTED']:
                 if not error_code:
-                    return False, benefit, "Error code is required when status is FAILED"
+                    return False, benefit, f"Error code is required when status is {status}"
                     
                 json_ext['payment_reconciliation']['error_code'] = error_code
-                json_ext['payment_reconciliation']['error_message'] = error_message or ""
+                json_ext['payment_reconciliation']['message'] = message or ""
                 
                 # Update benefit status to rejected
                 benefit.status = BenefitConsumptionStatus.REJECTED
@@ -919,6 +958,98 @@ class PaymentApiService:
             
         except Exception as e:
             logger.error(f"Error updating payment status: {str(e)}")
+            if transaction.get_connection().in_atomic_block:
+                transaction.set_rollback(True)
+            return False, None, str(e)
+    
+    @classmethod
+    @transaction.atomic
+    def consolidate_payment(cls, user, transaction_reference, payment_date, 
+                          receipt_number=None, status='SUCCESS', error_code=None, message=None,
+                          payment_agency_id=None):
+        """
+        Consolidate payment after completion
+        
+        Args:
+            user: User performing the consolidation
+            transaction_reference (str): Transaction reference from payment provider
+            payment_date (date): Effective date of payment
+            receipt_number (str, optional): Receipt number
+            status (str): "SUCCESS" or "FAILURE"
+            error_code (str, optional): Error code if failed
+            message (str, optional): Error message if failed
+            payment_agency_id (str, optional): Payment agency ID for access control
+            
+        Returns:
+            tuple: (success (bool), benefit or None, error_message or None)
+        """
+        try:
+            # Find the payment request by transaction reference in json_ext
+            benefits = BenefitConsumption.objects.filter(
+                json_ext__payment_provider__transaction_reference=transaction_reference
+            ).select_related('individual')
+            
+            if not benefits.exists():
+                return False, None, f"Payment request with transaction reference {transaction_reference} not found"
+            
+            benefit = benefits.first()
+            
+            # Verify payment provider has access to this benefit consumption
+            if payment_agency_id:
+                # Check if benefit consumption is linked to a payroll with this payment provider
+                from payroll.models import PayrollBenefitConsumption, Payroll
+                has_access = PayrollBenefitConsumption.objects.filter(
+                    benefit_consumption=benefit,
+                    payroll__payment_point__name=payment_agency_id,
+                    payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
+                ).exists()
+                
+                if not has_access:
+                    return False, None, f"Payment request with transaction reference {transaction_reference} not found or not accessible"
+            
+            # Check if already reconciled
+            if benefit.status == BenefitConsumptionStatus.RECONCILED:
+                return False, benefit, f"Payment request already reconciled"
+            
+            json_ext = benefit.json_ext or {}
+            
+            # Update consolidation info
+            if 'payment_consolidation' not in json_ext:
+                json_ext['payment_consolidation'] = {}
+                
+            json_ext['payment_consolidation']['status'] = status
+            json_ext['payment_consolidation']['payment_date'] = payment_date.isoformat() if hasattr(payment_date, 'isoformat') else str(payment_date)
+            json_ext['payment_consolidation']['date'] = datetime.now().isoformat()
+            
+            if receipt_number:
+                json_ext['payment_consolidation']['receipt_number'] = receipt_number
+            
+            if status == 'SUCCESS':
+                benefit.receipt = transaction_reference
+                # Update benefit status to reconciled
+                benefit.status = BenefitConsumptionStatus.RECONCILED
+                
+            elif status == 'FAILURE':
+                if not error_code:
+                    return False, benefit, "Error code is required when status is FAILURE"
+                    
+                json_ext['payment_consolidation']['error_code'] = error_code
+                json_ext['payment_consolidation']['message'] = message or ""
+                
+                # Update benefit status to rejected
+                benefit.status = BenefitConsumptionStatus.REJECTED
+                
+            else:
+                return False, benefit, f"Invalid status: {status}"
+            
+            # Save changes
+            benefit.json_ext = json_ext
+            benefit.save(user=user)
+            
+            return True, benefit, None
+            
+        except Exception as e:
+            logger.error(f"Error consolidating payment: {str(e)}")
             if transaction.get_connection().in_atomic_block:
                 transaction.set_rollback(True)
             return False, None, str(e)

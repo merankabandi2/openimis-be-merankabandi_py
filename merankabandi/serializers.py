@@ -337,85 +337,174 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
     """
     Serializer for individual payment requests to be provided to payment agencies
     """
-    prenom = serializers.SerializerMethodField()
-    nom = serializers.SerializerMethodField()
-    genre = serializers.SerializerMethodField()
-    naissance_date = serializers.SerializerMethodField()
-    num_cni = serializers.SerializerMethodField()
-    code = serializers.SerializerMethodField()
+    numero_interne_paiement = serializers.SerializerMethodField()
+    numero_telephone = serializers.SerializerMethodField()
+    tp_account_number = serializers.SerializerMethodField()
     montant = serializers.SerializerMethodField()
+    date_effective_demandee = serializers.SerializerMethodField()
     
     class Meta:
         model = BenefitConsumption
         fields = [
-            'prenom', 'nom', 'num_cni', 'naissance_date', 
-            'genre', 'code', 'montant'
+            'numero_interne_paiement', 'numero_telephone', 'tp_account_number', 
+            'montant', 'date_effective_demandee'
         ]
     
-    def get_prenom(self, obj):
-        """Get first name"""
-        return obj.individual.first_name if obj.individual else ""
-    
-    def get_nom(self, obj):
-        """Get last name"""
-        return obj.individual.last_name if obj.individual else ""
-    
-    def get_genre(self, obj):
-        """Get gender from individual json_ext"""
-        if obj.individual and obj.individual.json_ext and 'sexe' in obj.individual.json_ext:
-            return obj.individual.json_ext.get('sexe')
-        return ""
-    
-    def get_naissance_date(self, obj):
-        """Get date of birth"""
-        return obj.individual.dob if obj.individual and obj.individual.dob else None
-    
-    def get_num_cni(self, obj):
-        """Get CNI from individual json_ext"""
-        if obj.individual and obj.individual.json_ext and 'ci' in obj.individual.json_ext:
-            return obj.individual.json_ext.get('ci')
-        return ""
-    
-    def get_code(self, obj):
+    def get_numero_interne_paiement(self, obj):
         """Get payment code"""
         return obj.code
+    
+    def get_numero_telephone(self, obj):
+        """Get phone number from benefit consumption or group beneficiary's json_ext"""
+        # First try to get from BenefitConsumption's own json_ext
+        if obj.json_ext and isinstance(obj.json_ext, dict):
+            phone = obj.json_ext.get('phoneNumber', '')
+            if phone:
+                return phone
+        
+        # Fallback to group beneficiary's json_ext
+        try:
+            if obj.individual:
+                # Get the group beneficiary through the relationship chain
+                individual_groups = obj.individual.individualgroup_set.all()
+                for ind_group in individual_groups:
+                    group_beneficiaries = ind_group.group.groupbeneficiary_set.all()
+                    for group_ben in group_beneficiaries:
+                        if group_ben.json_ext:
+                            # First try to get from moyen_paiement (payment attribution)
+                            moyen_paiement = group_ben.json_ext.get('moyen_paiement', {})
+                            if moyen_paiement and isinstance(moyen_paiement, dict):
+                                phone = moyen_paiement.get('phoneNumber', '')
+                                if phone:
+                                    return phone
+                            
+                            # Fallback to moyen_telecom (phone attribution)
+                            moyen_telecom = group_ben.json_ext.get('moyen_telecom', {})
+                            if moyen_telecom and isinstance(moyen_telecom, dict):
+                                phone = moyen_telecom.get('msisdn', '')
+                                if phone:
+                                    return phone
+        except Exception:
+            pass
+        return ""
+    
+    def get_tp_account_number(self, obj):
+        """Get third-party account number from benefit consumption or group beneficiary's json_ext"""
+        # First try to get from BenefitConsumption's own json_ext
+        if obj.json_ext and isinstance(obj.json_ext, dict):
+            tp_account = obj.json_ext.get('tp_account_number', '')
+            if tp_account:
+                return tp_account
+        
+        # Fallback to group beneficiary's json_ext
+        try:
+            if obj.individual:
+                # Get the group beneficiary through the relationship chain
+                individual_groups = obj.individual.individualgroup_set.all()
+                for ind_group in individual_groups:
+                    group_beneficiaries = ind_group.group.groupbeneficiary_set.all()
+                    for group_ben in group_beneficiaries:
+                        if group_ben.json_ext:
+                            moyen_paiement = group_ben.json_ext.get('moyen_paiement', {})
+                            if moyen_paiement and isinstance(moyen_paiement, dict):
+                                tp_account = moyen_paiement.get('tp_account_number', '')
+                                if tp_account:
+                                    return tp_account
+        except Exception:
+            pass
+        return ""
     
     def get_montant(self, obj):
         """Get payment amount"""
         return str(obj.amount) if obj.amount else "0"
+    
+    def get_date_effective_demandee(self, obj):
+        """Get payment request date"""
+        return obj.date_created.date().isoformat() if obj.date_created else None
 
 
 class PaymentAcknowledgmentSerializer(serializers.Serializer):
     """
     Serializer for payment request acknowledgment
     """
-    code = serializers.CharField(required=True)
-    payment_agency_id = serializers.CharField(required=True)
+    numero_interne_paiement = serializers.CharField(required=True)
+    retour_transactionid = serializers.CharField(required=True)
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
-    status_code = serializers.CharField(required=False, allow_blank=True)
+    error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
     
     def validate(self, data):
         """Validate the acknowledgment data"""
-        # Ensure status_code and message are provided if status is REJECTED
+        # Ensure error_code and message are provided if status is REJECTED
         if data.get('status') == 'REJECTED':
-            if not data.get('status_code'):
+            if not data.get('error_code'):
                 raise serializers.ValidationError({
-                    'status_code': 'Status code is required when status is REJECTED'
+                    'error_code': 'error_code is required when status is REJECTED'
+                })
+            if not data.get('message'):
+                raise serializers.ValidationError({
+                    'message': 'message is required when status is REJECTED'
                 })
         
         return data
 
 
-class PaymentStatusUpdateSerializer(serializers.Serializer):
+class PaymentConsolidationSerializer(serializers.Serializer):
     """
-    Serializer for payment status update
+    Serializer for payment consolidation
+    """
+    retour_transactionid = serializers.CharField(required=True)
+    payment_date = serializers.DateField(required=True)
+    receipt_number = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'], required=True)
+    error_code = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate the consolidation data"""
+        # Ensure error_code and message are provided if status is FAILURE
+        if data.get('status') == 'FAILURE':
+            if not data.get('error_code'):
+                raise serializers.ValidationError({
+                    'error_code': 'error_code is required when status is FAILURE'
+                })
+            if not data.get('message'):
+                raise serializers.ValidationError({
+                    'message': 'message is required when status is FAILURE'
+                })
+        
+        return data
+
+
+class PaymentBatchAcknowledgmentSerializer(serializers.Serializer):
+    """
+    Serializer for batch payment acknowledgment
     """
     code = serializers.CharField(required=True)
-    payment_agency_id = serializers.CharField(required=True)
-    status = serializers.ChoiceField(choices=['PAID', 'FAILED'], required=True)
+    status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
+    error_code = serializers.CharField(required=False, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate the acknowledgment data"""
+        # Ensure error_code and message are provided if status is REJECTED
+        if data.get('status') == 'REJECTED':
+            if not data.get('error_code'):
+                raise serializers.ValidationError({
+                    'error_code': 'error_code is required when status is REJECTED'
+                })
+        
+        return data
+
+
+class PaymentBatchConsolidationSerializer(serializers.Serializer):
+    """
+    Serializer for batch payment consolidation
+    """
+    code = serializers.CharField(required=True)
+    status = serializers.ChoiceField(choices=['PAID', 'FAILED', 'REJECTED'], required=True)
     transaction_reference = serializers.CharField(required=False, allow_blank=True)
-    transaction_date = serializers.CharField(required=False, allow_blank=True)
+    transaction_date = serializers.DateTimeField(required=False)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
     
@@ -425,23 +514,21 @@ class PaymentStatusUpdateSerializer(serializers.Serializer):
         if data.get('status') == 'PAID':
             if not data.get('transaction_reference'):
                 raise serializers.ValidationError({
-                    'transaction_reference': 'Transaction reference is required when status is PAID'
+                    'transaction_reference': 'transaction_reference is required when status is PAID'
                 })
-                
-            # Validate transaction date format if provided
-            if data.get('transaction_date'):
-                try:
-                    # Try parsing the date
-                    datetime.fromisoformat(data.get('transaction_date').replace('Z', '+00:00'))
-                except ValueError:
-                    raise serializers.ValidationError({
-                        'transaction_date': 'Invalid date format. Use ISO 8601 format (e.g., 2023-01-01T12:00:00Z)'
-                    })
+            if not data.get('transaction_date'):
+                raise serializers.ValidationError({
+                    'transaction_date': 'transaction_date is required when status is PAID'
+                })
         
-        elif data.get('status') == 'FAILED':
+        elif data.get('status') in ['FAILED', 'REJECTED']:
             if not data.get('error_code'):
                 raise serializers.ValidationError({
-                    'error_code': 'Error code is required when status is FAILED'
+                    'error_code': 'error_code is required when status is FAILED or REJECTED'
+                })
+            if not data.get('message'):
+                raise serializers.ValidationError({
+                    'message': 'message is required when status is FAILED or REJECTED'
                 })
         
         return data
