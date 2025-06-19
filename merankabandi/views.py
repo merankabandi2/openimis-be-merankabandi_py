@@ -420,7 +420,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             )
             
         # Process phone number attribution
-        success, beneficiary, error_message = PhoneNumberAttributionService.process_phone_attribution(
+        success, beneficiary, message = PhoneNumberAttributionService.process_phone_attribution(
             request_serializer.validated_data,
             request.user
         )
@@ -429,13 +429,13 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             response_data = {
                 'status': 'FAILURE',
                 'error_code': 'processing_error',
-                'message': error_message
+                'message': message
             }
             
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
-            elif error_message and 'state' in error_message:
+            elif message and 'state' in message:
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -484,7 +484,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 continue
             
             # Process phone number attribution
-            success, beneficiary, error_message = PhoneNumberAttributionService.process_phone_attribution(
+            success, beneficiary, message = PhoneNumberAttributionService.process_phone_attribution(
                 request_serializer.validated_data,
                 request.user
             )
@@ -500,7 +500,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 errors.append({
                     'index': idx,
                     'socialid': request_serializer.validated_data['socialid'],
-                    'error': error_message
+                    'error': message
                 })
         
         # Return batch response
@@ -610,8 +610,6 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         POST: Handle acknowledgment or attribution based on payload
         Supports both single and batch operations (50-100 items)
         """
-        application_name = request.auth.application.name
-        
         # Check if this is a batch request
         if isinstance(request.data, list):
             return self._handle_batch_creation(request)
@@ -686,7 +684,8 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
     
     def _process_batch_acknowledgment(self, idx, item, request):
         """Process individual acknowledgment in batch"""
-        serializer = PaymentAccountAcknowledgmentSerializer(data=item)
+        application_name = request.auth.application.name
+        serializer = PaymentAccountAcknowledgmentSerializer(data={**item, "agence": application_name})
         if not serializer.is_valid():
             return {
                 'success': False,
@@ -695,7 +694,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'error': serializer.errors
             }
         
-        success, beneficiary, error_message = PaymentAccountAttributionService.process_acknowledgment(
+        success, beneficiary, message = PaymentAccountAttributionService.process_acknowledgment(
             serializer.validated_data
         )
         
@@ -711,12 +710,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'socialid': serializer.validated_data['socialid'],
-                'error': error_message
+                'error': message
             }
     
     def _process_batch_attribution(self, idx, item, request):
         """Process individual attribution in batch"""
-        serializer = PaymentAccountAttributionSerializer(data=item)
+        application_name = request.auth.application.name
+        serializer = PaymentAccountAttributionSerializer(data={**item, "agence": application_name})
         if not serializer.is_valid():
             return {
                 'success': False,
@@ -725,7 +725,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'error': serializer.errors
             }
         
-        success, beneficiary, error_message = PaymentAccountAttributionService.process_account_attribution(
+        success, beneficiary, message = PaymentAccountAttributionService.process_account_attribution(
             serializer.validated_data
         )
         
@@ -741,7 +741,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'socialid': serializer.validated_data['socialid'],
-                'error': error_message
+                'error': message
             }
             
     def handle_acknowledgment(self, request):
@@ -749,7 +749,8 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         Handle acknowledgment of beneficiary data
         """
         # Validate request data
-        serializer = PaymentAccountAcknowledgmentSerializer(data=request.data)
+        application_name = request.auth.application.name
+        serializer = PaymentAccountAcknowledgmentSerializer(data={**request.data, "agence": application_name})
         if not serializer.is_valid():
             return Response(
                 {
@@ -761,7 +762,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             )
             
         # Process acknowledgment
-        success, beneficiary, error_message = PaymentAccountAttributionService.process_acknowledgment(
+        success, beneficiary, message = PaymentAccountAttributionService.process_acknowledgment(
             serializer.validated_data
         )
         
@@ -769,13 +770,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             response_data = {
                 'status': 'FAILURE',
                 'error_code': 'processing_error',
-                'message': error_message
+                'message': message
             }
             
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
-            elif error_message and 'state' in error_message:
+            elif message and 'state' in message:
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -796,7 +797,8 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         Handle payment account attribution
         """
         # Validate request data
-        serializer = PaymentAccountAttributionSerializer(data=request.data)
+        application_name = request.auth.application.name
+        serializer = PaymentAccountAttributionSerializer(data={**request.data, "agence": application_name})
         if not serializer.is_valid():
             return Response(
                 {
@@ -808,7 +810,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             )
             
         # Process account attribution
-        success, beneficiary, error_message = PaymentAccountAttributionService.process_account_attribution(
+        success, beneficiary, message = PaymentAccountAttributionService.process_account_attribution(
             serializer.validated_data
         )
         
@@ -816,13 +818,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             response_data = {
                 'status': 'FAILURE',
                 'error_code': 'processing_error',
-                'message': error_message
+                'message': message
             }
             
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
-            elif error_message and 'state' in error_message:
+            elif message and 'state' in message:
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -991,7 +993,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             # Process acknowledgment
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
-            success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
+            success, benefit, message = PaymentApiService.acknowledge_payment_request(
                 user,
                 code=data['numero_interne_paiement'],
                 status=data['status'],
@@ -1032,7 +1034,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             # Process consolidation
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
-            success, benefit, error_message = PaymentApiService.consolidate_payment(
+            success, benefit, message = PaymentApiService.consolidate_payment(
                 user,
                 transaction_reference=data['retour_transactionid'],
                 payment_date=data['payment_date'],
@@ -1145,7 +1147,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         # Get application name from the request
         application_name = request.auth.application.name if request.auth else None
         
-        success, benefit, error_message = PaymentApiService.acknowledge_payment_request(
+        success, benefit, message = PaymentApiService.acknowledge_payment_request(
             user,
             code=data['code'],
             status=data['status'],
@@ -1166,7 +1168,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'code': data['code'],
-                'error': error_message or 'Error processing payment acknowledgment'
+                'error': message or 'Error processing payment acknowledgment'
             }
     
     def _process_batch_consolidation(self, idx, item, user, request):
@@ -1184,7 +1186,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         # Get application name from the request
         application_name = request.auth.application.name if request.auth else None
         
-        success, benefit, error_message = PaymentApiService.update_payment_status(
+        success, benefit, message = PaymentApiService.update_payment_status(
             user,
             code=data['code'],
             status=data['status'],
@@ -1207,7 +1209,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'success': False,
                 'index': idx,
                 'code': data['code'],
-                'error': error_message or 'Error processing payment status update'
+                'error': message or 'Error processing payment status update'
             }
     
     @action(detail=False, methods=['get'], url_path='stats')

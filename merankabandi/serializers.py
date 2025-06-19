@@ -150,6 +150,7 @@ class PhoneNumberAttributionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
+    agence = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         # Validate that error_code and message are provided if status is REJECTED
@@ -242,6 +243,7 @@ class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
+    agence = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         # Validate that error_code and message are provided if status is REJECTED
@@ -288,6 +290,7 @@ class PaymentAccountAttributionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
+    agence = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         # Validate that error_code and message are provided if status is FAILURE

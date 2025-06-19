@@ -419,7 +419,7 @@ class PhoneNumberAttributionService:
             data (dict): Validated phone attribution data
             
         Returns:
-            tuple: (success (bool), beneficiary or None, error_message or None)
+            tuple: (success (bool), beneficiary or None, message or None)
         """
         try:
             # Find the beneficiary
@@ -442,6 +442,7 @@ class PhoneNumberAttributionService:
             if 'moyen_telecom' not in json_ext or not json_ext['moyen_telecom']:
                 json_ext['moyen_telecom'] = {}
 
+            json_ext['moyen_telecom']['agence'] = data['agence']
             # Update phone number info
             json_ext['moyen_telecom']['status'] = data['status']
             if data['status'] == 'SUCCESS':
@@ -449,7 +450,7 @@ class PhoneNumberAttributionService:
             
             if data['status'] in ['REJECTED', 'FAILURE']:
                 json_ext['moyen_telecom']['error_code'] = data['error_code']
-                json_ext['moyen_telecom']['error_message'] = data['error_message']
+                json_ext['moyen_telecom']['message'] = data['message']
             
             beneficiary.json_ext = json_ext
             
@@ -513,15 +514,7 @@ class PaymentAccountAttributionService:
         """Get or create system user for API operations"""
         from django.contrib.auth import get_user_model
         User = get_user_model()
-        user = User.objects.filter(username='system').first()
-        if not user:
-            user = User.objects.create(
-                username='system',
-                email='system@openimis.org',
-                is_active=True
-            )
-            user.set_unusable_password()
-            user.save()
+        user = User.objects.filter(username='user1').first()
         return user
     
     @staticmethod
@@ -542,9 +535,8 @@ class PaymentAccountAttributionService:
             
             # Find group beneficiaries by socialid
             group_beneficiaries = GroupBeneficiary.objects.filter(
-                json_ext__socialid=socialid
+                json_ext__social_id=socialid
             )
-            
             # Get group beneficiaries where individual is a primary recipient
             for individual in individuals:
                 group_individuals = GroupIndividual.objects.filter(
@@ -579,7 +571,8 @@ class PaymentAccountAttributionService:
         """
         queryset = GroupBeneficiary.objects.filter(
             json_ext__moyen_telecom__msisdn__isnull=False,
-            json_ext__moyen_telecom__status='SUCCESS'
+            json_ext__moyen_telecom__status='SUCCESS',
+            json_ext__moyen_paiement__isnull=True,
         ).select_related(
             'group', 
             'benefit_plan'
@@ -615,7 +608,7 @@ class PaymentAccountAttributionService:
             user: User performing the operation (optional, will use system user if not provided)
             
         Returns:
-            tuple: (success (bool), beneficiary or None, error_message or None)
+            tuple: (success (bool), beneficiary or None, message or None)
         """
         try:
             # Get system user if no user provided
@@ -632,7 +625,7 @@ class PaymentAccountAttributionService:
                 return False, None, "Beneficiary not found"
             
             # Verify beneficiary is in the correct state
-            valid_states = ['PENDING_ACCOUNT_ATTRIBUTION', 'PHONE_VERIFIED']
+            valid_states = ['VALIDATED', 'POTENTIAL', 'ACTIVE']
             if beneficiary.status not in valid_states:
                 return False, beneficiary, f"Invalid beneficiary state: {beneficiary.status}"
             
@@ -642,22 +635,23 @@ class PaymentAccountAttributionService:
             # Ensure nested structure exists
             if 'moyen_paiement' not in json_ext or not json_ext['moyen_paiement']:
                 json_ext['moyen_paiement'] = {}
-                
+            
             # Update payment account info
+            json_ext['moyen_paiement']['agence'] = data['agence']
             json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
             json_ext['moyen_paiement']['status'] = data['status']
             
             if data['status'] == 'REJECTED':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
-                json_ext['moyen_paiement']['error_message'] = data['error_message']
+                json_ext['moyen_paiement']['message'] = data['message']
             
             beneficiary.json_ext = json_ext
             
             # Update beneficiary status
-            if data['status'] == 'ACCEPTED':
-                beneficiary.status = 'PENDING_ACCOUNT_CREATION'
-            else:
-                beneficiary.status = 'ACCOUNT_ATTRIBUTION_REJECTED'
+            # if data['status'] == 'ACCEPTED':
+            #     beneficiary.status = 'PENDING_ACCOUNT_CREATION'
+            # else:
+            #     beneficiary.status = 'ACCOUNT_ATTRIBUTION_REJECTED'
             
             # Save changes
             beneficiary.save(user=user)
@@ -681,7 +675,7 @@ class PaymentAccountAttributionService:
             user: User performing the operation (optional, will use system user if not provided)
             
         Returns:
-            tuple: (success (bool), beneficiary or None, error_message or None)
+            tuple: (success (bool), beneficiary or None, message or None)
         """
         try:
             # Get system user if no user provided
@@ -697,7 +691,8 @@ class PaymentAccountAttributionService:
                 return False, None, "Beneficiary not found"
             
             # Verify beneficiary is in the correct state
-            if beneficiary.status != 'PENDING_ACCOUNT_CREATION':
+            valid_states = ['VALIDATED', 'POTENTIAL', 'ACTIVE']
+            if beneficiary.status not in valid_states:
                 return False, beneficiary, f"Invalid beneficiary state: {beneficiary.status}"
             
             # Update account attribution data in json_ext
@@ -708,13 +703,18 @@ class PaymentAccountAttributionService:
                 json_ext['moyen_paiement'] = {}
                 
             # Update payment account info
+            json_ext['moyen_paiement']['agence'] = data['agence']
             json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
             json_ext['moyen_paiement']['tp_account_number'] = data['tp_account_number']
             json_ext['moyen_paiement']['status'] = data['status']
             
             if data['status'] == 'FAILURE':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
-                json_ext['moyen_paiement']['error_message'] = data['error_message']
+                json_ext['moyen_paiement']['message'] = data['message']
+            else:
+                if beneficiary.status != 'ACTIVE':
+                    beneficiary.status = 'ACTIVE'
+
             
             beneficiary.json_ext = json_ext
             
@@ -837,7 +837,7 @@ class PaymentApiService:
             message (str, optional): Error message if rejected
             
         Returns:
-            tuple: (success (bool), benefit or None, error_message or None)
+            tuple: (success (bool), benefit or None, message or None)
         """
         try:
             # Find the payment request
@@ -924,7 +924,7 @@ class PaymentApiService:
             message (str, optional): Error message if failed
             
         Returns:
-            tuple: (success (bool), benefit or None, error_message or None)
+            tuple: (success (bool), benefit or None, message or None)
         """
         try:
             # Find the payment request by code
@@ -1006,7 +1006,7 @@ class PaymentApiService:
             payment_agency_id (str, optional): Payment agency ID for access control
             
         Returns:
-            tuple: (success (bool), benefit or None, error_message or None)
+            tuple: (success (bool), benefit or None, message or None)
         """
         try:
             # Find the payment request by transaction reference in json_ext
