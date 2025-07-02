@@ -50,22 +50,28 @@ class Command(BaseCommand):
             logger.error(f"Error extracting group code from photo URL {photo_url}: {str(e)}")
             return None
 
-    def find_beneficiary(self, cni, photo_url=None):
-        """Find a beneficiary using CNI number or group code extracted from photo URL"""
+    def find_beneficiary(self, cni, photo_url=None, social_id=None):
+        """Find a beneficiary using social ID (priority), CNI number or group code extracted from photo URL"""
         try:
-            # using the group code from photo URL
-            if photo_url:
+            # Priority 1: using social ID or group code (they're the same)
+            group_code = social_id  # Social ID is the group code
+            
+            # If no social ID provided, try extracting group code from photo URL
+            if not group_code and photo_url:
                 group_code = self.extract_group_code_from_photo_url(photo_url)
-                if group_code:
-                    logger.info(f"Trying to find beneficiary using group code {group_code} from photo URL")
-                    beneficiary = GroupBeneficiary.objects.raw("""
-                        SELECT gb.* FROM social_protection_groupbeneficiary gb
-                        JOIN individual_group g ON gb.group_id = g."UUID"
-                        WHERE g.code = %s
-                        LIMIT 1
-                    """, [group_code])
-                    
-                    return next(iter(beneficiary), None)
+            
+            if group_code:
+                logger.info(f"Trying to find beneficiary using group code {group_code}")
+                beneficiary = GroupBeneficiary.objects.raw("""
+                    SELECT gb.* FROM social_protection_groupbeneficiary gb
+                    JOIN individual_group g ON gb.group_id = g."UUID"
+                    WHERE g.code = %s
+                    LIMIT 1
+                """, [group_code])
+                
+                result = next(iter(beneficiary), None)
+                if result:
+                    return result
             
             # If CNI is provided, try to find beneficiary by CNI
             if cni:
@@ -123,23 +129,24 @@ class Command(BaseCommand):
             msisdn = row.get('MSISDN', '').strip()
             status_str = row.get('CVBS_Response', '').strip()
             photo_url = row.get('photo', '').strip()
+            social_id = row.get('socialid', '').strip()  # Check if socialid field exists
             
             if not msisdn or not status_str:
                 return False, f"Missing required fields in row: {row}"
 
             # Use cache to avoid redundant database lookups
-            cache_key = f"cni:{cni}|photo:{photo_url}"
+            cache_key = f"socialid:{social_id}|cni:{cni}|photo:{photo_url}"
             if beneficiary_cache is not None and cache_key in beneficiary_cache:
                 beneficiary = beneficiary_cache[cache_key]
             else:
-                # Find the beneficiary using CNI or photo URL
-                beneficiary = self.find_beneficiary(cni, photo_url)
+                # Find the beneficiary using social ID (priority), CNI or photo URL
+                beneficiary = self.find_beneficiary(cni, photo_url, social_id)
                 # Store in cache for future lookups
                 if beneficiary_cache is not None:
                     beneficiary_cache[cache_key] = beneficiary
 
             if not beneficiary:
-                lookup_info = f"CNI {cni}" if cni else f"photo URL {photo_url}"
+                lookup_info = f"social ID {social_id}" if social_id else f"CNI {cni}" if cni else f"photo URL {photo_url}"
                 return False, f"Beneficiary with {lookup_info} not found or not in valid state"
             
             # Parse status

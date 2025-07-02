@@ -235,23 +235,30 @@ class PayrollGenerationService:
                     'generated_payrolls': []
                 }
             
-            # Get all communes in this province
-            communes = Location.objects.filter(parent=province, type='W')
-            # Filter communes that have beneficiaries for this benefit plan
-            communes_with_beneficiaries = []
-            for commune in communes:
-                beneficiary_count = GroupBeneficiary.objects.filter(
-                    group__location__parent=commune,
-                    benefit_plan_id=benefit_plan_id,
-                    status='ACTIVE',
-                    is_deleted=False
-                ).count()
-                
-                if beneficiary_count > 0:
-                    communes_with_beneficiaries.append({
-                        'commune': commune,
-                        'beneficiary_count': beneficiary_count
-                    })
+            # Get all communes in this province with beneficiary counts in a single query
+            from django.db.models import Count
+            communes_with_counts = Location.objects.filter(
+                parent=province, 
+                type='W'
+            ).annotate(
+                beneficiary_count=Count(
+                    'children__groups__groupbeneficiary',
+                    filter=Q(
+                        children__groups__groupbeneficiary__benefit_plan_id=benefit_plan_id,
+                        children__groups__groupbeneficiary__status='ACTIVE',
+                        children__groups__groupbeneficiary__is_deleted=False
+                    )
+                )
+            ).filter(beneficiary_count__gt=0)
+            
+            # Convert to the expected format
+            communes_with_beneficiaries = [
+                {
+                    'commune': commune,
+                    'beneficiary_count': commune.beneficiary_count
+                } 
+                for commune in communes_with_counts
+            ]
             
             # No eligible communes found
             if not communes_with_beneficiaries:
@@ -381,30 +388,19 @@ class PhoneNumberAttributionService:
             GroupBeneficiary or None: Found beneficiary or None
         """
         try:
-            # Find individuals by CNI
-            individuals = Individual.objects.filter(json_ext__ci=cni)
+            # Single optimized query combining all conditions
+            beneficiary = GroupBeneficiary.objects.filter(
+                group__code=socialid,
+                group__groupindividuals__recipient_type='PRIMARY',
+                group__groupindividuals__individual__json_ext__ci=cni
+            ).select_related(
+                'group',
+                'benefit_plan'
+            ).prefetch_related(
+                'group__groupindividuals__individual'
+            ).first()
             
-            # Find group beneficiaries by socialid
-            group_beneficiaries = GroupBeneficiary.objects.filter(
-                json_ext__social_id=socialid
-            )
-            
-            # Get group beneficiaries where individual is a primary recipient
-            for individual in individuals:
-                group_individuals = GroupIndividual.objects.filter(
-                    individual=individual,
-                    recipient_type='PRIMARY'
-                )
-                
-                for group_individual in group_individuals:
-                    matching_beneficiaries = group_beneficiaries.filter(
-                        group=group_individual.group
-                    )
-                    
-                    if matching_beneficiaries.exists():
-                        return matching_beneficiaries.first()
-            
-            return None
+            return beneficiary
         except Exception as e:
             logger.error(f"Error finding beneficiary: {str(e)}")
             return None
@@ -530,29 +526,19 @@ class PaymentAccountAttributionService:
             GroupBeneficiary or None: Found beneficiary or None
         """
         try:
-            # Find individuals by CNI
-            individuals = Individual.objects.filter(json_ext__ci=cni)
+            # Single optimized query combining all conditions
+            beneficiary = GroupBeneficiary.objects.filter(
+                group__code=socialid,
+                group__groupindividuals__recipient_type='PRIMARY',
+                group__groupindividuals__individual__json_ext__ci=cni
+            ).select_related(
+                'group',
+                'benefit_plan'
+            ).prefetch_related(
+                'group__groupindividuals__individual'
+            ).first()
             
-            # Find group beneficiaries by socialid
-            group_beneficiaries = GroupBeneficiary.objects.filter(
-                json_ext__social_id=socialid
-            )
-            # Get group beneficiaries where individual is a primary recipient
-            for individual in individuals:
-                group_individuals = GroupIndividual.objects.filter(
-                    individual=individual,
-                    recipient_type='PRIMARY'
-                )
-                
-                for group_individual in group_individuals:
-                    matching_beneficiaries = group_beneficiaries.filter(
-                        group=group_individual.group
-                    )
-                    
-                    if matching_beneficiaries.exists():
-                        return matching_beneficiaries.first()
-            
-            return None
+            return beneficiary
         except Exception as e:
             logger.error(f"Error finding beneficiary: {str(e)}")
             return None
@@ -572,7 +558,12 @@ class PaymentAccountAttributionService:
         queryset = GroupBeneficiary.objects.filter(
             json_ext__moyen_telecom__msisdn__isnull=False,
             json_ext__moyen_telecom__status='SUCCESS',
-            json_ext__moyen_paiement__isnull=True,
+        ).exclude(
+            # Exclude only ACCEPTED accounts (allow REJECTED to be reprocessed)
+            json_ext__moyen_paiement__status='ACCEPTED'
+        ).exclude(
+            # Exclude accounts that already have been created (SUCCESS)
+            json_ext__moyen_paiement__status='SUCCESS'
         ).select_related(
             'group', 
             'benefit_plan'
@@ -631,6 +622,17 @@ class PaymentAccountAttributionService:
             
             # Update account acknowledgment data in json_ext
             json_ext = beneficiary.json_ext or {}
+            
+            # Check if already acknowledged
+            if 'moyen_paiement' in json_ext and json_ext['moyen_paiement']:
+                current_status = json_ext['moyen_paiement'].get('status')
+                if current_status == 'ACCEPTED':
+                    return False, beneficiary, "This record has already been acknowledged with status ACCEPTED"
+                elif current_status == 'REJECTED':
+                    # Allow re-processing of rejected accounts
+                    logger.info(f"Re-processing previously rejected account for socialid: {data['socialid']}")
+                elif current_status == 'SUCCESS':
+                    return False, beneficiary, "This record already has a payment account created"
             
             # Ensure nested structure exists
             if 'moyen_paiement' not in json_ext or not json_ext['moyen_paiement']:
@@ -697,6 +699,18 @@ class PaymentAccountAttributionService:
             
             # Update account attribution data in json_ext
             json_ext = beneficiary.json_ext or {}
+            
+            # Check current status
+            if 'moyen_paiement' in json_ext and json_ext['moyen_paiement']:
+                current_status = json_ext['moyen_paiement'].get('status')
+                if current_status == 'SUCCESS':
+                    return False, beneficiary, "This account has already been created successfully"
+                elif current_status == 'REJECTED':
+                    # Allow creation after rejection - this is a retry
+                    logger.info(f"Creating account for previously rejected beneficiary: {data['socialid']}")
+                elif current_status == 'ACCEPTED':
+                    # This is the normal flow - proceeding with account creation
+                    logger.info(f"Creating account for acknowledged beneficiary: {data['socialid']}")
             
             # Ensure nested structure exists
             if 'moyen_paiement' not in json_ext or not json_ext['moyen_paiement']:

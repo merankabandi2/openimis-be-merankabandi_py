@@ -767,15 +767,24 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         )
         
         if not success:
+            # Determine error code based on message
+            error_code = 'processing_error'
+            if message and 'already been acknowledged' in message:
+                error_code = 'already_acknowledged'
+            elif message and 'already has a payment account' in message:
+                error_code = 'account_already_created'
+            
             response_data = {
                 'status': 'FAILURE',
-                'error_code': 'processing_error',
+                'error_code': error_code,
                 'message': message
             }
             
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
+            elif message and ('already been acknowledged' in message or 'already has a payment account' in message):
+                response_status = status.HTTP_409_CONFLICT  # Conflict - resource already exists
             elif message and 'state' in message:
                 response_status = status.HTTP_400_BAD_REQUEST
             else:

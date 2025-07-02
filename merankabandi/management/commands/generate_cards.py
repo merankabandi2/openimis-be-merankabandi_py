@@ -294,6 +294,7 @@ class Command(BaseCommand):
         parser.add_argument('--batch-size', type=int, default=50, 
                           help='Number of cards to process in each batch (default: 50)')
         parser.add_argument('--limit', type=int, help='Limit the number of cards to generate (for testing)')
+        parser.add_argument('--financement', type=str, help='Filter by financement type (e.g., "financement additionel")')
 
     def handle(self, *args, **options):
         province_name = options.get('province')
@@ -302,6 +303,7 @@ class Command(BaseCommand):
         output_file = options['output']
         batch_size = options['batch_size']
         limit = options.get('limit')
+        financement = options.get('financement')
         
         # Check that at least one location parameter is provided
         if not any([province_name, commune_name, colline_name]):
@@ -338,6 +340,10 @@ class Command(BaseCommand):
         try:
             # Add filter for beneficiaries with phone numbers
             filter_params['json_ext__moyen_telecom__status'] = 'SUCCESS'
+            
+            # Add financement filter if provided
+            if financement:
+                filter_params['json_ext__financement'] = financement
             
             # Use select_related to optimize database queries
             beneficiaries = Beneficiary.objects.filter(**filter_params).select_related(
