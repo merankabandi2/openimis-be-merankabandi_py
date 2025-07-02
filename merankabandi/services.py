@@ -560,10 +560,10 @@ class PaymentAccountAttributionService:
             json_ext__moyen_telecom__status='SUCCESS',
         ).exclude(
             # Exclude only ACCEPTED accounts (allow REJECTED to be reprocessed)
-            json_ext__moyen_paiement__status='ACCEPTED'
+            Q(json_ext__moyen_paiement__status='ACCEPTED') & Q(json_ext__moyen_paiement__isnull=False)
         ).exclude(
             # Exclude accounts that already have been created (SUCCESS)
-            json_ext__moyen_paiement__status='SUCCESS'
+            Q(json_ext__moyen_paiement__status='SUCCESS') & Q(json_ext__moyen_paiement__isnull=False)
         ).select_related(
             'group', 
             'benefit_plan'
