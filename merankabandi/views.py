@@ -35,8 +35,6 @@ from .serializers import (
     PaymentAccountAttributionSerializer,
     PaymentAcknowledgmentSerializer,
     PaymentConsolidationSerializer,
-    PaymentBatchAcknowledgmentSerializer,
-    PaymentBatchConsolidationSerializer,
     PhoneNumberAttributionRequestSerializer,
     BeneficiaryPhoneDataSerializer,
     ResponseSerializer
@@ -1114,7 +1112,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             if not operation:
                 errors.append({
                     'index': idx,
-                    'code': item.get('code', 'unknown'),
+                    'code': item.get('numero_interne_paiement', item.get('code')),
                     'error': 'Could not determine operation type from payload'
                 })
                 continue
@@ -1143,12 +1141,21 @@ class PaymentRequestViewSet(viewsets.ViewSet):
     
     def _process_batch_acknowledgment(self, idx, item, user, request):
         """Process individual acknowledgment in batch"""
-        serializer = PaymentBatchAcknowledgmentSerializer(data=item)
+        # Map batch fields to single serializer fields
+        mapped_data = {
+            'numero_interne_paiement': item.get('numero_interne_paiement', item.get('code')),
+            'retour_transactionid': item.get('retour_transactionid', item.get('transaction_reference', '')),
+            'status': item.get('status'),
+            'error_code': item.get('error_code'),
+            'message': item.get('message')
+        }
+        
+        serializer = PaymentAcknowledgmentSerializer(data=mapped_data)
         if not serializer.is_valid():
             return {
                 'success': False,
                 'index': idx,
-                'code': item.get('code', 'unknown'),
+                'code': mapped_data.get('numero_interne_paiement'),
                 'error': str(serializer.errors)
             }
         
@@ -1158,8 +1165,9 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         
         success, benefit, message = PaymentApiService.acknowledge_payment_request(
             user,
-            code=data['code'],
+            code=data['numero_interne_paiement'],
             status=data['status'],
+            transaction_reference=data['retour_transactionid'],
             payment_agency=application_name,
             error_code=data.get('error_code'),
             message=data.get('message')
@@ -1169,25 +1177,38 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             return {
                 'success': True,
                 'index': idx,
-                'code': data['code'],
+                'code': data['numero_interne_paiement'],
                 'status': 'ACKNOWLEDGED'
             }
         else:
             return {
                 'success': False,
                 'index': idx,
-                'code': data['code'],
+                'code': data['numero_interne_paiement'],
                 'error': message or 'Error processing payment acknowledgment'
             }
     
     def _process_batch_consolidation(self, idx, item, user, request):
         """Process individual consolidation in batch"""
-        serializer = PaymentBatchConsolidationSerializer(data=item)
+        # Map batch fields to single serializer fields
+        mapped_data = {
+            'retour_transactionid': item.get('retour_transactionid', item.get('transaction_reference')),
+            'payment_date': item.get('payment_date', item.get('transaction_date')),
+            'receipt_number': item.get('receipt_number'),
+            'status': item.get('status'),
+            'error_code': item.get('error_code'),
+            'message': item.get('message')
+        }
+        
+        # For batch, we may need to find the code from transaction reference
+        code = item.get('numero_interne_paiement', item.get('code'))
+        
+        serializer = PaymentConsolidationSerializer(data=mapped_data)
         if not serializer.is_valid():
             return {
                 'success': False,
                 'index': idx,
-                'code': item.get('code', 'unknown'),
+                'code': code,
                 'error': str(serializer.errors)
             }
         
@@ -1195,29 +1216,30 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         # Get application name from the request
         application_name = request.auth.application.name if request.auth else None
         
-        success, benefit, message = PaymentApiService.update_payment_status(
+        
+        success, benefit, message = PaymentApiService.consolidate_payment(
             user,
-            code=data['code'],
+            transaction_reference=data['retour_transactionid'],
+            payment_date=data['payment_date'],
+            receipt_number=data.get('receipt_number'),
             status=data['status'],
-            payment_agency=application_name,
-            transaction_reference=data.get('transaction_reference'),
-            transaction_date=data.get('transaction_date'),
             error_code=data.get('error_code'),
-            message=data.get('message')
+            message=data.get('message'),
+            payment_agency=application_name
         )
         
         if success:
             return {
                 'success': True,
                 'index': idx,
-                'code': data['code'],
+                'code': code,
                 'status': data['status']
             }
         else:
             return {
                 'success': False,
                 'index': idx,
-                'code': data['code'],
+                'code': code,
                 'error': message or 'Error processing payment status update'
             }
     
