@@ -857,7 +857,7 @@ class PaymentApiService:
             # Find the payment request
             benefit = BenefitConsumption.objects.filter(
                 code=code,
-                status=BenefitConsumptionStatus.APPROVE_FOR_PAYMENT
+                status__in=[BenefitConsumptionStatus.ACCEPTED, BenefitConsumptionStatus.APPROVE_FOR_PAYMENT]
             ).select_related('individual').first()
             
             if not benefit:
