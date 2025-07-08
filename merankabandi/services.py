@@ -750,6 +750,14 @@ class PaymentApiService:
     Handles fetching payment requests, acknowledgment, and status updates.
     """
     
+    @staticmethod
+    def get_system_user():
+        """Get or create system user for API operations"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.filter(username='user1').first()
+        return user
+
     @classmethod
     def get_individual_payment_requests(cls, payment_provider=None, payment_cycle_id=None, 
                                       commune=None, programme=None, start_date=None, end_date=None):
@@ -836,8 +844,8 @@ class PaymentApiService:
     
     @classmethod
     @transaction.atomic
-    def acknowledge_payment_request(cls, user, code, status, transaction_reference=None, 
-                                  payment_agency=None, error_code=None, message=None):
+    def acknowledge_payment_request(cls, code, status, transaction_reference=None, 
+                                  payment_agency=None, error_code=None, message=None, user=None):
         """
         Acknowledge receipt of payment request by payment provider
         
@@ -854,6 +862,9 @@ class PaymentApiService:
             tuple: (success (bool), benefit or None, message or None)
         """
         try:
+            # Get system user if no user provided
+            if not user:
+                user = cls.get_system_user()
             # Find the payment request
             benefit = BenefitConsumption.objects.filter(
                 code=code,
@@ -919,93 +930,12 @@ class PaymentApiService:
                 transaction.set_rollback(True)
             return False, None, str(e)
     
-    @classmethod
-    @transaction.atomic
-    def update_payment_status(cls, user, code, status, payment_agency=None,
-                           transaction_reference=None, transaction_date=None, 
-                           error_code=None, message=None):
-        """
-        Update payment status after payment execution
-        
-        Args:
-            user: User performing the update
-            code (str): Payment request code
-            status (str): "PAID", "FAILED", or "REJECTED"
-            payment_agency (str, optional): Payment agency
-            transaction_reference (str, optional): Transaction reference if paid
-            transaction_date (str, optional): Transaction date if paid
-            error_code (str, optional): Error code if failed
-            message (str, optional): Error message if failed
-            
-        Returns:
-            tuple: (success (bool), benefit or None, message or None)
-        """
-        try:
-            # Find the payment request by code
-            benefit = BenefitConsumption.objects.filter(
-                code=code
-            ).select_related('individual').first()
-            
-            if not benefit:
-                return False, None, f"Payment request with code {code} not found"
-                
-            # Check if already reconciled
-            if benefit.status == BenefitConsumptionStatus.RECONCILED:
-                return False, benefit, f"Payment request already reconciled"
-            
-            json_ext = benefit.json_ext or {}
-
-            # Update payment status
-            if 'payment_reconciliation' not in json_ext:
-                json_ext['payment_reconciliation'] = {}
-                
-            json_ext['payment_reconciliation']['status'] = status
-            json_ext['payment_reconciliation']['date'] = datetime.now().isoformat()
-            
-            if payment_agency:
-                json_ext['payment_reconciliation']['agence'] = payment_agency
-
-            if status == 'PAID':
-                if not transaction_reference:
-                    return False, benefit, "Transaction reference is required when status is PAID"
-                
-                benefit.receipt = transaction_reference
-                json_ext['payment_reconciliation']['transaction_reference'] = transaction_reference
-                json_ext['payment_reconciliation']['transaction_date'] = transaction_date or datetime.now().isoformat()
-                
-                # Update benefit status to reconciled
-                benefit.status = BenefitConsumptionStatus.RECONCILED
-                
-            elif status in ['FAILED', 'REJECTED']:
-                if not error_code:
-                    return False, benefit, f"Error code is required when status is {status}"
-                    
-                json_ext['payment_reconciliation']['error_code'] = error_code
-                json_ext['payment_reconciliation']['message'] = message or ""
-                
-                # Update benefit status to rejected
-                benefit.status = BenefitConsumptionStatus.REJECTED
-                
-            else:
-                return False, benefit, f"Invalid status: {status}"
-            
-            # Save changes
-            benefit.json_ext = json_ext
-            benefit.save(user=user)
-            
-            return True, benefit, None
-            
-        except Exception as e:
-            logger.error(f"Error updating payment status: {str(e)}")
-            if transaction.get_connection().in_atomic_block:
-                transaction.set_rollback(True)
-            return False, None, str(e)
     
     @classmethod
     @transaction.atomic
-    def consolidate_payment(cls, user, transaction_reference, payment_date, 
+    def consolidate_payment(cls, transaction_reference, payment_date, 
                           receipt_number=None, status='SUCCESS', error_code=None, message=None,
-                          payment_agency=None):
+                          payment_agency=None, user=None):
         """
         Consolidate payment after completion
         
@@ -1023,6 +953,8 @@ class PaymentApiService:
             tuple: (success (bool), benefit or None, message or None)
         """
         try:
+            if not user:
+                user = cls.get_system_user()
             # Find the payment request by transaction reference in json_ext
             benefits = BenefitConsumption.objects.filter(
                 json_ext__payment_provider__transaction_reference=transaction_reference

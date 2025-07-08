@@ -982,7 +982,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             if 'status' in request.data and request.data['status'] in ['SUCCESS', 'FAILURE']:
                 operation = 'consolidate'
 
-        user = request.user
         
         # Handle acknowledgment
         if operation == 'acknowledge':
@@ -1001,7 +1000,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
             success, benefit, message = PaymentApiService.acknowledge_payment_request(
-                user,
                 code=data['numero_interne_paiement'],
                 status=data['status'],
                 transaction_reference=data['retour_transactionid'],
@@ -1042,7 +1040,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
             success, benefit, message = PaymentApiService.consolidate_payment(
-                user,
                 transaction_reference=data['retour_transactionid'],
                 payment_date=data['payment_date'],
                 receipt_number=data.get('receipt_number'),
@@ -1083,7 +1080,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         Handle batch payment request operations
         """
         batch_data = request.data
-        user = request.user
         
         # Validate batch size
         if len(batch_data) > 100:
@@ -1119,10 +1115,10 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             
             # Process based on operation type
             if operation == 'acknowledge':
-                result = self._process_batch_acknowledgment(idx, item, user, request)
+                result = self._process_batch_acknowledgment(idx, item, request)
             else:
-                result = self._process_batch_consolidation(idx, item, user, request)
-            
+                result = self._process_batch_consolidation(idx, item, request)
+
             if result['success']:
                 success_count += 1
                 results.append(result)
@@ -1139,7 +1135,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'errors': errors
         })
     
-    def _process_batch_acknowledgment(self, idx, item, user, request):
+    def _process_batch_acknowledgment(self, idx, item, request):
         """Process individual acknowledgment in batch"""
         # Map batch fields to single serializer fields
         mapped_data = {
@@ -1164,7 +1160,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         application_name = request.auth.application.name if request.auth else None
         
         success, benefit, message = PaymentApiService.acknowledge_payment_request(
-            user,
             code=data['numero_interne_paiement'],
             status=data['status'],
             transaction_reference=data['retour_transactionid'],
@@ -1188,7 +1183,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'error': message or 'Error processing payment acknowledgment'
             }
     
-    def _process_batch_consolidation(self, idx, item, user, request):
+    def _process_batch_consolidation(self, idx, item, request):
         """Process individual consolidation in batch"""
         # Map batch fields to single serializer fields
         mapped_data = {
@@ -1218,7 +1213,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         
         
         success, benefit, message = PaymentApiService.consolidate_payment(
-            user,
             transaction_reference=data['retour_transactionid'],
             payment_date=data['payment_date'],
             receipt_number=data.get('receipt_number'),
