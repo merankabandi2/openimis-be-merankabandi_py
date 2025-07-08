@@ -868,7 +868,7 @@ class PaymentApiService:
                 # Check if benefit consumption is linked to a payroll with this payment provider
                 from payroll.models import PayrollBenefitConsumption, Payroll
                 has_access = PayrollBenefitConsumption.objects.filter(
-                    benefit_consumption=benefit,
+                    benefit=benefit,
                     payroll__payment_point__name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
@@ -1038,7 +1038,7 @@ class PaymentApiService:
                 # Check if benefit consumption is linked to a payroll with this payment provider
                 from payroll.models import PayrollBenefitConsumption, Payroll
                 has_access = PayrollBenefitConsumption.objects.filter(
-                    benefit_consumption=benefit,
+                    benefit=benefit,
                     payroll__payment_point__name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
