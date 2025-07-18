@@ -303,7 +303,6 @@ def beneficiary_photo_view(request, type, id):
     base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
     clean_path = f"{type}_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
     
-    # Define your permission logic here
     if not has_image_access_permission(request.user, clean_path):
         return HttpResponseForbidden("Access denied")
     

@@ -143,7 +143,7 @@ SELECT
     COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END) AS total_male,
     COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END) AS total_female,
     COUNT(DISTINCT CASE 
-        WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
+        WHEN ig."Json_ext"->>'menage_mutwa' = 'OUI' 
         THEN i."UUID" 
     END) AS total_twa,
     CASE 
@@ -279,48 +279,107 @@ WHERE ig."isDeleted" = false''',
     'dashboard_master_summary': {
         'sql': '''CREATE MATERIALIZED VIEW dashboard_master_summary AS
 -- Global summary view that aggregates without location/benefit plan granularity to avoid multiplication
-WITH global_stats AS (
-    -- Get total unique households and beneficiaries
+WITH 
+-- Configuration constants
+config AS (
     SELECT 
-        (SELECT COUNT(DISTINCT ig."UUID") FROM individual_group ig WHERE ig."isDeleted" = false) AS total_households,
+        'ACTIVE'::text AS active_status,
+        'RECONCILED'::text AS reconciled_status,
+        'M'::text AS male_gender,
+        'F'::text AS female_gender,
+        'OUI'::text AS twa_indicator
+),
+-- Global beneficiary statistics with demographics
+beneficiary_stats AS (
+    SELECT
         COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
-        COUNT(DISTINCT CASE WHEN gb.status = 'ACTIVE' THEN gb."UUID" END) AS active_beneficiaries
+        COUNT(DISTINCT gb."UUID") FILTER (WHERE gb.status = c.active_status) AS active_beneficiaries,
+        COUNT(DISTINCT gb."UUID") FILTER (
+            WHERE i."Json_ext"->>'sexe' = c.male_gender
+        ) AS male_beneficiaries,
+        COUNT(DISTINCT gb."UUID") FILTER (
+            WHERE i."Json_ext"->>'sexe' = c.female_gender
+        ) AS female_beneficiaries
     FROM social_protection_groupbeneficiary gb
+    CROSS JOIN config c
+    LEFT JOIN individual_groupindividual gi ON gi.group_id = gb.group_id  and (gi."recipient_type" = 'PRIMARY')
+    LEFT JOIN individual_individual i 
+        ON i."UUID" = gi.individual_id 
+        AND i."isDeleted" = false
     WHERE gb."isDeleted" = false
 ),
-individual_stats AS (
-    -- Get total unique individuals
-    SELECT 
+-- Household statistics
+household_stats AS (
+    SELECT
+        COUNT(DISTINCT ig."UUID") AS total_households,
+        COUNT(DISTINCT ig."UUID") FILTER (
+            WHERE (ig."Json_ext" ->> 'menage_mutwa'::TEXT) = c.twa_indicator
+        ) AS total_twa
+    FROM individual_group ig
+    WHERE ig."isDeleted" = false
+),
+-- Individual demographics
+individual_demographics AS (
+    SELECT
         COUNT(DISTINCT i."UUID") AS total_individuals,
-        COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END) AS total_male,
-        COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END) AS total_female,
-        COUNT(DISTINCT CASE WHEN i."Json_ext"->>'is_twa' = 'true' THEN i."UUID" END) AS total_twa
+        COUNT(DISTINCT i."UUID") FILTER (
+            WHERE i."Json_ext"->>'sexe' = c.male_gender
+        ) AS total_male,
+        COUNT(DISTINCT i."UUID") FILTER (
+            WHERE i."Json_ext"->>'sexe' = c.female_gender
+        ) AS total_female
     FROM individual_individual i
+    CROSS JOIN config c
     WHERE i."isDeleted" = false
 ),
-payment_stats AS (
-    -- Get payment statistics
-    SELECT 
+-- Payment and transfer statistics
+payment_summary AS (
+    SELECT
         COUNT(DISTINCT pp."UUID") AS total_transfers,
-        COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
-        COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
+        COALESCE(SUM(bc."Amount"::numeric) FILTER (
+            WHERE bc.status = c.reconciled_status
+        ), 0) AS total_amount_paid,
+        COALESCE(SUM(bc."Amount"::numeric) FILTER (
+            WHERE bc.status <> c.reconciled_status
+        ), 0) AS total_amount_unpaid,
         COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount
     FROM payroll_payroll pp
-    LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = pp."UUID" AND pbc."isDeleted" = false
-    LEFT JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    CROSS JOIN config c
+    LEFT JOIN payroll_payrollbenefitconsumption pbc 
+        ON pbc.payroll_id = pp."UUID" 
+        AND pbc."isDeleted" = false
+    LEFT JOIN payroll_benefitconsumption bc 
+        ON bc."UUID" = pbc.benefit_id 
+        AND bc."isDeleted" = false
     WHERE pp."isDeleted" = false
 ),
-location_stats AS (
-    -- Get active provinces count
+-- Geographic coverage
+geographic_coverage AS (
     SELECT COUNT(DISTINCT l3."LocationId") AS active_provinces
     FROM individual_group ig
-    JOIN "tblLocations" l1 ON ig.location_id = l1."LocationId"
-    JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
-    JOIN "tblLocations" l3 ON l2."ParentLocationId" = l3."LocationId"
+    INNER JOIN "tblLocations" l1 ON ig.location_id = l1."LocationId"
+    INNER JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+    INNER JOIN "tblLocations" l3 ON l2."ParentLocationId" = l3."LocationId"
     WHERE ig."isDeleted" = false
+),
+-- Grievance statistics (placeholder for future implementation)
+grievance_stats AS (
+    SELECT 
+        0::bigint AS total_grievances,
+        0::bigint AS resolved_grievances
+    -- TODO: Implement actual grievance aggregation logic when table structure is defined
+),
+-- Time dimensions
+time_dimensions AS (
+    SELECT
+        EXTRACT(year FROM CURRENT_DATE)::integer AS year,
+        date_trunc('month', CURRENT_DATE)::date AS month,
+        date_trunc('quarter', CURRENT_DATE)::date AS quarter,
+        CURRENT_TIMESTAMP AS last_updated
 )
-SELECT 
-    -- For global summary, we don't break down by location/plan
+-- Main query combining all statistics
+SELECT
+    -- Location hierarchy (NULL for global summary)
     NULL::integer AS province_id,
     'ALL'::text AS province,
     NULL::integer AS commune_id,
@@ -328,37 +387,51 @@ SELECT
     NULL::integer AS colline_id,
     'ALL'::text AS colline,
     'ALL'::text AS community_type,
+    
+    -- Benefit plan (NULL for global summary)
     NULL::uuid AS benefit_plan_id,
     'ALL'::text AS benefit_plan_code,
     'ALL'::text AS benefit_plan_name,
-    EXTRACT(year FROM CURRENT_DATE) AS year,
-    date_trunc('month', CURRENT_DATE) AS month,
-    date_trunc('quarter', CURRENT_DATE) AS quarter,
     
-    -- Counts from CTEs (no multiplication)
-    gs.total_beneficiaries,
-    gs.active_beneficiaries,
-    gs.total_households,
+    -- Time dimensions
+    td.year,
+    td.month,
+    td.quarter,
     
-    ist.total_individuals,
-    ist.total_male,
-    ist.total_female,
-    ist.total_twa,
+    -- Beneficiary metrics
+    bs.total_beneficiaries,
+    bs.active_beneficiaries,
+    bs.male_beneficiaries,
+    bs.female_beneficiaries,
+    hs.total_households,
+    hs.total_twa,
     
+    -- Individual demographics
+    id.total_individuals,
+    id.total_male,
+    id.total_female,
+    
+    -- Payment metrics
     ps.total_transfers,
     ps.total_amount_paid,
+    ps.total_amount_unpaid,
     
-    -- Grievances (TODO: add proper aggregation)
-    0 AS total_grievances,
-    0 AS resolved_grievances,
+    -- Grievance metrics
+    gs.total_grievances,
+    gs.resolved_grievances,
     
-    ls.active_provinces,
+    -- Geographic coverage
+    gc.active_provinces,
     
-    CURRENT_TIMESTAMP AS last_updated
-FROM global_stats gs
-CROSS JOIN individual_stats ist
-CROSS JOIN payment_stats ps
-CROSS JOIN location_stats ls''',
+    -- Metadata
+    td.last_updated
+FROM beneficiary_stats bs
+CROSS JOIN household_stats hs
+CROSS JOIN individual_demographics id
+CROSS JOIN payment_summary ps
+CROSS JOIN geographic_coverage gc
+CROSS JOIN grievance_stats gs
+CROSS JOIN time_dimensions td''',
         'indexes': [
             """CREATE INDEX idx_master_summary_month ON dashboard_master_summary USING btree (month);""",
             """CREATE INDEX idx_master_summary_province ON dashboard_master_summary USING btree (province_id);""",
@@ -369,8 +442,308 @@ CROSS JOIN location_stats ls''',
         ]
     },
     'dashboard_master_summary_enhanced': {
-        'sql': '''CREATE MATERIALIZED VIEW dashboard_master_summary_enhanced AS
-SELECT 'MASTER_SUMMARY'::text AS summary_type, ( SELECT count(*) AS count FROM social_protection_groupbeneficiary WHERE ((social_protection_groupbeneficiary."isDeleted" = false) AND ((social_protection_groupbeneficiary.status)::text = 'ACTIVE'::text))) AS total_beneficiaries, ( SELECT count(DISTINCT social_protection_groupbeneficiary.group_id) AS count FROM social_protection_groupbeneficiary WHERE ((social_protection_groupbeneficiary."isDeleted" = false) AND ((social_protection_groupbeneficiary.status)::text = 'ACTIVE'::text))) AS total_households, ( SELECT count(*) AS count FROM ((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((i."Json_ext" ->> 'sexe'::text) = 'M'::text))) AS total_male, ( SELECT count(*) AS count FROM ((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((i."Json_ext" ->> 'sexe'::text) = 'F'::text))) AS total_female, ( SELECT count(DISTINCT i."UUID") AS count FROM (((social_protection_groupbeneficiary gb JOIN individual_group g ON ((gb.group_id = g."UUID"))) JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((g."Json_ext" ->> 'menage_mutwa'::text) = 'OUI'::text))) AS total_twa, ( SELECT count(DISTINCT i."UUID") AS count FROM ((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((i."Json_ext" ->> 'handicap'::text) = 'OUI'::text))) AS total_disabled, ( SELECT count(DISTINCT i."UUID") AS count FROM ((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((i."Json_ext" ->> 'maladie_chro'::text) = 'OUI'::text))) AS total_chronic_illness, ( SELECT count(DISTINCT i."UUID") AS count FROM (((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) JOIN individual_group g ON ((gi.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((g."Json_ext" ->> 'menage_refugie'::text) = 'OUI'::text))) AS total_refugees, ( SELECT count(DISTINCT i."UUID") AS count FROM (((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) JOIN individual_group g ON ((gi.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((g."Json_ext" ->> 'menage_rapatrie'::text) = 'OUI'::text))) AS total_returnees, ( SELECT count(DISTINCT i."UUID") AS count FROM (((social_protection_groupbeneficiary gb JOIN individual_groupindividual gi ON ((gi.group_id = gb.group_id))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) JOIN individual_group g ON ((gi.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((g."Json_ext" ->> 'menage_deplace'::text) = 'OUI'::text))) AS total_displaced, ( SELECT count(DISTINCT g."UUID") AS count FROM (social_protection_groupbeneficiary gb JOIN individual_group g ON ((gb.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND ((g."Json_ext" ->> 'menage_mutwa'::text) = 'OUI'::text))) AS twa_households, ( SELECT count(DISTINCT g."UUID") AS count FROM (social_protection_groupbeneficiary gb JOIN individual_group g ON ((gb.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND (EXISTS ( SELECT 1 FROM (individual_groupindividual gi2 JOIN individual_individual i2 ON ((gi2.individual_id = i2."UUID"))) WHERE ((gi2.group_id = g."UUID") AND ((i2."Json_ext" ->> 'handicap'::text) = 'OUI'::text)))))) AS disabled_households, ( SELECT count(DISTINCT g."UUID") AS count FROM (social_protection_groupbeneficiary gb JOIN individual_group g ON ((gb.group_id = g."UUID"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text) AND (EXISTS ( SELECT 1 FROM (individual_groupindividual gi2 JOIN individual_individual i2 ON ((gi2.individual_id = i2."UUID"))) WHERE ((gi2.group_id = g."UUID") AND ((i2."Json_ext" ->> 'maladie_chro'::text) = 'OUI'::text)))))) AS chronic_illness_households, (( SELECT sum(merankabandi_sensitizationtraining.twa_participants) AS sum FROM merankabandi_sensitizationtraining) + ( SELECT sum(merankabandi_behaviorchangepromotion.twa_participants) AS sum FROM merankabandi_behaviorchangepromotion)) AS total_twa_activity_participants, CURRENT_TIMESTAMP AS last_updated''',
+        'sql': '''
+            CREATE MATERIALIZED VIEW DASHBOARD_MASTER_SUMMARY_ENHANCED AS
+            SELECT
+                'MASTER_SUMMARY'::TEXT AS SUMMARY_TYPE,
+                (
+                    SELECT
+                        COUNT(*) AS COUNT
+                    FROM
+                        SOCIAL_PROTECTION_GROUPBENEFICIARY
+                    WHERE
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY."isDeleted" = FALSE
+                            )
+                            AND (
+                                (SOCIAL_PROTECTION_GROUPBENEFICIARY.STATUS)::TEXT = 'ACTIVE'::TEXT
+                            )
+                        )
+                ) AS TOTAL_BENEFICIARIES,
+                (
+                    SELECT
+                        COUNT(
+                            DISTINCT SOCIAL_PROTECTION_GROUPBENEFICIARY.GROUP_ID
+                        ) AS COUNT
+                    FROM
+                        SOCIAL_PROTECTION_GROUPBENEFICIARY
+                    WHERE
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY."isDeleted" = FALSE
+                            )
+                            AND (
+                                (SOCIAL_PROTECTION_GROUPBENEFICIARY.STATUS)::TEXT = 'ACTIVE'::TEXT
+                            )
+                        )
+                ) AS TOTAL_HOUSEHOLDS,
+                (
+                    SELECT
+                        COUNT(*) AS COUNT
+                    FROM
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                            )
+                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND ((I."Json_ext" ->> 'sexe'::TEXT) = 'M'::TEXT)
+                        )
+                ) AS TOTAL_MALE,
+                (
+                    SELECT
+                        COUNT(*) AS COUNT
+                    FROM
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                            )
+                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND ((I."Json_ext" ->> 'sexe'::TEXT) = 'F'::TEXT)
+                        )
+                ) AS TOTAL_FEMALE,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                (
+                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                    JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
+                                )
+                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                            )
+                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (G."Json_ext" ->> 'menage_mutwa'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TOTAL_TWA,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                            )
+                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND ((I."Json_ext" ->> 'handicap'::TEXT) = 'OUI'::TEXT)
+                        )
+                ) AS TOTAL_DISABLED,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                            )
+                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (I."Json_ext" ->> 'maladie_chro'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TOTAL_CHRONIC_ILLNESS,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                (
+                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                                )
+                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                            )
+                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (G."Json_ext" ->> 'menage_refugie'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TOTAL_REFUGEES,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                (
+                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                                )
+                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                            )
+                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (G."Json_ext" ->> 'menage_rapatrie'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TOTAL_RETURNEES,
+                (
+                    SELECT
+                        COUNT(DISTINCT I."UUID") AS COUNT
+                    FROM
+                        (
+                            (
+                                (
+                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
+                                )
+                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
+                            )
+                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (G."Json_ext" ->> 'menage_deplace'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TOTAL_DISPLACED,
+                (
+                    SELECT
+                        COUNT(DISTINCT G."UUID") AS COUNT
+                    FROM
+                        (
+                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                (G."Json_ext" ->> 'menage_mutwa'::TEXT) = 'OUI'::TEXT
+                            )
+                        )
+                ) AS TWA_HOUSEHOLDS,
+                (
+                    SELECT
+                        COUNT(DISTINCT G."UUID") AS COUNT
+                    FROM
+                        (
+                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                EXISTS (
+                                    SELECT
+                                        1
+                                    FROM
+                                        (
+                                            INDIVIDUAL_GROUPINDIVIDUAL GI2
+                                            JOIN INDIVIDUAL_INDIVIDUAL I2 ON ((GI2.INDIVIDUAL_ID = I2."UUID"))
+                                        )
+                                    WHERE
+                                        (
+                                            (GI2.GROUP_ID = G."UUID")
+                                            AND (
+                                                (I2."Json_ext" ->> 'handicap'::TEXT) = 'OUI'::TEXT
+                                            )
+                                        )
+                                )
+                            )
+                        )
+                ) AS DISABLED_HOUSEHOLDS,
+                (
+                    SELECT
+                        COUNT(DISTINCT G."UUID") AS COUNT
+                    FROM
+                        (
+                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
+                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
+                        )
+                    WHERE
+                        (
+                            (GB."isDeleted" = FALSE)
+                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
+                            AND (
+                                EXISTS (
+                                    SELECT
+                                        1
+                                    FROM
+                                        (
+                                            INDIVIDUAL_GROUPINDIVIDUAL GI2
+                                            JOIN INDIVIDUAL_INDIVIDUAL I2 ON ((GI2.INDIVIDUAL_ID = I2."UUID"))
+                                        )
+                                    WHERE
+                                        (
+                                            (GI2.GROUP_ID = G."UUID")
+                                            AND (
+                                                (I2."Json_ext" ->> 'maladie_chro'::TEXT) = 'OUI'::TEXT
+                                            )
+                                        )
+                                )
+                            )
+                        )
+                ) AS CHRONIC_ILLNESS_HOUSEHOLDS,
+                (
+                    (
+                        SELECT
+                            SUM(
+                                MERANKABANDI_SENSITIZATIONTRAINING.TWA_PARTICIPANTS
+                            ) AS SUM
+                        FROM
+                            MERANKABANDI_SENSITIZATIONTRAINING
+                    ) + (
+                        SELECT
+                            SUM(
+                                MERANKABANDI_BEHAVIORCHANGEPROMOTION.TWA_PARTICIPANTS
+                            ) AS SUM
+                        FROM
+                            MERANKABANDI_BEHAVIORCHANGEPROMOTION
+                    )
+                ) AS TOTAL_TWA_ACTIVITY_PARTICIPANTS,
+                CURRENT_TIMESTAMP AS LAST_UPDATED
+            ''',
         'indexes': [
         ]
     },
