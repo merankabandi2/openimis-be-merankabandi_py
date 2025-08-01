@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 
 from social_protection.models import GroupBeneficiary
+from location.models import Location
 
 logger = logging.getLogger(__name__)
 
@@ -478,5 +479,27 @@ class PaymentConsolidationSerializer(serializers.Serializer):
         
         return data
 
+
+class CommuneSerializer(serializers.ModelSerializer):
+    """
+    Serializer for commune locations
+    """
+    id = serializers.IntegerField(read_only=True)
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    province_id = serializers.SerializerMethodField()
+    province_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Location
+        fields = ['id', 'code', 'name', 'province_id', 'province_name']
+
+    def get_province_id(self, obj):
+        """Get the province (district) ID"""
+        return obj.parent.id if obj.parent else None
+
+    def get_province_name(self, obj):
+        """Get the province (district) name"""
+        return obj.parent.name if obj.parent else None
 
 

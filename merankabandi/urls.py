@@ -36,6 +36,11 @@ router.register(
     views.GroupBeneficiaryCheckViewSet,
     basename='group-beneficiary'
 )
+router.register(
+    r'communes',
+    views.ProvincePaymentPointCommunesViewSet,
+    basename='payment-communes'
+)
 
 
 urlpatterns = [

@@ -6,6 +6,7 @@ from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from social_protection.models import GroupBeneficiary as Beneficiary, Group
 from individual.models import GroupIndividual, Individual
+from location.models import Location
 from django.conf import settings
 from django.http import FileResponse, HttpResponseForbidden
 from pathlib import Path
@@ -26,7 +27,10 @@ import threading
 from django.http import JsonResponse
 from datetime import date
 
+from social_protection.models import BenefitPlan
 from .monetary_transfer_import_service import MonetaryTransferImportService
+from .models import ProvincePaymentPoint
+            
 
 from .serializers import (
     IndividualPaymentRequestSerializer,
@@ -37,7 +41,8 @@ from .serializers import (
     PaymentConsolidationSerializer,
     PhoneNumberAttributionRequestSerializer,
     BeneficiaryPhoneDataSerializer,
-    ResponseSerializer
+    ResponseSerializer,
+    CommuneSerializer
 )
 from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService
 
@@ -1537,6 +1542,100 @@ class GroupBeneficiaryCheckViewSet(viewsets.ViewSet):
                     "error": "Error checking beneficiary household",
                     "socialID": request.data.get('socialID'),
                     "exists": False
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
+    """
+    API endpoint to get communes for provinces that have payment points
+    """
+    permission_classes = [TokenHasScope]
+    required_scopes = ['location:read']
+    
+    def get_required_scopes(self, request):
+        """Return appropriate scopes based on request method"""
+        return ['location:read']
+    
+    def list(self, request):
+        """
+        GET: List all communes for provinces that have payment points
+        Optional query parameters:
+        - province: Filter by specific province code
+        - payment_plan: Filter by specific payment plan code
+        - programme: Filter by specific programme code
+        """
+        try:
+            application_name = request.auth.application.name
+
+            # Get filter parameters from query params
+            province = request.query_params.get('province')
+            payment_plan = request.query_params.get('payment_plan')
+            programme = request.query_params.get('programme')
+
+            # Build filter conditions dynamically
+            payment_point_filters = {
+                'is_active': True,
+                'payment_point__name': application_name,
+            }
+
+            # Add optional filters
+            if province:
+                payment_point_filters['province__code'] = province
+            if payment_plan:
+                payment_point_filters['payment_plan__code'] = payment_plan
+            if programme:
+                benefit_plans = BenefitPlan.objects.filter(is_deleted=False, code=programme)
+                benefit_plan_ids = list(benefit_plans.values_list('id', flat=True).iterator())
+                payment_point_filters['payment_plan__benefit_plan_id__in'] = benefit_plan_ids
+
+            # Get provinces that have payment points
+            province_payment_points = ProvincePaymentPoint.objects.filter(
+                **payment_point_filters
+            ).distinct()
+            
+            # Extract province IDs
+            province_ids = [ppp.province_id for ppp in province_payment_points]
+    
+            # Get communes (type='W') for these provinces
+            communes = Location.objects.filter(
+                parent_id__in=province_ids,
+                type='W',
+                validity_to__isnull=True
+            ).select_related('parent').order_by('parent__name', 'name')
+            
+            # Serialize the data
+            serializer = CommuneSerializer(communes, many=True)
+            
+            # Group by province for better organization
+            communes_by_province = {}
+            for commune_data in serializer.data:
+                province_name = commune_data['province_name']
+                if province_name not in communes_by_province:
+                    communes_by_province[province_name] = {
+                        'province_id': commune_data['province_id'],
+                        'province_name': province_name,
+                        'communes': []
+                    }
+                communes_by_province[province_name]['communes'].append({
+                    'id': commune_data['id'],
+                    'code': commune_data['code'],
+                    'name': commune_data['name']
+                })
+            
+            return Response({
+                'count': len(serializer.data),
+                'provinces_count': len(communes_by_province),
+                'data': list(communes_by_province.values())
+            })
+            
+        except Exception as e:
+            logger.error(f"Error retrieving communes for provinces with payment points: {str(e)}")
+            return Response(
+                {
+                    'error': 'Error retrieving communes data',
+                    'data': []
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
