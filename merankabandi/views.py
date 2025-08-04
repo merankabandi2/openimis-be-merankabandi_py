@@ -1106,7 +1106,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             if 'status' in item:
                 if item['status'] in ['ACCEPTED', 'REJECTED']:
                     operation = 'acknowledge'
-                elif item['status'] in ['PAID', 'FAILED', 'REJECTED']:
+                elif item['status'] in ['SUCCESS', 'FAILURE']:
                     operation = 'consolidate'
             
             if not operation:
