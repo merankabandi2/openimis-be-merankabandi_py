@@ -6,7 +6,7 @@ from django.db import connection
 import time
 
 class Command(BaseCommand):
-    help = 'Creates optimized indexes for JSON fields in PostgreSQL'
+    help = 'Creates optimized indexes for fields in PostgreSQL'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -162,6 +162,24 @@ class Command(BaseCommand):
                 'columns': '(("Json_ext"->\'payment_provider\'->\'transaction_reference\'))'
             },
             {
+                'name': 'idx_payroll_benefitconsumption_code',
+                'table': 'payroll_benefitconsumption',
+                'type': 'BTREE',
+                'columns': '(code)'
+            },
+            {
+                'name': 'idx_tblbill_code',
+                'table': '"tblBill"',
+                'type': 'BTREE',
+                'columns': '("Code")'
+            },
+            {
+                'name': 'idx_groupbeneficiary_plan_status_deleted',
+                'table': 'social_protection_groupbeneficiary',
+                'type': 'BTREE',
+                'columns': '(benefit_plan_id, status, "isDeleted")',
+            },
+            {
                 'name': 'idx_beneficiary_json_pmt',
                 'table': 'social_protection_groupbeneficiary',
                 'type': 'BTREE',
@@ -253,6 +271,7 @@ class Command(BaseCommand):
                 'social_protection_groupbeneficiary',
                 'payroll_benefitconsumption',
                 'payroll_paymentpoint',
+                '"tblBill"',
                 '"tblLocations"'
             ]
             for table in tables:
