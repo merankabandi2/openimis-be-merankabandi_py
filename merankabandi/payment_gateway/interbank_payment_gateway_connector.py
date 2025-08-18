@@ -41,8 +41,8 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             token_data = response.json()
             if 'token' in token_data:
                 self.token = token_data['token']
-                # Set token expiry to 55 minutes from now (assuming 1 hour validity)
-                self.token_expiry = time.time() + (55 * 60)
+                # Set token expiry to 1 minutes
+                self.token_expiry = time.time() + (1 * 60)
                 # Update session headers with the new token
                 self.session.headers.update({'Authorization': f'Bearer {self.token}'})
                 return True
@@ -95,7 +95,6 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         - phone_number: Recipient's phone number
         """
         # Ensure we have a valid token
-        self._refresh_token_if_needed()
         
         username = kwargs.get('username')
         # Get phone number from kwargs
@@ -123,6 +122,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         url = f'{self.config.gateway_base_url}/ipg/Ibb/IoService/inBoundTransfer'
         
         try:
+            self._refresh_token_if_needed()
             response = self.session.post(url, json=payload)
             response.raise_for_status()
             benefit = BenefitConsumption.objects.get(code=invoice_id)
@@ -149,14 +149,13 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         """
         Check transaction status using IBB M+ API
         """
-        # Ensure we have a valid token
-        self._refresh_token_if_needed()
-        
         url = f'{self.config.gateway_base_url}/ipg/Ibb/IoService/trxLookUp/{invoice_id}'
         
         username = kwargs.get('username')
         try:
             benefit = BenefitConsumption.objects.get(code=invoice_id)
+            # Ensure we have a valid token
+            self._refresh_token_if_needed()
             response = self.session.get(url)
             response.raise_for_status()
             
