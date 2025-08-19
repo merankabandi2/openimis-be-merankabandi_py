@@ -83,7 +83,7 @@ class LumicashPaymentGatewayConnector(PaymentGatewayConnector):
             "RequestDate": request_date,
             "PartnerCode": self.config.partner_code,
             "DesMobile": phone_number,
-            "TransAmount": float(amount),
+            "TransAmount": int(amount),
             "Content": kwargs.get('content', f"Payment for invoice {invoice_id}"),
             "Description": kwargs.get('description', ''),
             "Signature": signature

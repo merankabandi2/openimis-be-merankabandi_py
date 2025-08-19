@@ -114,7 +114,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             "msisdn": phone_number,
             "transactionID": str(invoice_id),
             "partner": self.config.partner_name,
-            "amount": str(amount),
+            "amount": int(amount),
             "pin": self.config.partner_pin
         }
         
