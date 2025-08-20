@@ -42,7 +42,7 @@ class BeneficiaryCardGenerator:
                 margin: 0 0 0 0;
                 page-break-inside: avoid;
                 position: relative;
-                font-family: Arial, sans-serif;
+                font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
             }
             
             .card-header {
@@ -51,33 +51,47 @@ class BeneficiaryCardGenerator:
                 align-items: flex-start;
                 font-size: 12pt;
                 font-weight: bold;
-                margin-bottom: 0;
-            }
-            .header-text {
-                flex-grow: 1;
-                text-align: center;
-            }
-            .social-id-container {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
                 margin-bottom: 0.5cm;
-            }
-            .social-id {
-                flex-grow: 1;
-                font-weight: bold;
-                text-align: center;
-                font-size: 16pt;
-                margin-top: 0.5cm
+                height: 3cm;
             }
             
             .logo {
                 height: 2cm;
+                width: auto;
                 object-fit: contain;
+                flex-shrink: 0;
             }
+            
             .photo {
                 height: 3cm;
+                width: auto;
                 object-fit: contain;
+                flex-shrink: 0;
+            }
+            
+            .social-id-container {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                margin: 0 1cm;
+            }
+            
+            .header-text {
+                text-align: center;
+                font-size: 12pt;
+                margin-bottom: 0.3cm;
+            }
+            
+            .social-id {
+                font-weight: bold;
+                text-align: center;
+                font-size: 16pt;
+            }
+
+            .fields {
+                margin-top: 0.5cm;
             }
 
             .field {
@@ -102,7 +116,7 @@ class BeneficiaryCardGenerator:
                 font-size: 10pt;
                 margin-top: 0.6cm;
             }
-    
+
             .card2 {
                 margin-top: 1.3cm;
             }
