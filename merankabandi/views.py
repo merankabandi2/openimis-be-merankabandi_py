@@ -66,54 +66,66 @@ class BeneficiaryCardGenerator:
             .card {
                 height: 13cm;
                 width: 18.5cm;
-                margin: 0 0 0 0;
+                margin: 0;
+                padding: 0;
                 page-break-inside: avoid;
-                position: relative;
                 font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
             }
             
             .card-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                font-size: 12pt;
-                font-weight: bold;
-                margin-bottom: 0.5cm;
+                display: table;
+                width: 100%;
                 height: 3cm;
+                table-layout: fixed;
+                margin-bottom: 0.5cm;
+            }
+            
+            .logo, .social-id-container, .photo {
+                display: table-cell;
+                vertical-align: top;
+                padding: 0;
             }
             
             .logo {
-                height: 2cm;
-                width: auto;
-                object-fit: contain;
-                flex-shrink: 0;
+                width: 3cm;
+                text-align: left;
             }
             
-            .photo {
-                height: 3cm;
+            .logo img {
+                height: 2.5cm;
                 width: auto;
+                max-width: 3cm;
                 object-fit: contain;
-                flex-shrink: 0;
             }
             
             .social-id-container {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin: 0 1cm;
+                width: auto;
+                text-align: center;
+                vertical-align: middle;
+                padding: 0 0.5cm;
+            }
+            
+            .photo {
+                width: 3.5cm;
+                text-align: right;
+            }
+            
+            .photo img {
+                height: 3cm;
+                width: auto;
+                max-width: 3.5cm;
+                object-fit: contain;
             }
             
             .header-text {
-                text-align: center;
-                font-size: 12pt;
-                margin-bottom: 0.3cm;
+                font-size: 11pt;
+                font-weight: bold;
+                margin-bottom: 0.5cm;
+                line-height: 1.2;
             }
             
             .social-id {
                 font-weight: bold;
-                text-align: center;
                 font-size: 16pt;
             }
 
