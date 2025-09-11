@@ -220,7 +220,7 @@ class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):
     Serializer for listing beneficiary data for payment account attribution.
     """
     msisdn = serializers.SerializerMethodField()
-    progamme = serializers.SerializerMethodField()
+    programme = serializers.SerializerMethodField()
 
     class Meta:
         model = GroupBeneficiary
