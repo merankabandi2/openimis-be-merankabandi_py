@@ -882,21 +882,37 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         """
         GET: Retrieve statistics about payment account attribution
         """
+        commune = request.query_params.get('commune')
+        programme = request.query_params.get('programme')
+        
+        # Get beneficiaries awaiting account attribution
+        queryset = Beneficiary.objects
+
+        if commune:
+            queryset = queryset.filter(
+                group__location__parent__name__iexact=commune
+            )
+            
+        if programme:
+            queryset = queryset.filter(
+                benefit_plan__name__iexact=programme
+            )
+        
         try:
             # Count beneficiaries by status
-            pending_attribution = Beneficiary.objects.filter(
+            pending_attribution = queryset.filter(
                 json_ext__moyen_paiement__status='ACCEPTED'
             ).count()
             
-            rejected = Beneficiary.objects.filter(
+            rejected = queryset.filter(
                 json_ext__moyen_paiement__status='REJECTED'
             ).count()
             
-            created = Beneficiary.objects.filter(
+            created = queryset.filter(
                 json_ext__moyen_paiement__status='SUCCESS'
             ).count()
             
-            failed = Beneficiary.objects.filter(
+            failed = queryset.filter(
                 json_ext__moyen_paiement__status='FAILED'
             ).count()
             

@@ -220,18 +220,23 @@ class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):
     Serializer for listing beneficiary data for payment account attribution.
     """
     msisdn = serializers.SerializerMethodField()
+    progamme = serializers.SerializerMethodField()
 
     class Meta:
         model = GroupBeneficiary
         fields = [
             'photo', 'ci_recto', 'ci_verso', 'niveau1_label', 'niveau2_label', 'niveau3_label',
-            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'genre', 'cni', 'socialid', 'msisdn'
+            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'genre', 'cni', 'socialid', 'msisdn',
+            'programme'
         ]
 
     def get_msisdn(self, obj):
         if obj.json_ext and 'moyen_telecom' in obj.json_ext:
             return obj.json_ext.get('moyen_telecom').get('msisdn')
         return None
+
+    def get_programme(self, obj):
+        return obj.benefit_plan.name if obj.benefit_plan else None
 
 
 class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
