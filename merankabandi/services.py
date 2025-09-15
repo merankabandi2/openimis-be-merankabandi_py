@@ -635,7 +635,7 @@ class PaymentApiService:
 
     @classmethod
     def get_individual_payment_requests(cls, payment_provider=None, payment_cycle_id=None, 
-                                      commune=None, programme=None, start_date=None, end_date=None):
+                                      commune=None, programme=None, start_date=None, end_date=None, has_account=False):
         """
         Get individual payment requests for payment provider.
         Returns payment requests awaiting payment for the current payment cycle.
@@ -684,14 +684,20 @@ class PaymentApiService:
                 
             # Get payroll IDs
             payroll_ids = payroll_query.values_list('id', flat=True)
-            
+
             # Get benefit consumptions linked to these payrolls
             benefit_query = BenefitConsumption.objects.filter(
                 payrollbenefitconsumption__payroll_id__in=payroll_ids,
                 status=BenefitConsumptionStatus.ACCEPTED
-            ).select_related('individual').distinct()
-            
-            return benefit_query
+            )
+
+            if has_account:
+                benefit_query = benefit_query.filter(
+                    Q(individual__groupindividuals__group__groupbeneficiary__json_ext__moyen_paiement__isnull=False)
+                    & Q(individual__groupindividuals__group__groupbeneficiary__json_ext__moyen_paiement__status='SUCCESS')
+                    )
+
+            return benefit_query.select_related('individual').distinct()
             
         except Exception as e:
             logger.error(f"Error getting individual payment requests: {str(e)}")

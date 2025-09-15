@@ -970,6 +970,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         programme = request.query_params.get('programme')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        has_account = request.query_params.get('account')
         
         # Get payment requests with new filters
         queryset = PaymentApiService.get_individual_payment_requests(
@@ -978,7 +979,8 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             commune=commune,
             programme=programme,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            has_account=has_account
         )
         
         # Paginate results
