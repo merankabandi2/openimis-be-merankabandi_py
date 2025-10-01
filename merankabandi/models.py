@@ -562,6 +562,16 @@ class MonetaryTransfer(models.Model):
 class Section(models.Model):
     name = models.CharField(max_length=255)
 
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        [setattr(self, key, obj_data[key]) for key in obj_data]
+        if save:
+            self.save(*args, user=user, username=user, **kwargs)
+        return self
+    
     def __str__(self):
         return self.name
 
@@ -573,6 +583,16 @@ class Indicator(models.Model):
     target = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     observation = models.TextField(blank=True, null=True)
 
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        [setattr(self, key, obj_data[key]) for key in obj_data]
+        if save:
+            self.save(*args, user=user, username=user, **kwargs)
+        return self
+
     def __str__(self):
         return self.name
 
@@ -582,6 +602,16 @@ class IndicatorAchievement(models.Model):
     comment = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     date = models.DateField(null=True, blank=True)  # New field to specify the date of the indicator value
+
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        [setattr(self, key, obj_data[key]) for key in obj_data]
+        if save:
+            self.save(*args, user=user, username=user, **kwargs)
+        return self
 
     def __str__(self):
         return f"{self.indicator.name} - {self.achieved} at {self.date}"
@@ -600,7 +630,17 @@ class ProvincePaymentPoint(UUIDModel):
     class Meta:
         db_table = 'merankabandi_province_payment_point'
         unique_together = ('province', 'payment_point', 'payment_plan')
-        
+    
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        [setattr(self, key, obj_data[key]) for key in obj_data]
+        if save:
+            self.save(*args, user=user, username=user, **kwargs)
+        return self
+
     def __str__(self):
         benefit_plan_name = self.payment_plan.benefit_plan.name if self.payment_plan else "All plans"
         return f"{self.province.name} - {self.payment_point.name} - {benefit_plan_name}"
