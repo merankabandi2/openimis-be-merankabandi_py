@@ -24,6 +24,7 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
     pere = serializers.SerializerMethodField()
     mere = serializers.SerializerMethodField()
     date_naissance = serializers.SerializerMethodField()
+    naissance_lieu = serializers.SerializerMethodField()
     genre = serializers.SerializerMethodField()
     cni = serializers.SerializerMethodField()
     socialid = serializers.SerializerMethodField()
@@ -32,7 +33,7 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
         model = GroupBeneficiary
         fields = [
             'photo', 'ci_recto', 'ci_verso', 'niveau1_label', 'niveau2_label', 'niveau3_label',
-            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'genre', 'cni', 'socialid'
+            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'naissance_lieu', 'genre', 'cni', 'socialid'
         ]
 
     def get_recipient(self, obj):
@@ -226,7 +227,7 @@ class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):
         model = GroupBeneficiary
         fields = [
             'photo', 'ci_recto', 'ci_verso', 'niveau1_label', 'niveau2_label', 'niveau3_label',
-            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'genre', 'cni', 'socialid', 'msisdn',
+            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'naissance_lieu', 'genre', 'cni', 'socialid', 'msisdn',
             'programme'
         ]
 
