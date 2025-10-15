@@ -4,10 +4,6 @@ Provides REST API endpoints for dashboard data and Excel exports
 """
 
 from datetime import datetime, date
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -319,8 +315,8 @@ def location_performance_api(request):
             
             # Calculate metrics
             metrics = transfers.aggregate(
-                total_planned=Sum(F('planned_men') + F('planned_women') + F('planned_twa')),
-                total_paid=Sum(F('paid_men') + F('paid_women') + F('paid_twa')),
+                total_planned=Sum(F('planned_men') + F('planned_women')),
+                total_paid=Sum(F('paid_men') + F('paid_women')),
                 transfer_count=Count('id')
             )
             
@@ -386,8 +382,8 @@ def activity_summary_api(request):
             
         transfers_summary = MonetaryTransfer.objects.filter(**transfer_filters).aggregate(
             total_transfers=Count('id'),
-            total_planned=Sum(F('planned_men') + F('planned_women') + F('planned_twa')),
-            total_paid=Sum(F('paid_men') + F('paid_women') + F('paid_twa')),
+            total_planned=Sum(F('planned_men') + F('planned_women')),
+            total_paid=Sum(F('paid_men') + F('paid_women')),
             women_planned=Sum('planned_women'),
             women_paid=Sum('paid_women'),
             twa_planned=Sum('planned_twa'),

@@ -18,10 +18,16 @@ class GenderBreakdownType(graphene.ObjectType):
     male = graphene.Int()
     female = graphene.Int()
     twa = graphene.Int()
+    male_beneficiaries = graphene.Int()
+    female_beneficiaries = graphene.Int()
+    twa_beneficiaries = graphene.Int()
     total = graphene.Int()
     male_percentage = graphene.Float()
     female_percentage = graphene.Float()
     twa_percentage = graphene.Float()
+    male_beneficiaries_percentage = graphene.Float()
+    female_beneficiaries_percentage = graphene.Float()
+    twa_beneficiaries_percentage = graphene.Float()
 
 
 class StatusBreakdownType(graphene.ObjectType):

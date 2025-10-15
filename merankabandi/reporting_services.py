@@ -112,8 +112,8 @@ class MEDashboardService:
         host_data = transfers.filter(
             location__parent__name__in=cls.HOST_COMMUNES
         ).aggregate(
-            planned_beneficiaries=Sum(F('planned_men') + F('planned_women') + F('planned_twa')),
-            paid_beneficiaries=Sum(F('paid_men') + F('paid_women') + F('paid_twa')),
+            planned_beneficiaries=Sum(F('planned_men') + F('planned_women')),
+            paid_beneficiaries=Sum(F('paid_men') + F('paid_women')),
             planned_men=Sum('planned_men'),
             planned_women=Sum('planned_women'),
             planned_twa=Sum('planned_twa'),
@@ -126,8 +126,8 @@ class MEDashboardService:
         refugee_data = transfers.exclude(
             location__parent__name__in=cls.HOST_COMMUNES
         ).aggregate(
-            planned_beneficiaries=Sum(F('planned_men') + F('planned_women') + F('planned_twa')),
-            paid_beneficiaries=Sum(F('paid_men') + F('paid_women') + F('paid_twa')),
+            planned_beneficiaries=Sum(F('planned_men') + F('planned_women')),
+            paid_beneficiaries=Sum(F('paid_men') + F('paid_women')),
             planned_men=Sum('planned_men'),
             planned_women=Sum('planned_women'),
             planned_twa=Sum('planned_twa'),
@@ -177,8 +177,8 @@ class MEDashboardService:
             transfers = MonetaryTransfer.objects.filter(
                 transfer_date__range=[start_date, end_date]
             ).aggregate(
-                total_planned=Sum(F('planned_men') + F('planned_women') + F('planned_twa')),
-                total_paid=Sum(F('paid_men') + F('paid_women') + F('paid_twa')),
+                total_planned=Sum(F('planned_men') + F('planned_women')),
+                total_paid=Sum(F('paid_men') + F('paid_women')),
                 transfer_count=Count('id')
             )
             
@@ -186,7 +186,7 @@ class MEDashboardService:
             training = SensitizationTraining.objects.filter(
                 sensitization_date__range=[start_date, end_date]
             ).aggregate(
-                total_participants=Sum(F('male_participants') + F('female_participants') + F('twa_participants')),
+                total_participants=Sum(F('male_participants') + F('female_participants')),
                 session_count=Count('id')
             )
             
@@ -194,7 +194,7 @@ class MEDashboardService:
             behavior_change = BehaviorChangePromotion.objects.filter(
                 report_date__range=[start_date, end_date]
             ).aggregate(
-                total_participants=Sum(F('male_participants') + F('female_participants') + F('twa_participants')),
+                total_participants=Sum(F('male_participants') + F('female_participants')),
                 activity_count=Count('id')
             )
             
@@ -279,7 +279,7 @@ class MEDashboardService:
         
         # Calculate inclusion rates
         total_transfers = MonetaryTransfer.objects.filter(**filters).aggregate(
-            total_planned=Sum(F('planned_men') + F('planned_women') + F('planned_twa'))
+            total_planned=Sum(F('planned_men') + F('planned_women'))
         )['total_planned'] or 0
         
         twa_inclusion_rate = 0
@@ -723,7 +723,7 @@ class IndicatorAggregationService:
         
         # Calculate aggregates
         total_beneficiaries = transfers.aggregate(
-            total=Sum(F('paid_men') + F('paid_women') + F('paid_twa'))
+            total=Sum(F('paid_men') + F('paid_women'))
         )['total'] or 0
         
         female_beneficiaries = transfers.aggregate(
@@ -733,7 +733,7 @@ class IndicatorAggregationService:
         refugee_beneficiaries = transfers.exclude(
             location__parent__name__in=MEDashboardService.HOST_COMMUNES
         ).aggregate(
-            total=Sum(F('paid_men') + F('paid_women') + F('paid_twa'))
+            total=Sum(F('paid_men') + F('paid_women'))
         )['total'] or 0
         
         # Update indicators
@@ -827,7 +827,7 @@ class IndicatorAggregationService:
         # Base queryset depending on indicator type
         if "transfert" in indicator.name.lower() or "bénéficiaire" in indicator.name.lower():
             queryset = MonetaryTransfer.objects.all()
-            value_field = F('paid_men') + F('paid_women') + F('paid_twa')
+            value_field = F('paid_men') + F('paid_women')
         elif "formation" in indicator.name.lower() or "sensibilisation" in indicator.name.lower():
             queryset = SensitizationTraining.objects.all()
             value_field = F('male_participants') + F('female_participants') + F('twa_participants')

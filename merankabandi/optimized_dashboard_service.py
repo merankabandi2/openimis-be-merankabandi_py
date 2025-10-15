@@ -64,9 +64,14 @@ class OptimizedDashboardService:
             if filters.get('commune_id'):
                 where_conditions.append("commune_id = %s")
                 params.append(filters['commune_id'])
+            else:
+                where_conditions.append("commune_id IS NULL")
+                where_conditions.append("colline_id IS NULL")
             if filters.get('colline_id'):
                 where_conditions.append("colline_id = %s")
                 params.append(filters['colline_id'])
+            else:
+                where_conditions.append("colline_id IS NULL")
             
             # When no benefit plan filter, use the 'ALL' row
             if not filters.get('benefit_plan_id'):
@@ -106,31 +111,28 @@ class OptimizedDashboardService:
                 SUM(resolved_grievances) as resolved_grievances,
                 
                 -- Community breakdown
-                community_type,
                 COUNT(DISTINCT province_id) as provinces_covered,
                 MAX(EXTRACT(quarter FROM month)) as latest_quarter,
                 MAX(EXTRACT(year FROM month)) as latest_year
                 
             FROM dashboard_individual_summary
             {where_clause}
-            GROUP BY community_type
             """
         else:
             # Use dashboard_master_summary for unfiltered global view
             query = """
             SELECT 
-                -- Get global aggregates
                 total_beneficiaries,
                 active_beneficiaries,
-                total_male as male_beneficiaries,
-                total_female as female_beneficiaries,
-                total_twa as twa_beneficiaries,
+                male_beneficiaries as male_beneficiaries,
+                female_beneficiaries as female_beneficiaries,
+                twa_beneficiaries as twa_beneficiaries,
                 
                 CASE WHEN total_individuals > 0 
-                    THEN (total_female::numeric / total_individuals::numeric * 100) 
+                    THEN (female_beneficiaries::numeric / total_beneficiaries::numeric * 100) 
                     ELSE 0 END as avg_female_percentage,
                 CASE WHEN total_individuals > 0 
-                    THEN (total_twa::numeric / total_individuals::numeric * 100) 
+                    THEN (twa_beneficiaries::numeric / total_beneficiaries::numeric * 100) 
                     ELSE 0 END as avg_twa_inclusion_rate,
                 
                 total_transfers,
@@ -238,6 +240,20 @@ class OptimizedDashboardService:
                 total_female,
                 total_twa,
                 total_individuals,
+                male_beneficiaries as male_beneficiaries,
+                female_beneficiaries as female_beneficiaries,
+                twa_beneficiaries as twa_beneficiaries,
+                
+                CASE WHEN total_individuals > 0 
+                    THEN (male_beneficiaries::numeric / total_beneficiaries::numeric * 100) 
+                    ELSE 0 END as male_beneficiaries_percentage,
+                CASE WHEN total_individuals > 0 
+                    THEN (female_beneficiaries::numeric / total_beneficiaries::numeric * 100) 
+                    ELSE 0 END as female_beneficiaries_percentage,
+                CASE WHEN total_individuals > 0 
+                    THEN (twa_beneficiaries::numeric / total_beneficiaries::numeric * 100) 
+                    ELSE 0 END as twa_beneficiaries_inclusion_rate,
+            
                 CASE WHEN total_individuals > 0 
                     THEN (total_male::numeric / total_individuals::numeric * 100) 
                     ELSE 0 END as male_percentage,
@@ -263,6 +279,21 @@ class OptimizedDashboardService:
                 SUM(total_female) as total_female,
                 SUM(total_twa) as total_twa,
                 SUM(total_individuals) as total_individuals,
+
+                SUM(male_beneficiaries) as male_beneficiaries,
+                SUM(female_beneficiaries) as female_beneficiaries,
+                SUM(twa_beneficiaries) as twa_beneficiaries,
+
+                CASE WHEN SUM(total_individuals) > 0 
+                    THEN (SUM(male_beneficiaries)::numeric / SUM(total_beneficiaries)::numeric * 100) 
+                    ELSE 0 END as male_beneficiaries_percentage,
+                CASE WHEN SUM(total_individuals) > 0 
+                    THEN (SUM(female_beneficiaries)::numeric / SUM(total_beneficiaries)::numeric * 100) 
+                    ELSE 0 END as female_beneficiaries_percentage,
+                CASE WHEN SUM(total_individuals) > 0 
+                    THEN (SUM(twa_beneficiaries)::numeric / SUM(total_beneficiaries)::numeric * 100) 
+                    ELSE 0 END as twa_beneficiaries_percentage,
+            
                 CASE WHEN SUM(total_individuals) > 0 
                     THEN (SUM(total_male)::numeric / SUM(total_individuals)::numeric * 100) 
                     ELSE 0 END as male_percentage,
@@ -307,6 +338,14 @@ class OptimizedDashboardService:
                 male_percentage = row_dict.get('male_percentage', 0) or 0
                 female_percentage = row_dict.get('female_percentage', 0) or 0
                 twa_percentage = row_dict.get('twa_percentage', 0) or 0
+
+                male_beneficiaries_count = row_dict.get('male_beneficiaries', 0) or 0
+                female_beneficiaries_count = row_dict.get('female_beneficiaries', 0) or 0
+                twa_beneficiaries_count = row_dict.get('twa_beneficiaries', 0) or 0
+                male_beneficiaries_percentage = row_dict.get('male_beneficiaries_percentage', 0) or 0
+                female_beneficiaries_percentage = row_dict.get('female_beneficiaries_percentage', 0) or 0
+                twa_beneficiaries_percentage = row_dict.get('twa_beneficiaries_percentage', 0) or 0
+
                 total_beneficiaries = row_dict.get('total_beneficiaries', 0) or 0
                 total_households = row_dict.get('total_households', 0) or 0
                 
@@ -315,10 +354,16 @@ class OptimizedDashboardService:
                     'male': male_count,
                     'female': female_count,
                     'twa': twa_count,
+                    'male_beneficiaries': male_beneficiaries_count,
+                    'female_beneficiaries': female_beneficiaries_count,
+                    'twa_beneficiaries': twa_beneficiaries_count,
                     'total': total_individuals,
                     'male_percentage': float(male_percentage),
                     'female_percentage': float(female_percentage),
-                    'twa_percentage': float(twa_percentage)
+                    'twa_percentage': float(twa_percentage),
+                    'male_beneficiaries_percentage': float(male_beneficiaries_percentage),
+                    'female_beneficiaries_percentage': float(female_beneficiaries_percentage),
+                    'twa_beneficiaries_percentage': float(twa_beneficiaries_percentage)
                 }
                 
                 # Add household information

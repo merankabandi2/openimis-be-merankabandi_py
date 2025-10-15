@@ -16,264 +16,937 @@ SELECT date_trunc('month'::text, gb."DateCreated") AS month, date_trunc('quarter
     },
     'dashboard_individual_summary': {
         'sql': '''CREATE MATERIALIZED VIEW dashboard_individual_summary AS
--- First part: Data grouped by location and benefit plan
+WITH 
+-- Constants and configuration
+constants AS (
+    SELECT 
+        'OUI'::text AS yes_value,
+        'M'::text AS male_value,
+        'F'::text AS female_value,
+        'true'::text AS true_value,
+        'menage_refugie'::text AS refugee_field,
+        'menage_mutwa'::text AS twa_household_field,
+        'is_twa'::text AS twa_individual_field,
+        'sexe'::text AS sex_field,
+        'REFUGEE'::text AS refugee_type,
+        'HOST'::text AS host_type,
+        'OTHER'::text AS other_type,
+        'ALL'::text AS all_value,
+        'ALL PLANS'::text AS all_plans_label,
+        '00000000-0000-0000-0000-000000000000'::uuid AS all_plans_uuid,
+        'RECONCILED'::text AS reconciled_status,
+        ARRAY['Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo']::text[] AS host_communes
+),
+
+-- Base data: all groups with their location hierarchy and community type
+base_groups AS (
+    SELECT 
+        ig."UUID" AS group_id,
+        ig.location_id,
+        ig."Json_ext",
+        l1."LocationId" AS colline_id,
+        l1."LocationName" AS colline,
+        l2."LocationId" AS commune_id,
+        l2."LocationName" AS commune,
+        l3."LocationId" AS province_id,
+        l3."LocationName" AS province
+    FROM individual_group ig
+    CROSS JOIN constants c
+    JOIN "tblLocations" l1 ON l1."LocationId" = ig.location_id
+    LEFT JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+    LEFT JOIN "tblLocations" l3 ON l2."ParentLocationId" = l3."LocationId"
+    WHERE ig."isDeleted" = false
+),
+
+-- Individuals with their group and demographic info
+individuals_data AS (
+    SELECT 
+        gi.group_id,
+        i."UUID" AS individual_id,
+        i."Json_ext"->>c.sex_field AS sex,
+        CASE 
+            WHEN i."Json_ext"->>c.twa_individual_field = c.true_value THEN true
+            ELSE false
+        END AS is_twa_individual
+    FROM individual_groupindividual gi
+    CROSS JOIN constants c
+    JOIN individual_individual i ON i."UUID" = gi.individual_id AND i."isDeleted" = false
+    WHERE gi."isDeleted" = false
+),
+
+-- Group beneficiaries with their benefit plans
+group_beneficiaries AS (
+    SELECT 
+        gb."UUID" AS beneficiary_id,
+        gb.group_id,
+        gb.benefit_plan_id,
+        bp."UUID" AS plan_uuid,
+        bp.code AS plan_code,
+        bp.name AS plan_name
+    FROM social_protection_groupbeneficiary gb
+    JOIN social_protection_benefitplan bp ON bp."UUID" = gb.benefit_plan_id AND bp."isDeleted" = false
+    WHERE gb."isDeleted" = false
+),
+
+-- Payment amounts aggregated by colline and benefit plan
+payment_amounts_colline AS (
+    SELECT 
+        bg.colline_id,
+        bg.commune_id,
+        bg.province_id,
+        gb.benefit_plan_id,
+        COALESCE(SUM(CASE WHEN bc.status = c.reconciled_status THEN bc."Amount"::numeric END), 0) AS amount_paid,
+        COALESCE(SUM(CASE WHEN bc.status <> c.reconciled_status THEN bc."Amount"::numeric END), 0) AS amount_unpaid,
+        COALESCE(SUM(bc."Amount"::numeric), 0) AS amount_total
+    FROM payroll_benefitconsumption bc
+    CROSS JOIN constants c
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.benefit_id = bc."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_payroll p ON p."UUID" = pbc.payroll_id AND p."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = ig."UUID"
+    WHERE bc."isDeleted" = false
+    GROUP BY bg.colline_id, bg.commune_id, bg.province_id, gb.benefit_plan_id
+),
+
+-- Transfer counts by colline and benefit plan
+transfer_counts_colline AS (
+    SELECT 
+        bg.colline_id,
+        gb.benefit_plan_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.colline_id, gb.benefit_plan_id
+),
+
+-- Transfer counts by colline (all benefit plans)
+transfer_counts_colline_all AS (
+    SELECT 
+        bg.colline_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.colline_id
+),
+
+-- Transfer counts by commune and benefit plan
+transfer_counts_commune AS (
+    SELECT 
+        bg.commune_id,
+        gb.benefit_plan_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.commune_id, gb.benefit_plan_id
+),
+
+-- Transfer counts by commune (all benefit plans)
+transfer_counts_commune_all AS (
+    SELECT 
+        bg.commune_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.commune_id
+),
+
+-- Transfer counts by province and benefit plan
+transfer_counts_province AS (
+    SELECT 
+        bg.province_id,
+        gb.benefit_plan_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.province_id, gb.benefit_plan_id
+),
+
+-- Transfer counts by province (all benefit plans)
+transfer_counts_province_all AS (
+    SELECT 
+        bg.province_id,
+        COUNT(DISTINCT p."UUID") AS transfer_count
+    FROM payroll_payroll p
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.payroll_id = p."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_benefitconsumption bc ON bc."UUID" = pbc.benefit_id AND bc."isDeleted" = false
+    JOIN individual_individual i ON i."UUID" = bc.individual_id AND i."isDeleted" = false
+    JOIN individual_groupindividual gi ON gi.individual_id = i."UUID" AND gi."isDeleted" = false
+    JOIN individual_group ig ON ig."UUID" = gi.group_id AND ig."isDeleted" = false
+    JOIN base_groups bg ON bg.group_id = ig."UUID"
+    WHERE p."isDeleted" = false AND bc."isDeleted" = false
+    GROUP BY bg.province_id
+),
+
+-- Calculate distinct province count once
+active_provinces_count AS (
+    SELECT COUNT(DISTINCT province_id) AS active_provinces
+    FROM base_groups
+    WHERE province_id IS NOT NULL
+),
+
+-- Aggregated statistics by COLLINE and benefit plan
+location_plan_stats_colline AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        bg.commune_id,
+        bg.commune,
+        bg.colline_id,
+        bg.colline,
+        gb.plan_uuid AS benefit_plan_id,
+        gb.plan_code AS benefit_plan_code,
+        gb.plan_name AS benefit_plan_name,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    WHERE gb.plan_uuid IS NOT NULL
+    GROUP BY 
+        bg.province_id, bg.province,
+        bg.commune_id, bg.commune,
+        bg.colline_id, bg.colline,
+        gb.plan_uuid, gb.plan_code, gb.plan_name
+),
+
+-- Aggregated statistics by COMMUNE and benefit plan
+location_plan_stats_commune AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        bg.commune_id,
+        bg.commune,
+        gb.plan_uuid AS benefit_plan_id,
+        gb.plan_code AS benefit_plan_code,
+        gb.plan_name AS benefit_plan_name,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    WHERE gb.plan_uuid IS NOT NULL
+    GROUP BY 
+        bg.province_id, bg.province,
+        bg.commune_id, bg.commune,
+        gb.plan_uuid, gb.plan_code, gb.plan_name
+),
+
+-- Aggregated statistics by PROVINCE and benefit plan
+location_plan_stats_province AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        gb.plan_uuid AS benefit_plan_id,
+        gb.plan_code AS benefit_plan_code,
+        gb.plan_name AS benefit_plan_name,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    WHERE gb.plan_uuid IS NOT NULL
+    GROUP BY 
+        bg.province_id, bg.province,
+        gb.plan_uuid, gb.plan_code, gb.plan_name
+),
+
+-- Aggregated statistics by COLLINE (all plans combined)
+location_all_plans_stats_colline AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        bg.commune_id,
+        bg.commune,
+        bg.colline_id,
+        bg.colline,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    GROUP BY 
+        bg.province_id, bg.province,
+        bg.commune_id, bg.commune,
+        bg.colline_id, bg.colline
+),
+
+-- Aggregated statistics by COMMUNE (all plans combined)
+location_all_plans_stats_commune AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        bg.commune_id,
+        bg.commune,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    GROUP BY 
+        bg.province_id, bg.province,
+        bg.commune_id, bg.commune
+),
+
+-- Aggregated statistics by PROVINCE (all plans combined)
+location_all_plans_stats_province AS (
+    SELECT 
+        bg.province_id,
+        bg.province,
+        
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    GROUP BY 
+        bg.province_id, bg.province
+),
+
+-- Global statistics (all locations, all plans)
+global_stats AS (
+    SELECT 
+        COUNT(DISTINCT id.individual_id) AS total_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS total_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS total_female,
+        COUNT(DISTINCT id.individual_id) FILTER (
+            WHERE id.is_twa_individual OR bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS total_twa,
+        
+        COUNT(DISTINCT bg.group_id) AS total_households,
+        COUNT(DISTINCT gb.beneficiary_id) AS total_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.male_value) AS male_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (WHERE id.sex = c.female_value) AS female_beneficiaries,
+        COUNT(DISTINCT gb.beneficiary_id) FILTER (
+            WHERE bg."Json_ext"->>c.twa_household_field = c.yes_value
+        ) AS twa_beneficiaries
+        
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+),
+
+-- Global payment data
+global_payment_data AS (
+    SELECT 
+        COUNT(DISTINCT p."UUID") AS transfer_count,
+        COALESCE(SUM(CASE WHEN bc.status = c.reconciled_status THEN bc."Amount"::numeric END), 0) AS amount_paid,
+        COALESCE(SUM(CASE WHEN bc.status <> c.reconciled_status THEN bc."Amount"::numeric END), 0) AS amount_unpaid,
+        COALESCE(SUM(bc."Amount"::numeric), 0) AS amount_total
+    FROM payroll_benefitconsumption bc
+    CROSS JOIN constants c
+    JOIN payroll_payrollbenefitconsumption pbc ON pbc.benefit_id = bc."UUID" AND pbc."isDeleted" = false
+    JOIN payroll_payroll p ON p."UUID" = pbc.payroll_id AND p."isDeleted" = false
+    WHERE bc."isDeleted" = false
+)
+
+-- ==========================================
+-- COLLINE LEVEL - SPECIFIC BENEFIT PLAN
+-- ==========================================
 SELECT 
-    l3."LocationId" AS province_id,
-    l3."LocationName" AS province,
-    l2."LocationId" AS commune_id,
-    l2."LocationName" AS commune,
-    l1."LocationId" AS colline_id,
-    l1."LocationName" AS colline,
-    CASE 
-        WHEN ig."Json_ext"->>'menage_refugie' = 'OUI' THEN 'REFUGEE'
-        WHEN l2."LocationName" IN ('Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo') THEN 'HOST'
-        ELSE 'OTHER'
-    END AS community_type,
-    bp."UUID" AS benefit_plan_id,
-    bp.code AS benefit_plan_code,
-    bp.name AS benefit_plan_name,
+    lps.province_id,
+    lps.province,
+    lps.commune_id,
+    lps.commune,
+    lps.colline_id,
+    lps.colline,
+    lps.benefit_plan_id,
+    lps.benefit_plan_code,
+    lps.benefit_plan_name,
     EXTRACT(year FROM CURRENT_DATE) AS year,
     date_trunc('month', CURRENT_DATE) AS month,
     date_trunc('quarter', CURRENT_DATE) AS quarter,
     
-    -- Count individuals in households with beneficiaries in this plan
-    COUNT(DISTINCT i."UUID") AS total_individuals,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END) AS total_male,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END) AS total_female,
-    COUNT(DISTINCT CASE 
-        WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-        THEN i."UUID" 
-    END) AS total_twa,
+    lps.total_individuals,
+    lps.total_male,
+    lps.total_female,
+    lps.total_twa,
     
-    -- Percentages
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_male::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS male_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_female::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS female_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE 
-            WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-            THEN i."UUID" 
-        END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_twa::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS twa_percentage,
     
-    -- Count households with beneficiaries in this plan
-    COUNT(DISTINCT ig."UUID") AS total_households,
-    COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
+    lps.total_households,
+    lps.total_beneficiaries,
+    lps.male_beneficiaries,
+    lps.female_beneficiaries,
+    lps.twa_beneficiaries,
     
-    -- Payment data - count distinct payrolls that have consumptions in this location
-    (SELECT COUNT(DISTINCT p2."UUID") 
-     FROM payroll_payroll p2
-     JOIN payroll_payrollbenefitconsumption pbc2 ON pbc2.payroll_id = p2."UUID" AND pbc2."isDeleted" = false
-     JOIN payroll_benefitconsumption bc2 ON bc2."UUID" = pbc2.benefit_id AND bc2."isDeleted" = false
-     JOIN individual_individual i2 ON i2."UUID" = bc2.individual_id AND i2."isDeleted" = false
-     JOIN individual_groupindividual gi2 ON gi2.individual_id = i2."UUID" AND gi2."isDeleted" = false
-     JOIN individual_group ig2 ON ig2."UUID" = gi2.group_id AND ig2."isDeleted" = false
-     WHERE p2."isDeleted" = false
-     AND ig2.location_id IN (SELECT ig3.location_id FROM individual_group ig3 
-                            JOIN social_protection_groupbeneficiary gb3 ON gb3.group_id = ig3."UUID"
-                            WHERE gb3.benefit_plan_id = bp."UUID" AND gb3."isDeleted" = false
-                            AND ig3.location_id = l1."LocationId")) AS total_transfers,
-    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
-    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
-    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
-
-    -- Grievance data (would need to be joined from grievance tables)
+    COALESCE(tcc.transfer_count, 0) AS total_transfers,
+    COALESCE(pa.amount_paid, 0) AS total_amount_paid,
+    COALESCE(pa.amount_unpaid, 0) AS total_amount_unpaid,
+    COALESCE(pa.amount_total, 0) AS total_amount,
+    
     0 AS total_grievances,
     0 AS resolved_grievances,
     
-    -- Active provinces count
-    COUNT(DISTINCT l3."LocationId") AS active_provinces,
-    
+    apc.active_provinces,
     CURRENT_TIMESTAMP AS last_updated
-FROM social_protection_groupbeneficiary gb
-JOIN social_protection_benefitplan bp ON bp."UUID" = gb.benefit_plan_id AND bp."isDeleted" = false
-JOIN individual_group ig ON ig."UUID" = gb.group_id AND ig."isDeleted" = false
-JOIN individual_groupindividual gi ON gi.group_id = ig."UUID" AND gi."isDeleted" = false
-JOIN individual_individual i ON i."UUID" = gi.individual_id AND i."isDeleted" = false
-JOIN "tblLocations" l1 ON l1."LocationId" = ig.location_id
-LEFT JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
-LEFT JOIN "tblLocations" l3 ON l2."ParentLocationId" = l3."LocationId"
--- Join payment data through benefit consumption
-LEFT JOIN payroll_benefitconsumption bc ON bc.individual_id = i."UUID" AND bc."isDeleted" = false
-LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.benefit_id = bc."UUID" AND pbc."isDeleted" = false
-LEFT JOIN payroll_payroll p ON p."UUID" = pbc.payroll_id AND p."isDeleted" = false
-WHERE gb."isDeleted" = false
-GROUP BY 
-    l3."LocationId", l3."LocationName",
-    l2."LocationId", l2."LocationName",
-    l1."LocationId", l1."LocationName",
-    CASE 
-        WHEN ig."Json_ext"->>'menage_refugie' = 'OUI' THEN 'REFUGEE'
-        WHEN l2."LocationName" IN ('Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo') THEN 'HOST'
-        ELSE 'OTHER'
-    END,
-    bp."UUID", bp.code, bp.name
+FROM location_plan_stats_colline lps
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_colline tcc ON tcc.colline_id = lps.colline_id 
+    AND tcc.benefit_plan_id = lps.benefit_plan_id
+LEFT JOIN payment_amounts_colline pa ON pa.colline_id = lps.colline_id 
+    AND pa.benefit_plan_id = lps.benefit_plan_id
 
 UNION ALL
 
--- Add location-specific ALL rows (all benefit plans for each location)
+-- ==========================================
+-- COMMUNE LEVEL - SPECIFIC BENEFIT PLAN
+-- ==========================================
 SELECT 
-    l3."LocationId" AS province_id,
-    l3."LocationName" AS province,
-    l2."LocationId" AS commune_id,
-    l2."LocationName" AS commune,
-    l1."LocationId" AS colline_id,
-    l1."LocationName" AS colline,
-    CASE 
-        WHEN ig."Json_ext"->>'menage_refugie' = 'OUI' THEN 'REFUGEE'
-        WHEN l2."LocationName" IN ('Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo') THEN 'HOST'
-        ELSE 'OTHER'
-    END AS community_type,
-    '00000000-0000-0000-0000-000000000000'::uuid AS benefit_plan_id,
-    'ALL'::text AS benefit_plan_code,
-    'ALL PLANS'::text AS benefit_plan_name,
+    lps.province_id,
+    lps.province,
+    lps.commune_id,
+    lps.commune,
+    NULL::integer AS colline_id,
+    NULL::text AS colline,
+    lps.benefit_plan_id,
+    lps.benefit_plan_code,
+    lps.benefit_plan_name,
     EXTRACT(year FROM CURRENT_DATE) AS year,
     date_trunc('month', CURRENT_DATE) AS month,
     date_trunc('quarter', CURRENT_DATE) AS quarter,
-    COUNT(DISTINCT i."UUID") AS total_individuals,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END) AS total_male,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END) AS total_female,
-    COUNT(DISTINCT CASE 
-        WHEN ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-        THEN i."UUID" 
-    END) AS total_twa,
+    
+    lps.total_individuals,
+    lps.total_male,
+    lps.total_female,
+    lps.total_twa,
+    
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_male::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS male_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_female::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS female_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE 
-            WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-            THEN i."UUID" 
-        END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_twa::numeric / lps.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS twa_percentage,
-    COUNT(DISTINCT ig."UUID") AS total_households,
-    COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
-    -- Count distinct payrolls for this location (all benefit plans)
-    (SELECT COUNT(DISTINCT p2."UUID") 
-     FROM payroll_payroll p2
-     JOIN payroll_payrollbenefitconsumption pbc2 ON pbc2.payroll_id = p2."UUID" AND pbc2."isDeleted" = false
-     JOIN payroll_benefitconsumption bc2 ON bc2."UUID" = pbc2.benefit_id AND bc2."isDeleted" = false
-     JOIN individual_individual i2 ON i2."UUID" = bc2.individual_id AND i2."isDeleted" = false
-     JOIN individual_groupindividual gi2 ON gi2.individual_id = i2."UUID" AND gi2."isDeleted" = false
-     JOIN individual_group ig2 ON ig2."UUID" = gi2.group_id AND ig2."isDeleted" = false
-     WHERE p2."isDeleted" = false
-     AND ig2.location_id = l1."LocationId") AS total_transfers,
-    COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_paid,
-    COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) AS total_amount_unpaid,
-    COALESCE(SUM(bc."Amount"::numeric), 0) AS total_amount,
-
+    
+    lps.total_households,
+    lps.total_beneficiaries,
+    lps.male_beneficiaries,
+    lps.female_beneficiaries,
+    lps.twa_beneficiaries,
+    
+    COALESCE(tcc.transfer_count, 0) AS total_transfers,
+    COALESCE(SUM(pa.amount_paid), 0) AS total_amount_paid,
+    COALESCE(SUM(pa.amount_unpaid), 0) AS total_amount_unpaid,
+    COALESCE(SUM(pa.amount_total), 0) AS total_amount,
+    
     0 AS total_grievances,
     0 AS resolved_grievances,
-    COUNT(DISTINCT l3."LocationId") AS active_provinces,
+    
+    apc.active_provinces,
     CURRENT_TIMESTAMP AS last_updated
-FROM individual_group ig
-LEFT JOIN individual_groupindividual gi ON gi.group_id = ig."UUID" AND gi."isDeleted" = false
-LEFT JOIN individual_individual i ON i."UUID" = gi.individual_id AND i."isDeleted" = false
-LEFT JOIN social_protection_groupbeneficiary gb ON gb.group_id = ig."UUID" AND gb."isDeleted" = false
-LEFT JOIN "tblLocations" l1 ON l1."LocationId" = ig.location_id
-LEFT JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
-LEFT JOIN "tblLocations" l3 ON l2."ParentLocationId" = l3."LocationId"
-LEFT JOIN payroll_benefitconsumption bc ON bc.individual_id = i."UUID" AND bc."isDeleted" = false
-LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.benefit_id = bc."UUID" AND pbc."isDeleted" = false
-LEFT JOIN payroll_payroll p ON p."UUID" = pbc.payroll_id AND p."isDeleted" = false
-WHERE ig."isDeleted" = false
+FROM location_plan_stats_commune lps
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_commune tcc ON tcc.commune_id = lps.commune_id 
+    AND tcc.benefit_plan_id = lps.benefit_plan_id
+LEFT JOIN payment_amounts_colline pa ON pa.commune_id = lps.commune_id 
+AND pa.benefit_plan_id = lps.benefit_plan_id
 GROUP BY 
-    l3."LocationId", l3."LocationName",
-    l2."LocationId", l2."LocationName",
-    l1."LocationId", l1."LocationName",
-    CASE 
-        WHEN ig."Json_ext"->>'menage_refugie' = 'OUI' THEN 'REFUGEE'
-        WHEN l2."LocationName" IN ('Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo') THEN 'HOST'
-        ELSE 'OTHER'
-    END
+    lps.province_id, lps.province,
+    lps.commune_id, lps.commune,
+    lps.benefit_plan_id, lps.benefit_plan_code, lps.benefit_plan_name,
+    lps.total_individuals, lps.total_male, lps.total_female, lps.total_twa,
+    lps.total_households, lps.total_beneficiaries,
+    lps.male_beneficiaries, lps.female_beneficiaries, lps.twa_beneficiaries,
+    apc.active_provinces, tcc.transfer_count
 
 UNION ALL
 
--- Add summary row with ALL locations and ALL plans
+-- ==========================================
+-- PROVINCE LEVEL - SPECIFIC BENEFIT PLAN
+-- ==========================================
+SELECT 
+    lps.province_id,
+    lps.province,
+    NULL::integer AS commune_id,
+    NULL::text AS commune,
+    NULL::integer AS colline_id,
+    NULL::text AS colline,
+    lps.benefit_plan_id,
+    lps.benefit_plan_code,
+    lps.benefit_plan_name,
+    EXTRACT(year FROM CURRENT_DATE) AS year,
+    date_trunc('month', CURRENT_DATE) AS month,
+    date_trunc('quarter', CURRENT_DATE) AS quarter,
+    
+    lps.total_individuals,
+    lps.total_male,
+    lps.total_female,
+    lps.total_twa,
+    
+    CASE 
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_male::numeric / lps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS male_percentage,
+    CASE 
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_female::numeric / lps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS female_percentage,
+    CASE 
+        WHEN lps.total_individuals > 0 
+        THEN ROUND((lps.total_twa::numeric / lps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS twa_percentage,
+    
+    lps.total_households,
+    lps.total_beneficiaries,
+    lps.male_beneficiaries,
+    lps.female_beneficiaries,
+    lps.twa_beneficiaries,
+    
+    COALESCE(tcp.transfer_count, 0) AS total_transfers,
+    COALESCE(SUM(pa.amount_paid), 0) AS total_amount_paid,
+    COALESCE(SUM(pa.amount_unpaid), 0) AS total_amount_unpaid,
+    COALESCE(SUM(pa.amount_total), 0) AS total_amount,
+    
+    0 AS total_grievances,
+    0 AS resolved_grievances,
+    
+    apc.active_provinces,
+    CURRENT_TIMESTAMP AS last_updated
+FROM location_plan_stats_province lps
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_province tcp ON tcp.province_id = lps.province_id 
+    AND tcp.benefit_plan_id = lps.benefit_plan_id
+LEFT JOIN payment_amounts_colline pa ON pa.province_id = lps.province_id 
+    AND pa.benefit_plan_id = lps.benefit_plan_id
+GROUP BY 
+    lps.province_id, lps.province,
+    lps.benefit_plan_id, lps.benefit_plan_code, lps.benefit_plan_name,
+    lps.total_individuals, lps.total_male, lps.total_female, lps.total_twa,
+    lps.total_households, lps.total_beneficiaries,
+    lps.male_beneficiaries, lps.female_beneficiaries, lps.twa_beneficiaries,
+    apc.active_provinces, tcp.transfer_count
+
+UNION ALL
+
+-- ==========================================
+-- COLLINE LEVEL - ALL BENEFIT PLANS
+-- ==========================================
+SELECT 
+    laps.province_id,
+    laps.province,
+    laps.commune_id,
+    laps.commune,
+    laps.colline_id,
+    laps.colline,
+    c.all_plans_uuid AS benefit_plan_id,
+    c.all_value AS benefit_plan_code,
+    c.all_plans_label AS benefit_plan_name,
+    EXTRACT(year FROM CURRENT_DATE) AS year,
+    date_trunc('month', CURRENT_DATE) AS month,
+    date_trunc('quarter', CURRENT_DATE) AS quarter,
+    
+    laps.total_individuals,
+    laps.total_male,
+    laps.total_female,
+    laps.total_twa,
+    
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_male::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS male_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_female::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS female_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_twa::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS twa_percentage,
+    
+    laps.total_households,
+    laps.total_beneficiaries,
+    laps.male_beneficiaries,
+    laps.female_beneficiaries,
+    laps.twa_beneficiaries,
+    
+    COALESCE(tcca.transfer_count, 0) AS total_transfers,
+    COALESCE(SUM(pa.amount_paid), 0) AS total_amount_paid,
+    COALESCE(SUM(pa.amount_unpaid), 0) AS total_amount_unpaid,
+    COALESCE(SUM(pa.amount_total), 0) AS total_amount,
+    
+    0 AS total_grievances,
+    0 AS resolved_grievances,
+    
+    apc.active_provinces,
+    CURRENT_TIMESTAMP AS last_updated
+FROM location_all_plans_stats_colline laps
+CROSS JOIN constants c
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_colline_all tcca ON tcca.colline_id = laps.colline_id
+LEFT JOIN payment_amounts_colline pa ON pa.colline_id = laps.colline_id
+GROUP BY 
+    laps.province_id, laps.province,
+    laps.commune_id, laps.commune,
+    laps.colline_id, laps.colline,
+    c.all_plans_uuid, c.all_value, c.all_plans_label,
+    laps.total_individuals, laps.total_male, laps.total_female, laps.total_twa,
+    laps.total_households, laps.total_beneficiaries,
+    laps.male_beneficiaries, laps.female_beneficiaries, laps.twa_beneficiaries,
+    apc.active_provinces, tcca.transfer_count
+
+UNION ALL
+
+-- ==========================================
+-- COMMUNE LEVEL - ALL BENEFIT PLANS
+-- ==========================================
+SELECT 
+    laps.province_id,
+    laps.province,
+    laps.commune_id,
+    laps.commune,
+    NULL::integer AS colline_id,
+    NULL::text AS colline,
+    c.all_plans_uuid AS benefit_plan_id,
+    c.all_value AS benefit_plan_code,
+    c.all_plans_label AS benefit_plan_name,
+    EXTRACT(year FROM CURRENT_DATE) AS year,
+    date_trunc('month', CURRENT_DATE) AS month,
+    date_trunc('quarter', CURRENT_DATE) AS quarter,
+    
+    laps.total_individuals,
+    laps.total_male,
+    laps.total_female,
+    laps.total_twa,
+    
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_male::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS male_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_female::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS female_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_twa::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS twa_percentage,
+    
+    laps.total_households,
+    laps.total_beneficiaries,
+    laps.male_beneficiaries,
+    laps.female_beneficiaries,
+    laps.twa_beneficiaries,
+    
+    COALESCE(tcca.transfer_count, 0) AS total_transfers,
+    COALESCE(SUM(pa.amount_paid), 0) AS total_amount_paid,
+    COALESCE(SUM(pa.amount_unpaid), 0) AS total_amount_unpaid,
+    COALESCE(SUM(pa.amount_total), 0) AS total_amount,
+    
+    0 AS total_grievances,
+    0 AS resolved_grievances,
+    
+    apc.active_provinces,
+    CURRENT_TIMESTAMP AS last_updated
+FROM location_all_plans_stats_commune laps
+CROSS JOIN constants c
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_commune_all tcca ON tcca.commune_id = laps.commune_id
+LEFT JOIN payment_amounts_colline pa ON pa.commune_id = laps.commune_id
+GROUP BY 
+    laps.province_id, laps.province,
+    laps.commune_id, laps.commune,
+    c.all_plans_uuid, c.all_value, c.all_plans_label,
+    laps.total_individuals, laps.total_male, laps.total_female, laps.total_twa,
+    laps.total_households, laps.total_beneficiaries,
+    laps.male_beneficiaries, laps.female_beneficiaries, laps.twa_beneficiaries,
+    apc.active_provinces, tcca.transfer_count
+
+UNION ALL
+
+-- ==========================================
+-- PROVINCE LEVEL - ALL BENEFIT PLANS
+-- ==========================================
+SELECT 
+    laps.province_id,
+    laps.province,
+    NULL::integer AS commune_id,
+    NULL::text AS commune,
+    NULL::integer AS colline_id,
+    NULL::text AS colline,
+    c.all_plans_uuid AS benefit_plan_id,
+    c.all_value AS benefit_plan_code,
+    c.all_plans_label AS benefit_plan_name,
+    EXTRACT(year FROM CURRENT_DATE) AS year,
+    date_trunc('month', CURRENT_DATE) AS month,
+    date_trunc('quarter', CURRENT_DATE) AS quarter,
+    
+    laps.total_individuals,
+    laps.total_male,
+    laps.total_female,
+    laps.total_twa,
+    
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_male::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS male_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_female::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS female_percentage,
+    CASE 
+        WHEN laps.total_individuals > 0 
+        THEN ROUND((laps.total_twa::numeric / laps.total_individuals::numeric * 100), 2)
+        ELSE 0 
+    END AS twa_percentage,
+    
+    laps.total_households,
+    laps.total_beneficiaries,
+    laps.male_beneficiaries,
+    laps.female_beneficiaries,
+    laps.twa_beneficiaries,
+    
+    COALESCE(tcpa.transfer_count, 0) AS total_transfers,
+    COALESCE(SUM(pa.amount_paid), 0) AS total_amount_paid,
+    COALESCE(SUM(pa.amount_unpaid), 0) AS total_amount_unpaid,
+    COALESCE(SUM(pa.amount_total), 0) AS total_amount,
+    
+    0 AS total_grievances,
+    0 AS resolved_grievances,
+    
+    apc.active_provinces,
+    CURRENT_TIMESTAMP AS last_updated
+FROM location_all_plans_stats_province laps
+CROSS JOIN constants c
+CROSS JOIN active_provinces_count apc
+LEFT JOIN transfer_counts_province_all tcpa ON tcpa.province_id = laps.province_id
+LEFT JOIN payment_amounts_colline pa ON pa.province_id = laps.province_id
+GROUP BY 
+    laps.province_id, laps.province,
+    c.all_plans_uuid, c.all_value, c.all_plans_label,
+    laps.total_individuals, laps.total_male, laps.total_female, laps.total_twa,
+    laps.total_households, laps.total_beneficiaries,
+    laps.male_beneficiaries, laps.female_beneficiaries, laps.twa_beneficiaries,
+    apc.active_provinces, tcpa.transfer_count
+
+UNION ALL
+
+-- ==========================================
+-- GLOBAL LEVEL - ALL LOCATIONS, ALL PLANS
+-- ==========================================
 SELECT 
     NULL::integer AS province_id,
-    'ALL'::text AS province,
+    c.all_value AS province,
     NULL::integer AS commune_id,
-    'ALL'::text AS commune,
+    c.all_value AS commune,
     NULL::integer AS colline_id,
-    'ALL'::text AS colline,
-    'ALL'::text AS community_type,
-    '00000000-0000-0000-0000-000000000000'::uuid AS benefit_plan_id,
-    'ALL'::text AS benefit_plan_code,
-    'ALL PLANS'::text AS benefit_plan_name,
+    c.all_value AS colline,
+    c.all_plans_uuid AS benefit_plan_id,
+    c.all_value AS benefit_plan_code,
+    c.all_plans_label AS benefit_plan_name,
     EXTRACT(year FROM CURRENT_DATE) AS year,
     date_trunc('month', CURRENT_DATE) AS month,
     date_trunc('quarter', CURRENT_DATE) AS quarter,
-    COUNT(DISTINCT i."UUID") AS total_individuals,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END) AS total_male,
-    COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END) AS total_female,
-    COUNT(DISTINCT CASE 
-        WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-        THEN i."UUID" 
-    END) AS total_twa,
+    
+    gs.total_individuals,
+    gs.total_male,
+    gs.total_female,
+    gs.total_twa,
+    
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'M' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN gs.total_individuals > 0 
+        THEN ROUND((gs.total_male::numeric / gs.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS male_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE WHEN i."Json_ext"->>'sexe' = 'F' THEN i."UUID" END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN gs.total_individuals > 0 
+        THEN ROUND((gs.total_female::numeric / gs.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS female_percentage,
     CASE 
-        WHEN COUNT(DISTINCT i."UUID") > 0 
-        THEN (COUNT(DISTINCT CASE 
-            WHEN i."Json_ext"->>'is_twa' = 'true' OR ig."Json_ext"->>'menage_mutwa' = 'OUI' 
-            THEN i."UUID" 
-        END)::numeric / COUNT(DISTINCT i."UUID")::numeric * 100)
+        WHEN gs.total_individuals > 0 
+        THEN ROUND((gs.total_twa::numeric / gs.total_individuals::numeric * 100), 2)
         ELSE 0 
     END AS twa_percentage,
-    COUNT(DISTINCT ig."UUID") AS total_households,
-    COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
-    -- Payment data for ALL (count payrolls as transfers)
-    (SELECT COUNT(DISTINCT pp."UUID") FROM payroll_payroll pp WHERE pp."isDeleted" = false) AS total_transfers,
-
-    (SELECT COALESCE(SUM(CASE WHEN bc.status = 'RECONCILED' THEN bc."Amount"::numeric END), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_paid,
-    (SELECT COALESCE(SUM(CASE WHEN bc.status <> 'RECONCILED' THEN bc."Amount"::numeric END), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount_unpaid,
-    (SELECT COALESCE(SUM(bc."Amount"::numeric), 0) FROM payroll_benefitconsumption bc WHERE bc."isDeleted" = false) AS total_amount,
-
-    -- Grievance data
+    
+    gs.total_households,
+    gs.total_beneficiaries,
+    gs.male_beneficiaries,
+    gs.female_beneficiaries,
+    gs.twa_beneficiaries,
+    
+    gpd.transfer_count AS total_transfers,
+    gpd.amount_paid AS total_amount_paid,
+    gpd.amount_unpaid AS total_amount_unpaid,
+    gpd.amount_total AS total_amount,
+    
     0 AS total_grievances,
     0 AS resolved_grievances,
-    -- Active provinces
-    (SELECT COUNT(DISTINCT l."LocationId") FROM "tblLocations" l WHERE l."LocationType" = 'P') AS active_provinces,
+    
+    apc.active_provinces,
     CURRENT_TIMESTAMP AS last_updated
-FROM individual_group ig
-LEFT JOIN individual_groupindividual gi ON gi.group_id = ig."UUID" AND gi."isDeleted" = false
-LEFT JOIN individual_individual i ON i."UUID" = gi.individual_id AND i."isDeleted" = false
-LEFT JOIN social_protection_groupbeneficiary gb ON gb.group_id = ig."UUID" AND gb."isDeleted" = false
-WHERE ig."isDeleted" = false''',
+FROM global_stats gs
+CROSS JOIN constants c
+CROSS JOIN active_provinces_count apc
+CROSS JOIN global_payment_data gpd;''',
         'indexes': [
-            """CREATE INDEX idx_individual_summary_month ON dashboard_individual_summary USING btree (month);""",
-            """CREATE INDEX idx_individual_summary_province ON dashboard_individual_summary USING btree (province_id);""",
-            """CREATE INDEX idx_individual_summary_commune ON dashboard_individual_summary USING btree (commune_id);""",
-            """CREATE INDEX idx_individual_summary_colline ON dashboard_individual_summary USING btree (colline_id);""",
-            """CREATE INDEX idx_individual_summary_benefit_plan ON dashboard_individual_summary USING btree (benefit_plan_id);""",
-            """CREATE INDEX idx_individual_summary_year ON dashboard_individual_summary USING btree (year);""",
+            """CREATE INDEX idx_dashboard_summary_location_hierarchy ON dashboard_individual_summary USING btree (province_id, commune_id, colline_id);""",
+            """CREATE INDEX idx_dashboard_summary_plan_location ON dashboard_individual_summary USING btree (benefit_plan_id, colline_id);""",
+            """CREATE INDEX idx_dashboard_summary_temporal ON dashboard_individual_summary USING btree (year, month);""",
+            """CREATE INDEX idx_dashboard_summary_community_location ON dashboard_individual_summary USING btree (community_type, province_id);""",
+            """CREATE INDEX idx_dashboard_summary_covering ON dashboard_individual_summary USING btree (colline_id, benefit_plan_id, community_type) INCLUDE (total_individuals, total_households, total_beneficiaries, total_amount);""",
+            """CREATE INDEX idx_dashboard_summary_benefit_plan ON dashboard_individual_summary USING btree (benefit_plan_id) WHERE benefit_plan_id != '00000000-0000-0000-0000-000000000000'::uuid;""",
+            """CREATE INDEX idx_dashboard_summary_detail_rows ON dashboard_individual_summary USING btree (province_id, benefit_plan_id) WHERE province_id IS NOT NULL AND benefit_plan_id != '00000000-0000-0000-0000-000000000000'::uuid;""",
+            """CREATE INDEX idx_dashboard_summary_quarter ON dashboard_individual_summary USING btree (year, quarter);""",
+            """CREATE INDEX idx_dashboard_summary_community ON dashboard_individual_summary USING btree (community_type);""",
         ]
     },
     'dashboard_master_summary': {
@@ -299,7 +972,10 @@ beneficiary_stats AS (
         ) AS male_beneficiaries,
         COUNT(DISTINCT gb."UUID") FILTER (
             WHERE i."Json_ext"->>'sexe' = c.female_gender
-        ) AS female_beneficiaries
+        ) AS female_beneficiaries,
+		COUNT(DISTINCT gb."UUID") FILTER (
+            WHERE (gb."Json_ext" ->> 'menage_mutwa'::TEXT) = c.twa_indicator
+        ) AS twa_beneficiaries
     FROM social_protection_groupbeneficiary gb
     CROSS JOIN config c
     LEFT JOIN individual_groupindividual gi ON gi.group_id = gb.group_id  and (gi."recipient_type" = 'PRIMARY')
@@ -316,6 +992,7 @@ household_stats AS (
             WHERE (ig."Json_ext" ->> 'menage_mutwa'::TEXT) = c.twa_indicator
         ) AS total_twa
     FROM individual_group ig
+    CROSS JOIN config c
     WHERE ig."isDeleted" = false
 ),
 -- Individual demographics
@@ -364,10 +1041,12 @@ geographic_coverage AS (
 ),
 -- Grievance statistics (placeholder for future implementation)
 grievance_stats AS (
-    SELECT 
-        0::bigint AS total_grievances,
-        0::bigint AS resolved_grievances
-    -- TODO: Implement actual grievance aggregation logic when table structure is defined
+	SELECT COUNT(*) AS total_grievances, 
+	      COUNT(*) FILTER (
+            WHERE g.status = 'RESOLVED'
+        ) AS resolved_grievances
+	FROM grievance_social_protection_ticket g
+	WHERE g."isDeleted" = false
 ),
 -- Time dimensions
 time_dimensions AS (
@@ -403,6 +1082,7 @@ SELECT
     bs.active_beneficiaries,
     bs.male_beneficiaries,
     bs.female_beneficiaries,
+    bs.twa_beneficiaries,
     hs.total_households,
     hs.total_twa,
     
@@ -439,319 +1119,6 @@ CROSS JOIN time_dimensions td''',
             """CREATE INDEX idx_master_summary_colline ON dashboard_master_summary USING btree (colline_id);""",
             """CREATE INDEX idx_master_summary_benefit_plan ON dashboard_master_summary USING btree (benefit_plan_id);""",
             """CREATE INDEX idx_master_summary_year ON dashboard_master_summary USING btree (year);""",
-        ]
-    },
-    'dashboard_master_summary_enhanced': {
-        'sql': '''
-            CREATE MATERIALIZED VIEW DASHBOARD_MASTER_SUMMARY_ENHANCED AS
-            SELECT
-                'MASTER_SUMMARY'::TEXT AS SUMMARY_TYPE,
-                (
-                    SELECT
-                        COUNT(*) AS COUNT
-                    FROM
-                        SOCIAL_PROTECTION_GROUPBENEFICIARY
-                    WHERE
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY."isDeleted" = FALSE
-                            )
-                            AND (
-                                (SOCIAL_PROTECTION_GROUPBENEFICIARY.STATUS)::TEXT = 'ACTIVE'::TEXT
-                            )
-                        )
-                ) AS TOTAL_BENEFICIARIES,
-                (
-                    SELECT
-                        COUNT(
-                            DISTINCT SOCIAL_PROTECTION_GROUPBENEFICIARY.GROUP_ID
-                        ) AS COUNT
-                    FROM
-                        SOCIAL_PROTECTION_GROUPBENEFICIARY
-                    WHERE
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY."isDeleted" = FALSE
-                            )
-                            AND (
-                                (SOCIAL_PROTECTION_GROUPBENEFICIARY.STATUS)::TEXT = 'ACTIVE'::TEXT
-                            )
-                        )
-                ) AS TOTAL_HOUSEHOLDS,
-                (
-                    SELECT
-                        COUNT(*) AS COUNT
-                    FROM
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                            )
-                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND ((I."Json_ext" ->> 'sexe'::TEXT) = 'M'::TEXT)
-                        )
-                ) AS TOTAL_MALE,
-                (
-                    SELECT
-                        COUNT(*) AS COUNT
-                    FROM
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                            )
-                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND ((I."Json_ext" ->> 'sexe'::TEXT) = 'F'::TEXT)
-                        )
-                ) AS TOTAL_FEMALE,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                (
-                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                    JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
-                                )
-                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                            )
-                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (G."Json_ext" ->> 'menage_mutwa'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TOTAL_TWA,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                            )
-                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND ((I."Json_ext" ->> 'handicap'::TEXT) = 'OUI'::TEXT)
-                        )
-                ) AS TOTAL_DISABLED,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                            )
-                            JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (I."Json_ext" ->> 'maladie_chro'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TOTAL_CHRONIC_ILLNESS,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                (
-                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                                )
-                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                            )
-                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (G."Json_ext" ->> 'menage_refugie'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TOTAL_REFUGEES,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                (
-                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                                )
-                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                            )
-                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (G."Json_ext" ->> 'menage_rapatrie'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TOTAL_RETURNEES,
-                (
-                    SELECT
-                        COUNT(DISTINCT I."UUID") AS COUNT
-                    FROM
-                        (
-                            (
-                                (
-                                    SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                                    JOIN INDIVIDUAL_GROUPINDIVIDUAL GI ON ((GI.GROUP_ID = GB.GROUP_ID))
-                                )
-                                JOIN INDIVIDUAL_INDIVIDUAL I ON ((GI.INDIVIDUAL_ID = I."UUID"))
-                            )
-                            JOIN INDIVIDUAL_GROUP G ON ((GI.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (G."Json_ext" ->> 'menage_deplace'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TOTAL_DISPLACED,
-                (
-                    SELECT
-                        COUNT(DISTINCT G."UUID") AS COUNT
-                    FROM
-                        (
-                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                (G."Json_ext" ->> 'menage_mutwa'::TEXT) = 'OUI'::TEXT
-                            )
-                        )
-                ) AS TWA_HOUSEHOLDS,
-                (
-                    SELECT
-                        COUNT(DISTINCT G."UUID") AS COUNT
-                    FROM
-                        (
-                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                EXISTS (
-                                    SELECT
-                                        1
-                                    FROM
-                                        (
-                                            INDIVIDUAL_GROUPINDIVIDUAL GI2
-                                            JOIN INDIVIDUAL_INDIVIDUAL I2 ON ((GI2.INDIVIDUAL_ID = I2."UUID"))
-                                        )
-                                    WHERE
-                                        (
-                                            (GI2.GROUP_ID = G."UUID")
-                                            AND (
-                                                (I2."Json_ext" ->> 'handicap'::TEXT) = 'OUI'::TEXT
-                                            )
-                                        )
-                                )
-                            )
-                        )
-                ) AS DISABLED_HOUSEHOLDS,
-                (
-                    SELECT
-                        COUNT(DISTINCT G."UUID") AS COUNT
-                    FROM
-                        (
-                            SOCIAL_PROTECTION_GROUPBENEFICIARY GB
-                            JOIN INDIVIDUAL_GROUP G ON ((GB.GROUP_ID = G."UUID"))
-                        )
-                    WHERE
-                        (
-                            (GB."isDeleted" = FALSE)
-                            AND ((GB.STATUS)::TEXT = 'ACTIVE'::TEXT)
-                            AND (
-                                EXISTS (
-                                    SELECT
-                                        1
-                                    FROM
-                                        (
-                                            INDIVIDUAL_GROUPINDIVIDUAL GI2
-                                            JOIN INDIVIDUAL_INDIVIDUAL I2 ON ((GI2.INDIVIDUAL_ID = I2."UUID"))
-                                        )
-                                    WHERE
-                                        (
-                                            (GI2.GROUP_ID = G."UUID")
-                                            AND (
-                                                (I2."Json_ext" ->> 'maladie_chro'::TEXT) = 'OUI'::TEXT
-                                            )
-                                        )
-                                )
-                            )
-                        )
-                ) AS CHRONIC_ILLNESS_HOUSEHOLDS,
-                (
-                    (
-                        SELECT
-                            SUM(
-                                MERANKABANDI_SENSITIZATIONTRAINING.TWA_PARTICIPANTS
-                            ) AS SUM
-                        FROM
-                            MERANKABANDI_SENSITIZATIONTRAINING
-                    ) + (
-                        SELECT
-                            SUM(
-                                MERANKABANDI_BEHAVIORCHANGEPROMOTION.TWA_PARTICIPANTS
-                            ) AS SUM
-                        FROM
-                            MERANKABANDI_BEHAVIORCHANGEPROMOTION
-                    )
-                ) AS TOTAL_TWA_ACTIVITY_PARTICIPANTS,
-                CURRENT_TIMESTAMP AS LAST_UPDATED
-            ''',
-        'indexes': [
-        ]
-    },
-    'dashboard_vulnerable_groups': {
-        'sql': '''CREATE MATERIALIZED VIEW dashboard_vulnerable_groups AS
-SELECT l3."LocationName" AS province, l3."LocationId" AS province_id, (g."Json_ext" ->> 'type_menage'::text) AS household_type, bp."UUID" AS benefit_plan_id, bp.code AS benefit_plan_code, bp.name AS benefit_plan_name, count(DISTINCT g."UUID") AS total_households, count(DISTINCT i."UUID") AS total_members, count(DISTINCT CASE WHEN ((gi.recipient_type)::text = 'PRIMARY'::text) THEN i."UUID" ELSE NULL::uuid END) AS total_beneficiaries, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_mutwa'::text) = 'OUI'::text) THEN g."UUID" ELSE NULL::uuid END) AS twa_households, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_mutwa'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS twa_members, count(DISTINCT CASE WHEN (((g."Json_ext" ->> 'menage_mutwa'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS twa_beneficiaries, count(DISTINCT CASE WHEN (EXISTS ( SELECT 1 FROM (individual_groupindividual gi2 JOIN individual_individual i2 ON ((gi2.individual_id = i2."UUID"))) WHERE ((gi2.group_id = g."UUID") AND ((i2."Json_ext" ->> 'handicap'::text) = 'OUI'::text)))) THEN g."UUID" ELSE NULL::uuid END) AS disabled_households, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'handicap'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS disabled_members, count(DISTINCT CASE WHEN (((i."Json_ext" ->> 'handicap'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS disabled_beneficiaries, count(DISTINCT CASE WHEN (EXISTS ( SELECT 1 FROM (individual_groupindividual gi2 JOIN individual_individual i2 ON ((gi2.individual_id = i2."UUID"))) WHERE ((gi2.group_id = g."UUID") AND ((i2."Json_ext" ->> 'maladie_chro'::text) = 'OUI'::text)))) THEN g."UUID" ELSE NULL::uuid END) AS chronic_illness_households, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'maladie_chro'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS chronic_illness_members, count(DISTINCT CASE WHEN (((i."Json_ext" ->> 'maladie_chro'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS chronic_illness_beneficiaries, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_refugie'::text) = 'OUI'::text) THEN g."UUID" ELSE NULL::uuid END) AS refugee_households, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_refugie'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS refugee_members, count(DISTINCT CASE WHEN (((g."Json_ext" ->> 'menage_refugie'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS refugee_beneficiaries, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_rapatrie'::text) = 'OUI'::text) THEN g."UUID" ELSE NULL::uuid END) AS returnee_households, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_rapatrie'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS returnee_members, count(DISTINCT CASE WHEN (((g."Json_ext" ->> 'menage_rapatrie'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS returnee_beneficiaries, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_deplace'::text) = 'OUI'::text) THEN g."UUID" ELSE NULL::uuid END) AS displaced_households, count(DISTINCT CASE WHEN ((g."Json_ext" ->> 'menage_deplace'::text) = 'OUI'::text) THEN i."UUID" ELSE NULL::uuid END) AS displaced_members, count(DISTINCT CASE WHEN (((g."Json_ext" ->> 'menage_deplace'::text) = 'OUI'::text) AND ((gi.recipient_type)::text = 'PRIMARY'::text)) THEN i."UUID" ELSE NULL::uuid END) AS displaced_beneficiaries, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'type_handicap'::text) ~~ '%physique%'::text) THEN i."UUID" ELSE NULL::uuid END) AS physical_disability_count, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'type_handicap'::text) ~~ '%mental%'::text) THEN i."UUID" ELSE NULL::uuid END) AS mental_disability_count, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'type_handicap'::text) ~~ '%visuel%'::text) THEN i."UUID" ELSE NULL::uuid END) AS visual_disability_count, count(DISTINCT CASE WHEN ((i."Json_ext" ->> 'type_handicap'::text) ~~ '%auditif%'::text) THEN i."UUID" ELSE NULL::uuid END) AS hearing_disability_count, CURRENT_DATE AS report_date FROM (((((((social_protection_groupbeneficiary gb JOIN social_protection_benefitplan bp ON ((gb.benefit_plan_id = bp."UUID"))) JOIN individual_group g ON ((gb.group_id = g."UUID"))) JOIN individual_groupindividual gi ON ((gi.group_id = g."UUID"))) JOIN individual_individual i ON ((gi.individual_id = i."UUID"))) LEFT JOIN "tblLocations" l1 ON ((g.location_id = l1."LocationId"))) LEFT JOIN "tblLocations" l2 ON ((l1."ParentLocationId" = l2."LocationId"))) LEFT JOIN "tblLocations" l3 ON ((l2."ParentLocationId" = l3."LocationId"))) WHERE ((gb."isDeleted" = false) AND ((gb.status)::text = 'ACTIVE'::text)) GROUP BY l3."LocationName", l3."LocationId", (g."Json_ext" ->> 'type_menage'::text), bp."UUID", bp.code, bp.name, CURRENT_DATE''',
-        'indexes': [
-            """CREATE INDEX idx_dashboard_vulnerable_groups_province ON dashboard_vulnerable_groups USING btree (province_id);""",
         ]
     },
     'dashboard_vulnerable_groups_summary': {
