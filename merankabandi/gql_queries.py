@@ -29,7 +29,6 @@ class SensitizationTrainingGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "sensitization_date": ["exact", "lt", "lte", "gt", "gte"],
-            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             "location__id": ["exact", "in"],
             "location__parent__id": ["exact", "in"],
             "location__parent__parent__id": ["exact", "in"],
@@ -58,7 +57,6 @@ class BehaviorChangePromotionGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "report_date": ["exact", "lt", "lte", "gt", "gte"],
-            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             "location__id": ["exact", "in"],
             "location__parent__id": ["exact", "in"],
             "location__parent__parent__id": ["exact", "in"],
@@ -85,7 +83,6 @@ class MicroProjectGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "report_date": ["exact", "lt", "lte", "gt", "gte"],
-            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             "location__id": ["exact", "in"],
             "location__parent__id": ["exact", "in"],
             "location__parent__parent__id": ["exact", "in"],

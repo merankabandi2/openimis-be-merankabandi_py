@@ -34,6 +34,8 @@ class CreateMonetaryTransferInputType(OpenIMISMutation.Input):
     paid_women = graphene.Int(required=False)
     paid_men = graphene.Int(required=False)
     paid_twa = graphene.Int(required=False)
+    planned_amount = graphene.Decimal(required=False)
+    transferred_amount = graphene.Decimal(required=False)
     json_ext = graphene.JSONString(required=False)
 
 
