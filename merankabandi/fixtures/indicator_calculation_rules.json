@@ -15,7 +15,7 @@
     "pk": 2,
     "fields": {
       "indicator": 2,
-      "calculation_type": "SYSTEM",
+      "calculation_type": "MIXED",
       "calculation_method": "count_households_refugees",
       "calculation_config": {},
       "is_active": true

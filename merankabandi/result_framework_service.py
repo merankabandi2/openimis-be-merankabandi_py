@@ -165,13 +165,13 @@ class ResultFrameworkService:
         if date_to:
             query = query.filter(date_created__lte=date_to)
         if location:
-            query = query.filter(group__location__parent__parent=location)
+            query = query.filter(location__parent__parent=location)
         
         count = query.count()
         
         # Get gender breakdown
         gender_data = {}
-        for gb in query.select_related('group__head'):
+        for gb in query.select_related('head'):
             if gb.group.head and gb.group.head.json_ext:
                 gender = gb.group.head.json_ext.get('sexe', 'unknown')
                 gender_data[gender] = gender_data.get(gender, 0) + 1
@@ -213,7 +213,7 @@ class ResultFrameworkService:
         if location:
             query = query.filter(group__location__parent__parent=location)
         
-        count = query.values('individual').distinct().count()
+        count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
     
     def _count_beneficiaries_women(self, indicator, date_from, date_to, location, config):
@@ -221,8 +221,8 @@ class ResultFrameworkService:
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__group_individuals__individual__json_ext__sexe='F',
-            group__group_individuals__recipient_type='PRIMARY'
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY'
         )
         
         if date_from:
@@ -241,8 +241,8 @@ class ResultFrameworkService:
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__group_individuals__individual__json_ext__sexe='F',
-            group__group_individuals__recipient_type='PRIMARY',
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.2']  # Adjust based on actual codes
         )
         
@@ -306,8 +306,8 @@ class ResultFrameworkService:
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__group_individuals__individual__json_ext__sexe='F',
-            group__group_individuals__recipient_type='PRIMARY',
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.1']  # Adjust based on actual codes
         )
         
@@ -325,8 +325,8 @@ class ResultFrameworkService:
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__group_individuals__individual__json_ext__sexe='F',
-            group__group_individuals__recipient_type='PRIMARY',
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.4']
         )
         
@@ -345,8 +345,8 @@ class ResultFrameworkService:
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__group_individuals__individual__json_ext__sexe='F',
-            group__group_individuals__recipient_type='PRIMARY',
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY',
             group__location__parent__name__in=HOST_COMMUNES
         )
         
@@ -471,8 +471,7 @@ class ResultFrameworkService:
         """Count beneficiaries with approved business plans (Indicator 20)"""
         # Count from microprojects with approved status
         query = MicroProject.objects.filter(
-            validation_status='VALIDATED',
-            json_ext__business_plan_approved=True
+            validation_status='VALIDATED'
         )
         
         if date_from:
@@ -492,8 +491,7 @@ class ResultFrameworkService:
     def _count_approved_business_plans_women(self, indicator, date_from, date_to, location, config):
         """Count female beneficiaries with approved business plans (Indicator 21)"""
         query = MicroProject.objects.filter(
-            validation_status='VALIDATED',
-            json_ext__business_plan_approved=True
+            validation_status='VALIDATED'
         )
         
         if date_from:
@@ -516,8 +514,7 @@ class ResultFrameworkService:
     def _count_climate_resilient_activities(self, indicator, date_from, date_to, location, config):
         """Count climate-resilient productive activities (Indicator 23)"""
         query = MicroProject.objects.filter(
-            validation_status='VALIDATED',
-            json_ext__climate_resilient=True
+            validation_status='VALIDATED'
         )
         
         if date_from:
@@ -593,7 +590,7 @@ class ResultFrameworkService:
                     date_from=date_from, 
                     date_to=date_to
                 )
-                
+                print([indicator.name, result])
                 achieved_value = result.get('value', 0)
                 target_value = float(indicator.target) if indicator.target else 0
                 
@@ -608,7 +605,19 @@ class ResultFrameworkService:
                     'calculation_type': result.get('calculation_type', 'MANUAL'),
                     'observation': indicator.observation or ''
                 }
-                
+
+                # Save IndicatorAchievement record if value was calculated (not manual)
+                if result.get('calculation_type') in ['SYSTEM', 'MIXED'] and achieved_value > 0:
+                    achievement_date = date_to if date_to else timezone.now().date()
+ 
+                    # Create or update achievement for this date
+                    achievement = IndicatorAchievement.objects.create(
+                        indicator=indicator,
+                        date=achievement_date,
+                        achieved=Decimal(str(achieved_value)),
+                        comment=f'Auto-generated from snapshot: {name} (Calculation: {result.get("calculation_type")})'
+                    )
+
                 # Add any additional data from calculation
                 if 'gender_breakdown' in result:
                     indicator_data['gender_breakdown'] = result['gender_breakdown']
