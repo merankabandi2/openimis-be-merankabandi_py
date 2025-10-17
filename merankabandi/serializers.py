@@ -137,6 +137,12 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
             return recipient.json_ext.get('ci')
         return None
 
+    def get_naissance_lieu(self, obj):
+        recipient = self.get_recipient(obj)
+        if recipient and recipient.json_ext and 'naissance_lieu' in recipient.json_ext:
+            return recipient.json_ext.get('naissance_lieu')
+        return None
+
     def get_socialid(self, obj):
         return obj.group.code
 
