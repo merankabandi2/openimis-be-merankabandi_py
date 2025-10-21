@@ -194,28 +194,32 @@ class Command(BaseCommand):
                     
                     # If update_existing is True, update existing beneficiaries first
                     if update_existing and existing_group_ids:
+                        # Collect beneficiaries that need status updates
+                        beneficiaries_to_update = []
                         for beneficiary in existing_beneficiaries:
                             if beneficiary.status != status:
-                                try:
-                                    update_result = service.update({
-                                        'id': str(beneficiary.id),
-                                        'status': status
-                                    })
-                                    
-                                    if update_result.get('success', False):
-                                        updated += 1
-                                    else:
-                                        results['errors'] += 1
-                                        results['error_details'].append(
-                                            f"Error updating beneficiary for group {beneficiary.group.code}: {update_result.get('message', 'Unknown error')}"
-                                        )
-                                        if not skip_errors:
-                                            raise CommandError(f"Failed to update beneficiary for group {beneficiary.group.code}: {update_result.get('message', 'Unknown error')}")
-                                except Exception as e:
-                                    results['errors'] += 1
-                                    results['error_details'].append(f"Error updating beneficiary for group {beneficiary.group.code}: {str(e)}")
-                                    if not skip_errors:
-                                        raise
+                                beneficiary.status = status
+                                beneficiary.save_history = False  # Prevent individual history saves
+                                beneficiaries_to_update.append(beneficiary)
+
+                        # Perform bulk update if there are beneficiaries to update
+                        if beneficiaries_to_update:
+                            try:
+                                # Bulk update for performance
+                                GroupBeneficiary.objects.bulk_update(
+                                    beneficiaries_to_update,
+                                    ['status'],
+                                    batch_size=100
+                                )
+                                updated += len(beneficiaries_to_update)
+
+                                # Log the bulk update for audit trail
+                                self.stdout.write(f"  Bulk updated {len(beneficiaries_to_update)} beneficiaries")
+                            except Exception as e:
+                                results['errors'] += 1
+                                results['error_details'].append(f"Error bulk updating beneficiaries: {str(e)}")
+                                if not skip_errors:
+                                    raise
                     
                     # Process groups not already registered
                     for group in groups:
