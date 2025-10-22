@@ -41,7 +41,7 @@ from .serializers import (
     ResponseSerializer,
     CommuneSerializer
 )
-from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService, BeneficiaryExcelExportService
+from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService
 
 logger = logging.getLogger(__name__)
 
