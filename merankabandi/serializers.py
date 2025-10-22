@@ -1,8 +1,12 @@
+
+import os
+import base64
+import logging
+from django.conf import settings
+
 from payroll.models import BenefitConsumption
 from rest_framework import serializers
 from django.urls import reverse
-import logging
-from datetime import datetime
 
 from social_protection.models import GroupBeneficiary
 from location.models import Location
@@ -16,6 +20,9 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
     photo = serializers.SerializerMethodField()
     ci_recto = serializers.SerializerMethodField()
     ci_verso = serializers.SerializerMethodField()
+    photo_data = serializers.SerializerMethodField()
+    ci_recto_data = serializers.SerializerMethodField()
+    ci_verso_data = serializers.SerializerMethodField()
     niveau1_label = serializers.SerializerMethodField()
     niveau2_label = serializers.SerializerMethodField()
     niveau3_label = serializers.SerializerMethodField()
@@ -147,6 +154,119 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
         return obj.group.code
 
 
+class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
+    """
+    Serializer for retrieving beneficiary data for phone number attribution with images data.
+    """
+    photo_data = serializers.SerializerMethodField()
+    ci_recto_data = serializers.SerializerMethodField()
+    ci_verso_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GroupBeneficiary
+        fields = [
+            'photo', 'ci_recto', 'ci_verso', 'photo_data', 'ci_recto_data', 'ci_verso_data',
+            'niveau1_label', 'niveau2_label', 'niveau3_label',
+            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'naissance_lieu', 'genre', 'cni', 'socialid'
+        ]
+
+    def get_recipient(self, obj):
+        """Helper method to get primary recipient individual"""
+        try:
+            recipient = (obj.group.groupindividuals
+                        .filter(recipient_type='PRIMARY')
+                        .select_related('individual')
+                        .first())
+            return recipient.individual if recipient else None
+        except Exception as e:
+            logger.error(f"Error getting recipient: {str(e)}")
+            return None
+
+    def _get_image_path(self, individual, photo_type):
+        """Helper method to construct image file path"""
+        try:
+            household = individual.groupindividuals.get().group
+            base_dir = os.path.join(
+                settings.PHOTOS_BASE_PATH, 
+                str(household.json_ext.get('deviceid', '')), 
+                str(household.json_ext.get('date_collecte', '')).replace('-', '')
+            )
+            clean_path = f"{photo_type}_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
+            return os.path.join(base_dir, clean_path), clean_path
+        except Exception as e:
+            logger.error(f"Error constructing image path: {str(e)}")
+            return None, None
+
+    def _read_image_as_base64(self, file_path):
+        """Helper method to read image file and convert to base64"""
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                    return f'data:image/jpeg;base64,{image_data}'
+        except Exception as e:
+            logger.error(f"Error reading image file {file_path}: {str(e)}")
+        return None
+
+    def _check_image_permission(self, clean_path):
+        """Helper method to check image access permission"""
+        
+        request = self.context.get('request')
+        if request and request.user:
+            # return has_image_access_permission(request.user, clean_path)
+            return True
+        return False
+
+
+    def get_photo_data(self, obj):
+        """Get photo as base64 encoded data"""
+        recipient = self.get_recipient(obj)
+        if not recipient:
+            return None
+        
+        file_path, clean_path = self._get_image_path(recipient, 'photo')
+        if file_path and clean_path:
+            # Check permissions
+            if not self._check_image_permission(clean_path):
+                logger.warning(f"Access denied for photo: {clean_path}")
+                return None
+            
+            return self._read_image_as_base64(file_path)
+        return None
+
+    def get_ci_recto_data(self, obj):
+        """Get CI recto as base64 encoded data"""
+        recipient = self.get_recipient(obj)
+        if not recipient:
+            return None
+        
+        file_path, clean_path = self._get_image_path(recipient, 'photo_ci1')
+        if file_path and clean_path:
+            # Check permissions
+            if not self._check_image_permission(clean_path):
+                logger.warning(f"Access denied for CI recto: {clean_path}")
+                return None
+            
+            return self._read_image_as_base64(file_path)
+        return None
+
+    def get_ci_verso_data(self, obj):
+        """Get CI verso as base64 encoded data"""
+        recipient = self.get_recipient(obj)
+        if not recipient:
+            return None
+        
+        file_path, clean_path = self._get_image_path(recipient, 'photo_ci2')
+        if file_path and clean_path:
+            # Check permissions
+            if not self._check_image_permission(clean_path):
+                logger.warning(f"Access denied for CI verso: {clean_path}")
+                return None
+            
+            return self._read_image_as_base64(file_path)
+        return None
+
+
 
 class PhoneNumberAttributionSerializer(serializers.Serializer):
     """
@@ -244,6 +364,31 @@ class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):
 
     def get_programme(self, obj):
         return obj.benefit_plan.name if obj.benefit_plan else None
+
+
+class PaymentAccountAttributionListWithImageSerializer(BeneficiaryPhoneDataWithImageSerializer):
+    """
+    Serializer for listing beneficiary data for payment account attribution.
+    """
+    msisdn = serializers.SerializerMethodField()
+    programme = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GroupBeneficiary
+        fields = [
+            'photo', 'ci_recto', 'ci_verso', 'photo_data', 'ci_recto_data', 'ci_verso_data', 'niveau1_label', 'niveau2_label', 'niveau3_label',
+            'nom', 'prenom', 'pere', 'mere', 'date_naissance', 'naissance_lieu', 'genre', 'cni', 'socialid', 'msisdn',
+            'programme'
+        ]
+
+    def get_msisdn(self, obj):
+        if obj.json_ext and 'moyen_telecom' in obj.json_ext:
+            return obj.json_ext.get('moyen_telecom').get('msisdn')
+        return None
+
+    def get_programme(self, obj):
+        return obj.benefit_plan.name if obj.benefit_plan else None
+
 
 
 class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):

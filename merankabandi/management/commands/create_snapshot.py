@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import datetime
 from merankabandi.result_framework_service import ResultFrameworkService
-from merankabandi.models import ResultFrameworkSnapshot
 
 
 User = get_user_model()
@@ -44,11 +43,6 @@ class Command(BaseCommand):
             '--finalize',
             action='store_true',
             help='Set snapshot status to FINALIZED instead of DRAFT',
-        )
-        parser.add_argument(
-            '--generate-document',
-            action='store_true',
-            help='Generate DOCX document for the snapshot',
         )
 
     def handle(self, *args, **options):
@@ -114,36 +108,6 @@ class Command(BaseCommand):
                 snapshot.status = 'FINALIZED'
                 snapshot.save()
                 self.stdout.write('Snapshot status set to FINALIZED')
-
-            # Generate document if requested
-            if options.get('generate_document'):
-                self.stdout.write('Generating DOCX document...')
-                try:
-                    import os
-                    from django.conf import settings
-
-                    doc = service.generate_document(snapshot_id=snapshot.id, format='docx')
-
-                    # Save document
-                    media_root = getattr(settings, 'MEDIA_ROOT', '/tmp')
-                    snapshots_dir = os.path.join(media_root, 'snapshots')
-                    os.makedirs(snapshots_dir, exist_ok=True)
-
-                    filename = f'snapshot_{snapshot.id}.docx'
-                    file_path = os.path.join(snapshots_dir, filename)
-                    doc.save(file_path)
-
-                    # Update snapshot with document path
-                    snapshot.document_path = f'snapshots/{filename}'
-                    snapshot.save()
-
-                    self.stdout.write(
-                        self.style.SUCCESS(f'Document saved to: {file_path}')
-                    )
-                except Exception as e:
-                    self.stdout.write(
-                        self.style.WARNING(f'Failed to generate document: {str(e)}')
-                    )
 
             # Display summary
             self.stdout.write(

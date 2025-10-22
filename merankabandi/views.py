@@ -1,41 +1,38 @@
-from datetime import date
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from payroll.models import BenefitConsumption, BenefitConsumptionStatus
-from weasyprint import HTML, CSS
-from weasyprint.text.fonts import FontConfiguration
-from social_protection.models import GroupBeneficiary as Beneficiary, Group
-from individual.models import GroupIndividual, Individual
-from location.models import Location
-from django.conf import settings
-from django.http import FileResponse, HttpResponseForbidden
-from pathlib import Path
 import base64
-import os
-from rest_framework.response import Response
-from rest_framework import status
-
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.decorators import action
-from oauth2_provider.contrib.rest_framework import TokenHasScope
 import logging
+import os
 import subprocess
 import threading
-from django.http import JsonResponse
 from datetime import date
+from pathlib import Path
 
-from social_protection.models import BenefitPlan
-from .monetary_transfer_import_service import MonetaryTransferImportService
+from django.conf import settings
+from django.http import HttpResponse, FileResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
+from django.template.loader import render_to_string
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from oauth2_provider.contrib.rest_framework import TokenHasScope
+from weasyprint import HTML, CSS
+from weasyprint.text.fonts import FontConfiguration
+from individual.models import Group, GroupIndividual, Individual
+from location.models import Location
+from payroll.models import BenefitConsumption, BenefitConsumptionStatus
+from social_protection.models import BenefitPlan, GroupBeneficiary as Beneficiary
+
 from .models import ProvincePaymentPoint
-            
+from .monetary_transfer_import_service import MonetaryTransferImportService
 
 from .serializers import (
+    BeneficiaryPhoneDataWithImageSerializer,
     IndividualPaymentRequestSerializer,
     PaymentAccountAcknowledgmentSerializer,
     PaymentAccountAttributionListSerializer,
+    PaymentAccountAttributionListWithImageSerializer,
     PaymentAccountAttributionSerializer,
     PaymentAcknowledgmentSerializer,
     PaymentConsolidationSerializer,
@@ -44,7 +41,7 @@ from .serializers import (
     ResponseSerializer,
     CommuneSerializer
 )
-from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService
+from .services import PaymentAccountAttributionService, PaymentApiService, PhoneNumberAttributionService, BeneficiaryExcelExportService
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +343,67 @@ def beneficiary_photo_view(request, type, id):
     # Serve the file
     return FileResponse(open(file_path, 'rb'))
 
+
+def beneficiary_photos_view(request, socialid):
+    types = ['photo', 'photo_ci1', 'photo_ci2']
+
+    try:
+        household = Group.objects.filter(code=socialid).first()
+        if household is None:
+            return HttpResponseNotFound("Household not found")
+
+        base_dir = os.path.join(
+            settings.PHOTOS_BASE_PATH, 
+            str(household.json_ext.get('deviceid', '')), 
+            str(household.json_ext.get('date_collecte', '')).replace('-', '')
+        )
+        
+        response_data = {'photos': []}
+        
+        for photo_type in types:
+            clean_path = f"{photo_type}_repondant_{str(household.code)}.jpg"
+            
+            # Check permissions for each photo
+            if not has_image_access_permission(request.user, clean_path):
+                response_data['photos'].append({
+                    'type': photo_type,
+                    'error': 'Access denied'
+                })
+                continue
+            
+            # Construct the full file path
+            file_path = os.path.join(base_dir, clean_path)
+            
+            if not os.path.exists(file_path):
+                response_data['photos'].append({
+                    'type': photo_type,
+                    'error': 'File not found'
+                })
+                continue
+            
+            # Read and encode the image
+            try:
+                with open(file_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                    response_data['photos'].append({
+                        'type': photo_type,
+                        'data': f'data:image/jpeg;base64,{image_data}',
+                        'filename': clean_path
+                    })
+            except Exception as e:
+                response_data['photos'].append({
+                    'type': photo_type,
+                    'error': str(e)
+                })
+        
+        return JsonResponse(response_data)
+        
+    except Individual.DoesNotExist:
+        return HttpResponseNotFound("Individual not found")
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 def has_image_access_permission(user, image_path):
     return True
     """
@@ -414,9 +472,20 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
         
+        # Check if images should be included
+        include_image = request.query_params.get('include_image', 'false').lower() == 'true'
+        
         # Serialize data
-        serializer = BeneficiaryPhoneDataSerializer(
-            page, 
+        if not include_image:
+            # Use a lighter serializer without image_data fields
+            serializer = BeneficiaryPhoneDataSerializer(
+                page, 
+                many=True,
+                context={'request': request}
+            )
+        else:
+            serializer = BeneficiaryPhoneDataWithImageSerializer(
+            page,
             many=True,
             context={'request': request}
         )
@@ -623,14 +692,22 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
-        
-        # Serialize data
-        serializer = PaymentAccountAttributionListSerializer(
-            page, 
+        include_image = request.query_params.get('include_image', 'false').lower() == 'true'
+
+        if not include_image:
+            # Use a lighter serializer without image_data fields
+            serializer = PaymentAccountAttributionListSerializer(
+                queryset, 
+                many=True, 
+                context={'request': request}
+            )
+        else:
+            serializer = PaymentAccountAttributionListWithImageSerializer(
+            page,
             many=True,
             context={'request': request}
         )
-        
+            
         return paginator.get_paginated_response(serializer.data)
 
     def create(self, request):
@@ -1683,3 +1760,4 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+

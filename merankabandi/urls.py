@@ -50,6 +50,7 @@ urlpatterns = [
     path('commune-cards/<str:commune_name>/', views.generate_colline_cards_view, 
          name='colline_cards'),
     path('beneficiary-photo/<str:type>/<str:id>/', views.beneficiary_photo_view, name='beneficiary_photo'),
+    path('beneficiary-photos/<str:socialid>/', views.beneficiary_photos_view, name='beneficiary_photos'),
     path('location/<str:location_id>/cards/', views.generate_location_cards_view, name='generate_location_cards'),
     path('location/<str:location_id>/generate-cards-background/', views.trigger_background_card_generation, name='generate_cards_background'),
     path('location/<str:location_id>/generate-cards-background/<str:location_type>/', views.trigger_background_card_generation, name='generate_cards_background_with_type'),

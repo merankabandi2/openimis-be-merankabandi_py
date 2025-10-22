@@ -433,6 +433,7 @@ class PaymentAccountAttributionService:
         queryset = GroupBeneficiary.objects.filter(
             json_ext__moyen_telecom__msisdn__isnull=False,
             json_ext__moyen_telecom__status='SUCCESS',
+            status__in=[BeneficiaryStatus.ACTIVE, BeneficiaryStatus.VALIDATED]
         ).exclude(
             # Exclude only ACCEPTED accounts (allow REJECTED to be reprocessed)
             Q(json_ext__moyen_paiement__status__isnull=False) & Q(json_ext__moyen_paiement__status='ACCEPTED')
