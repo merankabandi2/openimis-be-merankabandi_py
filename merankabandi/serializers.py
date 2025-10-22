@@ -20,9 +20,6 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
     photo = serializers.SerializerMethodField()
     ci_recto = serializers.SerializerMethodField()
     ci_verso = serializers.SerializerMethodField()
-    photo_data = serializers.SerializerMethodField()
-    ci_recto_data = serializers.SerializerMethodField()
-    ci_verso_data = serializers.SerializerMethodField()
     niveau1_label = serializers.SerializerMethodField()
     niveau2_label = serializers.SerializerMethodField()
     niveau3_label = serializers.SerializerMethodField()
@@ -210,7 +207,7 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
 
     def _check_image_permission(self, clean_path):
         """Helper method to check image access permission"""
-        
+        return True
         request = self.context.get('request')
         if request and request.user:
             # return has_image_access_permission(request.user, clean_path)

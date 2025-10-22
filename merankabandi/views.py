@@ -697,8 +697,8 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         if not include_image:
             # Use a lighter serializer without image_data fields
             serializer = PaymentAccountAttributionListSerializer(
-                queryset, 
-                many=True, 
+                page, 
+                many=True,
                 context={'request': request}
             )
         else:

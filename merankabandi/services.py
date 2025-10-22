@@ -32,10 +32,10 @@ from location.models import Location
 from payment_cycle.models import PaymentCycle
 from payroll.services import PayrollService
 from payroll.models import PaymentPoint
-from social_protection.models import GroupBeneficiary, BenefitPlan
 from contribution_plan.models import PaymentPlan
 from dateutil.relativedelta import relativedelta
 from django.utils import timezone
+from social_protection.models import BeneficiaryStatus, GroupBeneficiary
 
 logger = logging.getLogger(__name__)
 
