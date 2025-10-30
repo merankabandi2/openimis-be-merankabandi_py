@@ -131,19 +131,9 @@ class SensitizationTraining(models.Model):
         if isinstance(mach_modules, str):
             modules = [mach_modules]
 
-        male_participants = 0
-        female_participants = 0
-        twa_participants = 0
-        # Regular participants
-        if int(kobo_data.get('group_bz5vi86/group_nb3yd70/Homme', 0)) > 0:
-            male_participants=int(kobo_data.get('group_bz5vi86/group_nb3yd70/Homme', 0))
-            female_participants=int(kobo_data.get('group_bz5vi86/group_nb3yd70/Femme', 0))
-            twa_participants=int(kobo_data.get('group_bz5vi86/group_nb3yd70/Twa', 0))
-        
-        # Refugee participants
-        if int(kobo_data.get('group_bz5vi86/group_mc86q55/Femme_', 0)) > 0:
-            female_participants=int(kobo_data.get('group_bz5vi86/group_mc86q55/Femme_', 0))
-            male_participants=int(kobo_data.get('group_bz5vi86/group_mc86q55/Homme_001', 0))
+        male_participants=int(kobo_data.get('group_zp4mt03/Nombre_dhommes', 0))
+        female_participants=int(kobo_data.get('group_zp4mt03/Nombre_de_femmes', 0))
+        twa_participants=int(kobo_data.get('group_zp4mt03/Nombre_de_Batwa', 0))
 
         locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
         date = kobo_data.get('Date_de_la_sensibilisation_Formation') or kobo_data.get('start')
