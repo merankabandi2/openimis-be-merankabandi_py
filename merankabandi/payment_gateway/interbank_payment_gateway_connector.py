@@ -10,17 +10,13 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
     """
     Connector for IBB M+ API Integration
     Thread-safe implementation for parallel payment processing
-
-    Thread Safety:
-    - Token refresh is protected by _token_lock (prevents concurrent header updates)
-    - HTTP requests use session.get/post which is thread-safe for concurrent reads
-    - Connection pool sized to 30 to handle parallel requests
     """
     def __init__(self, paymentpoint):
         super().__init__(paymentpoint)
         self.token = None
         self.token_expiry = 0
         self._token_lock = threading.Lock()
+        self._session_lock = threading.Lock()
 
     def _refresh_token_if_needed(self):
         """
@@ -167,22 +163,46 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         while retry_count <= max_retries:
             try:
                 # Token is refreshed at batch level before parallel processing
-                # Session.post() is thread-safe for concurrent requests
-                # Token refresh (which updates headers) is protected by _token_lock
-                response = self.session.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
+                # Use session lock to ensure thread-safe access to the session
+                with self._session_lock:
+                    response = self.session.post(url, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
 
                 benefit = BenefitConsumption.objects.get(code=invoice_id)
 
                 # Check for session error (65203 = "La session n'existe pas")
-                # DO NOT refresh token here - it would invalidate tokens used by other parallel threads
-                # Token is refreshed once per batch before parallel processing starts
-                if data.get('statusCode') == "65203":
-                    logger.error(f"Session error (65203): Token expired or invalid. This payment will fail.")
-                    benefit.json_ext['payment_request'] = data
-                    benefit.save(username=username)
-                    return False
+                if data.get('statusCode') == "65203" and retry_count < max_retries:
+                    logger.warning(f"Session error on payment attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
+                    # Force token refresh with lock to ensure thread safety
+                    with self._token_lock:
+                        token_refreshed = self._get_auth_token()
+
+                    if not token_refreshed:
+                        logger.error("Failed to refresh token, cannot retry payment")
+                        benefit = BenefitConsumption.objects.get(code=invoice_id)
+                        benefit.json_ext['payment_request'] = {
+                            'error': 'Token refresh failed',
+                            'statusCode': '65203'
+                        }
+                        benefit.save(username=username)
+                        return False
+
+                    # Verify we have a valid token before retrying
+                    if not self.token:
+                        logger.error("No valid token after refresh, cannot retry payment")
+                        benefit = BenefitConsumption.objects.get(code=invoice_id)
+                        benefit.json_ext['payment_request'] = {
+                            'error': 'No valid token after refresh',
+                            'statusCode': '65203'
+                        }
+                        benefit.save(username=username)
+                        return False
+
+                    retry_count += 1
+                    time.sleep(0.5)  # Brief delay to allow token propagation
+                    logger.info(f"Token refreshed successfully, retrying payment with new token")
+                    continue
 
                 if data.get('statusCode') == "200":
                     logger.info(f"Payment successful: {data.get('ibbTransactionID')}")
@@ -196,17 +216,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     benefit.save(username=username)
                     return False
 
-            except requests.exceptions.HTTPError as e:
-                # HTTP 401: Token expired or invalid
-                # DO NOT refresh token - it would invalidate tokens used by other parallel threads
-                # Token is refreshed once per batch before parallel processing starts
-                logger.error(f"Payment request failed: {e}")
-                if e.response is not None and e.response.status_code == 401:
-                    logger.error("HTTP 401 Unauthorized - token expired during parallel processing")
-                return False
-
             except requests.exceptions.RequestException as e:
-                # Other request exceptions (network errors, timeouts, etc.)
                 logger.error(f"Payment request failed: {e}")
                 if retry_count < max_retries:
                     retry_count += 1
@@ -232,10 +242,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             # Ensure we have a valid token
             self._refresh_token_if_needed()
 
-            # Session.get() is thread-safe for concurrent requests
-            response = self.session.get(url)
-            response.raise_for_status()
-            data = response.json()
+            # Use session lock to ensure thread-safe access
+            with self._session_lock:
+                response = self.session.get(url)
+                response.raise_for_status()
+                data = response.json()
 
             if data.get('status') == "200":
                 # Verify the transaction amount
