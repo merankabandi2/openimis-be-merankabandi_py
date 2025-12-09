@@ -254,7 +254,9 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 expected_amount = float(amount)
 
                 if abs(tx_amount - expected_amount) < 0.01:  # Allow small rounding differences
-                    benefit.receipt = data.get('ibbTransactionID')
+                    ibbTransactionId = data.get('ibbTransactionId')
+                    if ibbTransactionId and benefit.receipt != ibbTransactionId:
+                        benefit.receipt = ibbTransactionId
                     benefit.json_ext['payment_reconciliation'] = data
                     benefit.status = BenefitConsumptionStatus.RECONCILED
                     benefit.save(username=username)
