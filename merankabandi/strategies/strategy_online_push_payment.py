@@ -44,7 +44,7 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
         # Process benefits in batches
         for i in range(0, total_benefits, batch_size):
             batch = benefits[i:i + batch_size]
-            logger.info(f"Processing batch {i//batch_size + 1} of {(total_benefits + batch_size - 1)//batch_size} ({len(batch)} benefits)")
+            logger.info(f"Processing batch {i//batch_size + 1} of {(total_benefits + batch_size - 1)//batch_size} ({len(batch)}/{total_benefits} benefits)")
 
             # Refresh token once before processing the entire batch
             # This ensures all parallel requests in the batch use the same valid token

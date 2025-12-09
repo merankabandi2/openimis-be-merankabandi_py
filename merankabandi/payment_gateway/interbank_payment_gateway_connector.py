@@ -137,7 +137,28 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     logger.error(f"Customer lookup failed with status: {data.get('statusCode')}")
                     return False, None
 
+            except requests.exceptions.HTTPError as e:
+                # HTTP errors (401, 403, etc.) - likely token expiration
+                logger.error(f"Customer lookup request failed: {e}")
+                if retry_count < max_retries:
+                    # Check if it's a 401 Unauthorized - refresh token
+                    if e.response is not None and e.response.status_code == 401:
+                        logger.warning(f"HTTP 401 Unauthorized on lookup attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
+                        with self._token_lock:
+                            token_refreshed = self._get_auth_token()
+
+                        if not token_refreshed or not self.token:
+                            logger.error("Failed to refresh token after 401 error, cannot retry")
+                            return False, None
+
+                        logger.info(f"Token refreshed successfully after 401 error, retrying lookup")
+                    retry_count += 1
+                    time.sleep(0.5)
+                    continue
+                return False, None
+
             except requests.exceptions.RequestException as e:
+                # Other request exceptions (network errors, timeouts, etc.)
                 logger.error(f"Customer lookup request failed: {e}")
                 if retry_count < max_retries:
                     retry_count += 1
@@ -241,7 +262,28 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     benefit.save(username=username)
                     return False
 
+            except requests.exceptions.HTTPError as e:
+                # HTTP errors (401, 403, etc.) - likely token expiration
+                logger.error(f"Payment request failed: {e}")
+                if retry_count < max_retries:
+                    # Check if it's a 401 Unauthorized - refresh token
+                    if e.response is not None and e.response.status_code == 401:
+                        logger.warning(f"HTTP 401 Unauthorized on attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
+                        with self._token_lock:
+                            token_refreshed = self._get_auth_token()
+
+                        if not token_refreshed or not self.token:
+                            logger.error("Failed to refresh token after 401 error, cannot retry")
+                            return False
+
+                        logger.info(f"Token refreshed successfully after 401 error, retrying payment")
+                    retry_count += 1
+                    time.sleep(0.5)
+                    continue
+                return False
+
             except requests.exceptions.RequestException as e:
+                # Other request exceptions (network errors, timeouts, etc.)
                 logger.error(f"Payment request failed: {e}")
                 if retry_count < max_retries:
                     retry_count += 1
