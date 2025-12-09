@@ -24,7 +24,7 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
 
         # Process benefits in batches with parallel requests
         # Adjust based on server capacity and payment gateway limits
-        batch_size = 20
+        batch_size = 10
         total_benefits = len(benefits)
 
         def send_single_payment(benefit):

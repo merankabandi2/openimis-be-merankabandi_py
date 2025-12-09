@@ -248,6 +248,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 data = response.json()
 
             if data.get('status') == "200":
+                from payroll.models import BenefitConsumptionStatus
                 # Verify the transaction amount
                 tx_amount = float(data.get('amount', 0))
                 expected_amount = float(amount)
@@ -255,6 +256,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 if abs(tx_amount - expected_amount) < 0.01:  # Allow small rounding differences
                     benefit.receipt = data.get('ibbTransactionID')
                     benefit.json_ext['payment_reconciliation'] = data
+                    benefit.status = BenefitConsumptionStatus.RECONCILED
                     benefit.save(username=username)
                     return True
                 else:
