@@ -112,7 +112,6 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     return False, None
 
             except requests.exceptions.RequestException as e:
-                # Network errors, timeouts, etc.
                 logger.error(f"Customer lookup request failed: {e}")
                 if retry_count < max_retries:
                     retry_count += 1
@@ -141,10 +140,10 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             return False
 
         # Optional: Verify customer exists first
-        customer_exists, customer_name = self._lookup_customer(phone_number)
-        if not customer_exists:
-            logger.error(f"Customer with phone {phone_number} not found")
-            return False
+        # customer_exists, customer_name = self._lookup_customer(phone_number)
+        # if not customer_exists:
+        #     logger.error(f"Customer with phone {phone_number} not found")
+        #     return False
 
         # Prepare payment payload
         payload = {

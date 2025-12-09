@@ -76,3 +76,13 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
         from payroll.tasks import send_requests_to_gateway_payment
         cls.change_status_of_payroll(payroll, PayrollStatus.APPROVE_FOR_PAYMENT, user)
         send_requests_to_gateway_payment.delay(payroll.id, user.id)
+
+    @classmethod
+    def reconcile_benefit_consumption(cls, benefits, user):
+        from payroll.models import BenefitConsumptionStatus
+        for benefit in benefits:
+            try:
+                benefit.status = BenefitConsumptionStatus.RECONCILED
+                benefit.save(username=user.login_name)
+            except Exception as e:
+                logger.debug(f"Failed to approve benefit consumption {benefit.code}: {str(e)}")
