@@ -20,6 +20,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         """
         current_time = time.time()
         if not self.token or current_time >= self.token_expiry:
+            logger.info("Token expired or not found, refreshing token")
             self._get_auth_token()
 
     def _get_auth_token(self):
@@ -42,7 +43,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             if 'token' in token_data:
                 self.token = token_data['token']
                 # Set token expiry to 1 minutes
-                self.token_expiry = time.time() + (1 * 60)
+                self.token_expiry = time.time() + 50
                 # Update session headers with the new token
                 self.session.headers.update({'Authorization': f'Bearer {self.token}'})
                 return True
