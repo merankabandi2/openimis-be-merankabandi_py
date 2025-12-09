@@ -10,13 +10,17 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
     """
     Connector for IBB M+ API Integration
     Thread-safe implementation for parallel payment processing
+
+    Thread Safety:
+    - Token refresh is protected by _token_lock (prevents concurrent header updates)
+    - HTTP requests use session.get/post which is thread-safe for concurrent reads
+    - Connection pool sized to 30 to handle parallel requests
     """
     def __init__(self, paymentpoint):
         super().__init__(paymentpoint)
         self.token = None
         self.token_expiry = 0
         self._token_lock = threading.Lock()
-        self._session_lock = threading.Lock()
 
     def _refresh_token_if_needed(self):
         """
@@ -101,11 +105,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
 
         while retry_count <= max_retries:
             try:
-                # Use session lock to ensure thread-safe access
-                with self._session_lock:
-                    response = self.session.get(url)
-                    response.raise_for_status()
-                    data = response.json()
+                # Session.get() is thread-safe for concurrent requests
+                # Token refresh (which updates headers) is protected by _token_lock
+                response = self.session.get(url)
+                response.raise_for_status()
+                data = response.json()
 
                 # Check for session error (65203 = "La session n'existe pas")
                 if data.get('statusCode') == 65203 and retry_count < max_retries:
@@ -184,11 +188,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         while retry_count <= max_retries:
             try:
                 # Token is refreshed at batch level before parallel processing
-                # Use session lock to ensure thread-safe access to the session
-                with self._session_lock:
-                    response = self.session.post(url, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
+                # Session.post() is thread-safe for concurrent requests
+                # Token refresh (which updates headers) is protected by _token_lock
+                response = self.session.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
 
                 benefit = BenefitConsumption.objects.get(code=invoice_id)
 
@@ -263,11 +267,10 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             # Ensure we have a valid token
             self._refresh_token_if_needed()
 
-            # Use session lock to ensure thread-safe access
-            with self._session_lock:
-                response = self.session.get(url)
-                response.raise_for_status()
-                data = response.json()
+            # Session.get() is thread-safe for concurrent requests
+            response = self.session.get(url)
+            response.raise_for_status()
+            data = response.json()
 
             if data.get('status') == "200":
                 # Verify the transaction amount
