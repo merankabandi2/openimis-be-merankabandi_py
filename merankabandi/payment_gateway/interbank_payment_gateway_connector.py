@@ -86,8 +86,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         Look up customer details by phone number
         Returns tuple (success, customer_name)
 
-        Note: Token should be refreshed at batch level before calling this method
-        Includes retry logic for session errors
+        Note: This endpoint does NOT require authentication/token
         """
         if not phone_number:
             logger.error("Phone number is required for customer lookup")
@@ -105,31 +104,10 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
 
         while retry_count <= max_retries:
             try:
-                # Session.get() is thread-safe for concurrent requests
-                # Token refresh (which updates headers) is protected by _token_lock
+                # Customer lookup is a public endpoint, no authentication required
                 response = self.session.get(url)
                 response.raise_for_status()
                 data = response.json()
-
-                # Check for session error (65203 = "La session n'existe pas")
-                if data.get('statusCode') == 65203 and retry_count < max_retries:
-                    logger.warning(f"Session error on lookup attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
-                    # Force token refresh with lock to ensure thread safety
-                    with self._token_lock:
-                        token_refreshed = self._get_auth_token()
-
-                    if not token_refreshed:
-                        logger.error("Failed to refresh token, cannot retry")
-                        return False, None
-
-                    # Verify we have a valid token before retrying
-                    if not self.token:
-                        logger.error("No valid token after refresh, cannot retry")
-                        return False, None
-
-                    retry_count += 1
-                    time.sleep(0.5)  # Brief delay to allow token propagation
-                    continue
 
                 if data.get('statusCode') == 200:
                     return True, data.get('customerName')
@@ -137,28 +115,8 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     logger.error(f"Customer lookup failed with status: {data.get('statusCode')}")
                     return False, None
 
-            except requests.exceptions.HTTPError as e:
-                # HTTP errors (401, 403, etc.) - likely token expiration
-                logger.error(f"Customer lookup request failed: {e}")
-                if retry_count < max_retries:
-                    # Check if it's a 401 Unauthorized - refresh token
-                    if e.response is not None and e.response.status_code == 401:
-                        logger.warning(f"HTTP 401 Unauthorized on lookup attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
-                        with self._token_lock:
-                            token_refreshed = self._get_auth_token()
-
-                        if not token_refreshed or not self.token:
-                            logger.error("Failed to refresh token after 401 error, cannot retry")
-                            return False, None
-
-                        logger.info(f"Token refreshed successfully after 401 error, retrying lookup")
-                    retry_count += 1
-                    time.sleep(0.5)
-                    continue
-                return False, None
-
             except requests.exceptions.RequestException as e:
-                # Other request exceptions (network errors, timeouts, etc.)
+                # Network errors, timeouts, etc.
                 logger.error(f"Customer lookup request failed: {e}")
                 if retry_count < max_retries:
                     retry_count += 1
@@ -218,37 +176,13 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 benefit = BenefitConsumption.objects.get(code=invoice_id)
 
                 # Check for session error (65203 = "La session n'existe pas")
-                if data.get('statusCode') == "65203" and retry_count < max_retries:
-                    logger.warning(f"Session error on payment attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
-                    # Force token refresh with lock to ensure thread safety
-                    with self._token_lock:
-                        token_refreshed = self._get_auth_token()
-
-                    if not token_refreshed:
-                        logger.error("Failed to refresh token, cannot retry payment")
-                        benefit = BenefitConsumption.objects.get(code=invoice_id)
-                        benefit.json_ext['payment_request'] = {
-                            'error': 'Token refresh failed',
-                            'statusCode': '65203'
-                        }
-                        benefit.save(username=username)
-                        return False
-
-                    # Verify we have a valid token before retrying
-                    if not self.token:
-                        logger.error("No valid token after refresh, cannot retry payment")
-                        benefit = BenefitConsumption.objects.get(code=invoice_id)
-                        benefit.json_ext['payment_request'] = {
-                            'error': 'No valid token after refresh',
-                            'statusCode': '65203'
-                        }
-                        benefit.save(username=username)
-                        return False
-
-                    retry_count += 1
-                    time.sleep(0.5)  # Brief delay to allow token propagation
-                    logger.info(f"Token refreshed successfully, retrying payment with new token")
-                    continue
+                # DO NOT refresh token here - it would invalidate tokens used by other parallel threads
+                # Token is refreshed once per batch before parallel processing starts
+                if data.get('statusCode') == "65203":
+                    logger.error(f"Session error (65203): Token expired or invalid. This payment will fail.")
+                    benefit.json_ext['payment_request'] = data
+                    benefit.save(username=username)
+                    return False
 
                 if data.get('statusCode') == "200":
                     logger.info(f"Payment successful: {data.get('ibbTransactionID')}")
@@ -263,23 +197,12 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                     return False
 
             except requests.exceptions.HTTPError as e:
-                # HTTP errors (401, 403, etc.) - likely token expiration
+                # HTTP 401: Token expired or invalid
+                # DO NOT refresh token - it would invalidate tokens used by other parallel threads
+                # Token is refreshed once per batch before parallel processing starts
                 logger.error(f"Payment request failed: {e}")
-                if retry_count < max_retries:
-                    # Check if it's a 401 Unauthorized - refresh token
-                    if e.response is not None and e.response.status_code == 401:
-                        logger.warning(f"HTTP 401 Unauthorized on attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
-                        with self._token_lock:
-                            token_refreshed = self._get_auth_token()
-
-                        if not token_refreshed or not self.token:
-                            logger.error("Failed to refresh token after 401 error, cannot retry")
-                            return False
-
-                        logger.info(f"Token refreshed successfully after 401 error, retrying payment")
-                    retry_count += 1
-                    time.sleep(0.5)
-                    continue
+                if e.response is not None and e.response.status_code == 401:
+                    logger.error("HTTP 401 Unauthorized - token expired during parallel processing")
                 return False
 
             except requests.exceptions.RequestException as e:
