@@ -681,12 +681,14 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         """
         application_name = request.auth.application.name
         commune = request.query_params.get('commune')
+        phonenumber = request.query_params.get('phonenumber')
         programme = request.query_params.get('programme')
         
         # Get beneficiaries awaiting account attribution
         queryset = PaymentAccountAttributionService.get_pending_account_attributions(
-            commune=commune, 
-            programme=programme
+            commune=commune,
+            programme=programme, 
+            phonenumber=phonenumber
         )
         
         # Paginate results

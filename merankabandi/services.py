@@ -419,7 +419,7 @@ class PaymentAccountAttributionService:
             return None
     
     @classmethod
-    def get_pending_account_attributions(cls, commune=None, programme=None):
+    def get_pending_account_attributions(cls, commune=None, programme=None, phonenumber=None):
         """
         Get all beneficiaries awaiting payment account attribution
         
@@ -457,6 +457,11 @@ class PaymentAccountAttributionService:
                 group__location__parent__name__iexact=commune
             )
             
+        if phonenumber:
+            queryset = queryset.filter(
+                json_ext__moyen_telecom__msisdn=phonenumber
+            )
+
         if programme:
             queryset = queryset.filter(
                 benefit_plan__name__iexact=programme
