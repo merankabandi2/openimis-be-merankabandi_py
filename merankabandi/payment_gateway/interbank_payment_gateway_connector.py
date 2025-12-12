@@ -156,7 +156,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
 
         # Send payment request with retry logic for session errors
         url = f'{self.config.gateway_base_url}/ipg/Ibb/IoService/inBoundTransfer'
-        max_retries = 2
+        max_retries = 1
         retry_count = 0
 
         while retry_count <= max_retries:
@@ -171,32 +171,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 benefit = BenefitConsumption.objects.get(code=invoice_id)
 
                 # Check for session error (65203 = "La session n'existe pas")
-                if data.get('statusCode') == "65203" and retry_count < max_retries:
+                if data.get('statusCode') == "401" and retry_count < max_retries:
                     logger.warning(f"Session error on payment attempt {retry_count + 1}/{max_retries + 1}, refreshing token and retrying")
                     # Force token refresh with lock to ensure thread safety
                     with self._token_lock:
-                        token_refreshed = self._get_auth_token()
-
-                    if not token_refreshed:
-                        logger.error("Failed to refresh token, cannot retry payment")
-                        benefit = BenefitConsumption.objects.get(code=invoice_id)
-                        benefit.json_ext['payment_request'] = {
-                            'error': 'Token refresh failed',
-                            'statusCode': '65203'
-                        }
-                        benefit.save(username=username)
-                        return False
-
-                    # Verify we have a valid token before retrying
-                    if not self.token:
-                        logger.error("No valid token after refresh, cannot retry payment")
-                        benefit = BenefitConsumption.objects.get(code=invoice_id)
-                        benefit.json_ext['payment_request'] = {
-                            'error': 'No valid token after refresh',
-                            'statusCode': '65203'
-                        }
-                        benefit.save(username=username)
-                        return False
+                        self._refresh_token_if_needed()
 
                     retry_count += 1
                     time.sleep(0.5)  # Brief delay to allow token propagation
