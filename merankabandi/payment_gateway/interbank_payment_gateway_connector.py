@@ -196,11 +196,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Payment request failed: {e}")
-                if retry_count < max_retries:
-                    retry_count += 1
-                    logger.warning(f"Retrying payment request ({retry_count}/{max_retries})...")
-                    time.sleep(0.5)
-                    continue
+                retry_count = max_retries
                 return False
 
         # All retries exhausted
