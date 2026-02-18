@@ -1054,7 +1054,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         # Get payment requests with new filters
         queryset = PaymentApiService.get_individual_payment_requests(
             payment_provider=application_name,
-            payment_cycle_id=payment_cycle,
+            payment_cycle=payment_cycle,
             commune=commune,
             programme=programme,
             start_date=start_date,

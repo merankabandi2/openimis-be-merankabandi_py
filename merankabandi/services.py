@@ -1,40 +1,26 @@
 import logging
-import base64
-import hashlib
 from merankabandi.models import (
-    MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
-    SensitizationTraining, BehaviorChangePromotion, MicroProject
+    MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
 )
 from merankabandi.validation import (
     MonetaryTransferValidation, SectionValidation, IndicatorValidation, 
     IndicatorAchievementValidation, ProvincePaymentPointValidation
 )
-import requests
+
 from datetime import datetime
-from typing import Optional, Dict, Any
-import pandas as pd
-from django.http import HttpResponse
-from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
-from openpyxl.utils.dataframe import dataframe_to_rows
-import uuid
 
 from django.db import transaction
 from core.services import BaseService
 from core.services.utils import model_representation, output_result_success
 from core.signals import register_service_signal
 from django.db.models import Q
-from merankabandi.apps import MerankabandiConfig
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus, Payroll, PayrollStatus
-from individual.models import GroupIndividual, Individual
 from location.models import Location
 from payment_cycle.models import PaymentCycle
 from payroll.services import PayrollService
 from payroll.models import PaymentPoint
 from contribution_plan.models import PaymentPlan
 from dateutil.relativedelta import relativedelta
-from django.utils import timezone
 from social_protection.models import BeneficiaryStatus, GroupBeneficiary
 
 logger = logging.getLogger(__name__)
@@ -369,10 +355,11 @@ class PhoneNumberAttributionService:
             
         if programme:
             queryset = queryset.filter(
-                benefit_plan__name__iexact=programme
+                Q(benefit_plan__name__iexact=programme) |
+                Q(benefit_plan__code__iexact=programme)
             )
             
-        return queryset
+        return queryset.order_by('id')
 
 
 class PaymentAccountAttributionService:
@@ -464,10 +451,11 @@ class PaymentAccountAttributionService:
 
         if programme:
             queryset = queryset.filter(
-                benefit_plan__name__iexact=programme
+                Q(benefit_plan__name__iexact=programme) |
+                Q(benefit_plan__code__iexact=programme)
             )
             
-        return queryset
+        return queryset.order_by('id')
     
     @classmethod
     @transaction.atomic
@@ -640,7 +628,7 @@ class PaymentApiService:
         return user
 
     @classmethod
-    def get_individual_payment_requests(cls, payment_provider=None, payment_cycle_id=None, 
+    def get_individual_payment_requests(cls, payment_provider=None, payment_cycle=None, 
                                       commune=None, programme=None, start_date=None, end_date=None, has_account=False):
         """
         Get individual payment requests for payment provider.
@@ -648,7 +636,7 @@ class PaymentApiService:
         
         Args:
             payment_provider (str): Filter by payment provider
-            payment_cycle_id (int, optional): Filter by payment cycle ID
+            payment_cycle (UUID or str, optional): Filter by payment cycle ID/Code
             commune (str, optional): Filter by commune name
             programme (str, optional): Filter by programme name
             start_date (str, optional): Filter by start date
@@ -663,11 +651,14 @@ class PaymentApiService:
             
             # Filter by payment provider if specified
             if payment_provider:
-                payroll_query = payroll_query.filter(payment_point__name__icontains=payment_provider)
+                payroll_query = payroll_query.filter(payment_point__name__iexact=payment_provider)
                 
             # Filter by payment cycle if specified
-            if payment_cycle_id:
-                payroll_query = payroll_query.filter(payment_cycle_id=payment_cycle_id)
+            if payment_cycle:
+                payroll_query = payroll_query.filter(
+                    Q(payment_cycle=payment_cycle) |
+                    Q(payment_cycle__code__iexact=payment_cycle)
+                )
                 
             # Filter by commune if specified
             if commune:
@@ -679,7 +670,8 @@ class PaymentApiService:
             # Filter by programme if specified
             if programme:
                 payroll_query = payroll_query.filter(
-                    benefit_plan__name__icontains=programme
+                    Q(benefit_plan__name__iexact=programme) |
+                    Q(benefit_plan__code__iexact=programme)
                 )
                 
             # Filter by date range if specified
@@ -687,7 +679,17 @@ class PaymentApiService:
                 payroll_query = payroll_query.filter(date_created__gte=start_date)
             if end_date:
                 payroll_query = payroll_query.filter(date_created__lte=end_date)
-                
+
+            # When no payment cycle or date filters are provided, limit to the current active payment cycle
+            if not payment_cycle and not start_date and not end_date:
+                today = datetime.today()
+                payroll_query = payroll_query.filter(
+                    payment_cycle__isnull=False,
+                    payment_cycle__status='ACTIVE',
+                    payment_cycle__start_date__lte=today,
+                    payment_cycle__end_date__gte=today,
+                )
+
             # Get payroll IDs
             payroll_ids = payroll_query.values_list('id', flat=True)
 
@@ -703,7 +705,7 @@ class PaymentApiService:
                     & Q(individual__groupindividuals__group__groupbeneficiary__json_ext__moyen_paiement__status='SUCCESS')
                     )
 
-            return benefit_query.select_related('individual').distinct()
+            return benefit_query.select_related('individual').distinct().order_by('id')
             
         except Exception as e:
             logger.error(f"Error getting individual payment requests: {str(e)}")
