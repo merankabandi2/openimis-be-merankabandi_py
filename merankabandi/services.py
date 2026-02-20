@@ -676,9 +676,12 @@ class PaymentApiService:
                 
             # Filter by date range if specified
             if start_date:
-                payroll_query = payroll_query.filter(date_created__gte=start_date)
+                payroll_query = payroll_query.filter(date_valid_from__gte=start_date)
             if end_date:
-                payroll_query = payroll_query.filter(date_created__lte=end_date)
+                payroll_query = payroll_query.filter(
+                    Q(date_valid_to__lte=end_date) |
+                    Q(date_valid_to__isnull=True)
+                )
 
             # When no payment cycle or date filters are provided, limit to the current active payment cycle
             if not payment_cycle and not start_date and not end_date:

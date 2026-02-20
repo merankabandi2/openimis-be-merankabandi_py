@@ -356,7 +356,7 @@ class PaymentAccountAttributionListSerializer(BeneficiaryPhoneDataSerializer):
 
     def get_msisdn(self, obj):
         if obj.json_ext and 'moyen_telecom' in obj.json_ext:
-            return obj.json_ext.get('moyen_telecom').get('msisdn')
+            return (obj.json_ext.get('moyen_telecom') or {}).get('msisdn')
         return None
 
     def get_programme(self, obj):
@@ -380,7 +380,7 @@ class PaymentAccountAttributionListWithImageSerializer(BeneficiaryPhoneDataWithI
 
     def get_msisdn(self, obj):
         if obj.json_ext and 'moyen_telecom' in obj.json_ext:
-            return obj.json_ext.get('moyen_telecom').get('msisdn')
+            return (obj.json_ext.get('moyen_telecom') or {}).get('msisdn')
         return None
 
     def get_programme(self, obj):
