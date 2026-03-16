@@ -58,8 +58,17 @@ class MerankabandiConfig(AppConfig):
 
     def ready(self):
         self.__register_filters_and_payment_methods()
+        self.__register_calculation_rules()
         self.__load_config()
         self.__setup_dashboard_optimization()
+
+    @staticmethod
+    def __register_calculation_rules():
+        from calculation.apps import CALCULATION_RULES
+        from merankabandi.burundi_pmt_calculation_rule import BurundiPMTCalculationRule
+        if BurundiPMTCalculationRule not in CALCULATION_RULES:
+            CALCULATION_RULES.append(BurundiPMTCalculationRule)
+            BurundiPMTCalculationRule.ready()
 
     def __register_filters_and_payment_methods(self):
         PaymentsMethodRegistryPoint.register_payment_method(

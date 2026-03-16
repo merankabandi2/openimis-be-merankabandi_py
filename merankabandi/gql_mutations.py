@@ -15,6 +15,8 @@ from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService, 
     IndicatorAchievementService, ProvincePaymentPointService
 )
+from django.core.management import call_command
+from social_protection.models import BenefitPlan
 from payroll.apps import PayrollConfig
 
 
@@ -200,6 +202,40 @@ class DeleteSectionMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
 
     class Input(DeleteSectionInputType):
         pass
+
+# Survey & PMT Targeting Mutations
+class ImportSurveyDataMutation(BaseMutation):
+    _mutation_class = "ImportSurveyDataMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+        csv_path = graphene.String(required=True)
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        call_command(
+            'import_households_to_benefit_plan',
+            data['csv_path'],
+            str(data['benefit_plan_id']),
+        )
+
+
+class TriggerPMTCalculationMutation(BaseMutation):
+    _mutation_class = "TriggerPMTCalculationMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.burundi_pmt_calculation_rule import BurundiPMTCalculationRule
+        benefit_plan = BenefitPlan.objects.get(id=data['benefit_plan_id'])
+        BurundiPMTCalculationRule.calculate(
+            payment_plan=None,
+            benefit_plan=benefit_plan,
+        )
 
 # Indicator mutations
 class CreateIndicatorInputType(OpenIMISMutation.Input):
