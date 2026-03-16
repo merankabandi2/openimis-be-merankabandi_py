@@ -10,6 +10,10 @@ from social_protection.models import BenefitPlan
 from payment_cycle.models import PaymentCycle
 from contribution_plan.models import PaymentPlan
 
+# Host community communes as specified
+HOST_COMMUNES = ['Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo']
+
+
 class SensitizationTraining(models.Model):
     THEME_CATEGORIES = [
         ('module_mip__mesures_d_inclusio', 'Module MIP (Mesures d\'Inclusion Productive)'),
@@ -557,11 +561,12 @@ class Section(models.Model):
         if not obj_data:
             obj_data = kwargs
             kwargs = {}
-        [setattr(self, key, obj_data[key]) for key in obj_data]
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=user, **kwargs)
+            self.save(*args, user=user, username=username, **kwargs)
         return self
-    
+
     def __str__(self):
         return self.name
 
@@ -578,9 +583,10 @@ class Indicator(models.Model):
         if not obj_data:
             obj_data = kwargs
             kwargs = {}
-        [setattr(self, key, obj_data[key]) for key in obj_data]
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=user, **kwargs)
+            self.save(*args, user=user, username=username, **kwargs)
         return self
 
     def __str__(self):
@@ -598,9 +604,10 @@ class IndicatorAchievement(models.Model):
         if not obj_data:
             obj_data = kwargs
             kwargs = {}
-        [setattr(self, key, obj_data[key]) for key in obj_data]
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=user, **kwargs)
+            self.save(*args, user=user, username=username, **kwargs)
         return self
 
     def __str__(self):
@@ -626,9 +633,10 @@ class ProvincePaymentPoint(UUIDModel):
         if not obj_data:
             obj_data = kwargs
             kwargs = {}
-        [setattr(self, key, obj_data[key]) for key in obj_data]
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=user, **kwargs)
+            self.save(*args, user=user, username=username, **kwargs)
         return self
 
     def __str__(self):

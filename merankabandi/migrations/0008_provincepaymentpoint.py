@@ -10,7 +10,6 @@ class Migration(migrations.Migration):
     dependencies = [
         ("location", "0018_auto_20230925_2243"),
         ("contribution_plan", "0013_alter_contributionplan_date_created_and_more"),
-        ("payroll", "0023_historicalpaymentpoint_payment_method_and_more"),
         ("merankabandi", "0007_indicator_section_indicatorachievement_and_more"),
     ]
 

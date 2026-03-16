@@ -26,7 +26,8 @@ from merankabandi.gql_mutations import (
     CreateIndicatorAchievementMutation, UpdateIndicatorAchievementMutation, DeleteIndicatorAchievementMutation, 
     GenerateProvincePayrollMutation, AddProvincePaymentPointMutation,
     CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
-    ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation
+    ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
+    ImportSurveyDataMutation, TriggerPMTCalculationMutation
 )
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
@@ -1068,4 +1069,7 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     # Add validation mutations for KoboToolbox data
     validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()
     validate_behavior_change = ValidateBehaviorChangeMutation.Field()
-    validate_microproject = ValidateMicroProjectMutation.Field()
+    validate_micro_project = ValidateMicroProjectMutation.Field()
+    
+    import_survey_data = ImportSurveyDataMutation.Field()
+    trigger_pmt_calculation = TriggerPMTCalculationMutation.Field()

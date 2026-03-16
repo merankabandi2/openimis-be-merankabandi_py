@@ -14,8 +14,9 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 from .models import (
-    SensitizationTraining, BehaviorChangePromotion, MicroProject, 
-    MonetaryTransfer, Section, Indicator, IndicatorAchievement
+    SensitizationTraining, BehaviorChangePromotion, MicroProject,
+    MonetaryTransfer, Section, Indicator, IndicatorAchievement,
+    HOST_COMMUNES
 )
 from social_protection.models import GroupBeneficiary, BeneficiaryStatus
 from location.models import Location
@@ -23,10 +24,9 @@ from location.models import Location
 
 class MEDashboardService:
     """Service for M&E Dashboard data aggregation"""
-    
-    # Host community communes as specified
-    HOST_COMMUNES = ['Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo']
-    
+
+    HOST_COMMUNES = HOST_COMMUNES
+
     @classmethod
     def get_beneficiary_breakdown_data(cls, start_date=None, end_date=None, location_id=None):
         """Get beneficiary data broken down by gender, community type, location"""

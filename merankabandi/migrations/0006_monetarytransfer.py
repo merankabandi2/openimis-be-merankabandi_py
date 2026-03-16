@@ -9,7 +9,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("location", "0018_auto_20230925_2243"),
-        ("payroll", "0023_historicalpaymentpoint_payment_method_and_more"),
         ("social_protection", "0014_replace_benefitplan_max_beneficiaries_values"),
         ("merankabandi", "0005_alter_sensitizationtraining_category"),
     ]

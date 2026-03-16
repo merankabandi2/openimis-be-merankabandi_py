@@ -10,14 +10,12 @@ from social_protection.models import GroupBeneficiary, BenefitPlan
 from individual.models import Individual, GroupIndividual, Group
 from payroll.models import BenefitConsumption
 from .models import (
-    Section, Indicator, IndicatorAchievement, 
+    Section, Indicator, IndicatorAchievement,
     ResultFrameworkSnapshot, IndicatorCalculationRule,
-    MonetaryTransfer, SensitizationTraining, 
-    BehaviorChangePromotion, MicroProject
+    MonetaryTransfer, SensitizationTraining,
+    BehaviorChangePromotion, MicroProject,
+    HOST_COMMUNES
 )
-
-# Host communes for refugee/host community separation
-HOST_COMMUNES = ['Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo']
 
 # Refugee collines/camps for refugee/host community separation
 REFUGEE_COLLINES = []
