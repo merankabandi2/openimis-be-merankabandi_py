@@ -8,9 +8,10 @@ from core.utils import DefaultStorageFileHandler
 
 from location.gql_queries import LocationGQLType
 from merankabandi.models import (
-    BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining, 
+    BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining,
     Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
-    ResultFrameworkSnapshot, IndicatorCalculationRule
+    ResultFrameworkSnapshot, IndicatorCalculationRule, PmtFormula, SelectionQuota,
+    PreCollecte,
 )
 from payroll.gql_queries import PaymentPointGQLType
 from social_protection.gql_queries import BenefitPlanGQLType
@@ -300,6 +301,59 @@ class IndicatorCalculationResultType(graphene.ObjectType):
     gender_breakdown = graphene.JSONString()
     
     
+class PmtFormulaGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = PmtFormula
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "name": ["exact", "icontains"],
+            "is_active": ["exact"],
+        }
+        connection_class = ExtendedConnection
+
+
+class SelectionQuotaGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = SelectionQuota
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "benefit_plan": ["exact"],
+            "location": ["exact"],
+            "targeting_round": ["exact"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+        }
+        connection_class = ExtendedConnection
+
+
+class PreCollecteGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = PreCollecte
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "benefit_plan": ["exact"],
+            "location": ["exact"],
+            "social_id": ["exact", "icontains"],
+            "nom": ["exact", "icontains"],
+            "prenom": ["exact", "icontains"],
+            "status": ["exact", "in"],
+            "targeting_round": ["exact"],
+            "kobo_uuid": ["exact"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+        }
+        connection_class = ExtendedConnection
+
+
 class DashboardFiltersInputType(graphene.InputObjectType):
     """Input filters for dashboard queries"""
     date_from = graphene.Date()

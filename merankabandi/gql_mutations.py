@@ -10,7 +10,7 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
-from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PmtFormula, SelectionQuota, PreCollecte
 from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService, 
     IndicatorAchievementService, ProvincePaymentPointService
@@ -779,3 +779,419 @@ class BulkUpdateGroupBeneficiaryStatusMutation(BaseMutation):
         status = graphene.String(required=True)
         current_status = graphene.String(required=False)
         json_ext_update = graphene.JSONString(required=False)
+
+
+# PmtFormula mutations
+class CreatePmtFormulaInputType(OpenIMISMutation.Input):
+    name = graphene.String(required=True)
+    description = graphene.String(required=False)
+    base_score_urban = graphene.Decimal(required=False)
+    base_score_rural = graphene.Decimal(required=False)
+    variables = graphene.JSONString(required=False)
+    geographic_adjustments = graphene.JSONString(required=False)
+    is_active = graphene.Boolean(required=False)
+
+
+class UpdatePmtFormulaInputType(CreatePmtFormulaInputType):
+    id = graphene.UUID(required=True)
+
+
+class DeletePmtFormulaInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class CreatePmtFormulaMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "CreatePmtFormulaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PmtFormula
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        import json
+        if isinstance(data.get('variables'), str):
+            data['variables'] = json.loads(data['variables'])
+        if isinstance(data.get('geographic_adjustments'), str):
+            data['geographic_adjustments'] = json.loads(data['geographic_adjustments'])
+        PmtFormula.objects.create(**data)
+
+    class Input(CreatePmtFormulaInputType):
+        pass
+
+
+class UpdatePmtFormulaMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "UpdatePmtFormulaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PmtFormula
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        formula_id = data.pop('id')
+        import json
+        if isinstance(data.get('variables'), str):
+            data['variables'] = json.loads(data['variables'])
+        if isinstance(data.get('geographic_adjustments'), str):
+            data['geographic_adjustments'] = json.loads(data['geographic_adjustments'])
+        PmtFormula.objects.filter(id=formula_id).update(**data)
+
+    class Input(UpdatePmtFormulaInputType):
+        pass
+
+
+class DeletePmtFormulaMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
+    _mutation_class = "DeletePmtFormulaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PmtFormula
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids')
+        if ids:
+            PmtFormula.objects.filter(id__in=ids).delete()
+
+    class Input(DeletePmtFormulaInputType):
+        pass
+
+
+# SelectionQuota mutations
+class CreateSelectionQuotaInputType(OpenIMISMutation.Input):
+    benefit_plan_id = graphene.UUID(required=True)
+    location_id = graphene.Int(required=True)
+    targeting_round = graphene.Int(required=False)
+    quota = graphene.Int(required=True)
+    collect_multiplier = graphene.Decimal(required=False)
+
+
+class UpdateSelectionQuotaInputType(CreateSelectionQuotaInputType):
+    id = graphene.UUID(required=True)
+
+
+class DeleteSelectionQuotaInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class CreateSelectionQuotaMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "CreateSelectionQuotaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = SelectionQuota
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        SelectionQuota.objects.create(**data)
+
+    class Input(CreateSelectionQuotaInputType):
+        pass
+
+
+class UpdateSelectionQuotaMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "UpdateSelectionQuotaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = SelectionQuota
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        quota_id = data.pop('id')
+        SelectionQuota.objects.filter(id=quota_id).update(**data)
+
+    class Input(UpdateSelectionQuotaInputType):
+        pass
+
+
+class DeleteSelectionQuotaMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
+    _mutation_class = "DeleteSelectionQuotaMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = SelectionQuota
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids')
+        if ids:
+            SelectionQuota.objects.filter(id__in=ids).delete()
+
+    class Input(DeleteSelectionQuotaInputType):
+        pass
+
+
+# PreCollecte mutations
+class CreatePreCollecteInputType(OpenIMISMutation.Input):
+    benefit_plan_id = graphene.UUID(required=True)
+    location_id = graphene.Int(required=True)
+    origin_location_id = graphene.Int(required=False)
+    nom = graphene.String(required=True)
+    prenom = graphene.String(required=True)
+    pere = graphene.String(required=False)
+    mere = graphene.String(required=False)
+    ci = graphene.String(required=False)
+    telephone = graphene.String(required=False)
+    sexe = graphene.String(required=True)
+    mutwa = graphene.Boolean(required=False)
+    rapatrie = graphene.Boolean(required=False)
+    age_handicap = graphene.Boolean(required=False)
+    targeting_round = graphene.Int(required=False)
+    kobo_uuid = graphene.String(required=False)
+    device_id = graphene.String(required=False)
+    json_ext = graphene.JSONString(required=False)
+
+
+class UpdatePreCollecteInputType(CreatePreCollecteInputType):
+    id = graphene.UUID(required=True)
+
+
+class DeletePreCollecteInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class CreatePreCollecteMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "CreatePreCollecteMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PreCollecte
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.social_id_service import generate_social_id
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        import json
+        if isinstance(data.get('json_ext'), str):
+            data['json_ext'] = json.loads(data['json_ext'])
+        pc = PreCollecte(**data)
+        generate_social_id(pc)
+        pc.save()
+
+    class Input(CreatePreCollecteInputType):
+        pass
+
+
+class UpdatePreCollecteMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "UpdatePreCollecteMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PreCollecte
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        pc_id = data.pop('id')
+        PreCollecte.objects.filter(id=pc_id).update(**data)
+
+    class Input(UpdatePreCollecteInputType):
+        pass
+
+
+class DeletePreCollecteMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
+    _mutation_class = "DeletePreCollecteMutation"
+    _mutation_module = MerankabandiConfig.name
+    _model = PreCollecte
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids')
+        if ids:
+            PreCollecte.objects.filter(id__in=ids).delete()
+
+    class Input(DeletePreCollecteInputType):
+        pass
+
+
+# Selection lifecycle mutations
+class ApplyQuotaSelectionMutation(BaseMutation):
+    _mutation_class = "ApplyQuotaSelectionMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+        targeting_round = graphene.Int(required=False)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.selection_service import SelectionService
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        result = SelectionService.apply_quota_selection(
+            benefit_plan_id=data['benefit_plan_id'],
+            targeting_round=data.get('targeting_round', 1),
+        )
+        return result
+
+
+class ApplyCriteriaSelectionMutation(BaseMutation):
+    _mutation_class = "ApplyCriteriaSelectionMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.selection_service import SelectionService
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        result = SelectionService.apply_criteria_selection(
+            benefit_plan_id=data['benefit_plan_id'],
+        )
+        return result
+
+
+class SelectAllMutation(BaseMutation):
+    _mutation_class = "SelectAllMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.selection_service import SelectionService
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        result = SelectionService.select_all(
+            benefit_plan_id=data['benefit_plan_id'],
+        )
+        return result
+
+
+class PromoteToBeneficiaryMutation(BaseMutation):
+    _mutation_class = "PromoteToBeneficiaryMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.selection_service import SelectionService
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        result = SelectionService.promote_to_beneficiary(
+            benefit_plan_id=data['benefit_plan_id'],
+            username=user.username,
+        )
+        return result
+
+
+class PromoteFromWaitingListMutation(BaseMutation):
+    _mutation_class = "PromoteFromWaitingListMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+        colline_id = graphene.Int(required=True)
+        count = graphene.Int(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from merankabandi.selection_service import SelectionService
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        result = SelectionService.promote_from_waiting_list(
+            benefit_plan_id=data['benefit_plan_id'],
+            colline_id=data['colline_id'],
+            count=data['count'],
+            username=user.username,
+        )
+        return result

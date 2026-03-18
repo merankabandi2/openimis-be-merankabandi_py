@@ -28,17 +28,24 @@ from merankabandi.gql_mutations import (
     CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
     ImportSurveyDataMutation, TriggerPMTCalculationMutation,
-    BulkUpdateGroupBeneficiaryStatusMutation
+    BulkUpdateGroupBeneficiaryStatusMutation,
+    CreatePmtFormulaMutation, UpdatePmtFormulaMutation, DeletePmtFormulaMutation,
+    CreateSelectionQuotaMutation, UpdateSelectionQuotaMutation, DeleteSelectionQuotaMutation,
+    CreatePreCollecteMutation, UpdatePreCollecteMutation, DeletePreCollecteMutation,
+    ApplyQuotaSelectionMutation, ApplyCriteriaSelectionMutation, SelectAllMutation,
+    PromoteToBeneficiaryMutation, PromoteFromWaitingListMutation,
 )
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, 
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType,
-    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType
+    SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType,
+    PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
 )
 from merankabandi.models import (
-    BehaviorChangePromotion, MicroProject, MonetaryTransfer, 
-    SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
+    BehaviorChangePromotion, MicroProject, MonetaryTransfer,
+    SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
+    PmtFormula, SelectionQuota, PreCollecte,
 )
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary
@@ -269,6 +276,33 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         payment_plan_id=graphene.String(description="Filter by payment plan ID"),
         is_active=graphene.Boolean(description="Filter by active status"),
     )
+
+    pmt_formula = OrderedDjangoFilterConnectionField(
+        PmtFormulaGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    selection_quota = OrderedDjangoFilterConnectionField(
+        SelectionQuotaGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    def resolve_pmt_formula(self, info, **kwargs):
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        return gql_optimizer.query(PmtFormula.objects.all(), info)
+
+    pre_collecte = OrderedDjangoFilterConnectionField(
+        PreCollecteGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    def resolve_selection_quota(self, info, **kwargs):
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        return gql_optimizer.query(SelectionQuota.objects.all(), info)
+
+    def resolve_pre_collecte(self, info, **kwargs):
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        return gql_optimizer.query(PreCollecte.objects.all(), info)
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
         filters = append_validity_filter(**kwargs)
@@ -1075,3 +1109,25 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     import_survey_data = ImportSurveyDataMutation.Field()
     trigger_pmt_calculation = TriggerPMTCalculationMutation.Field()
     bulk_update_group_beneficiary_status = BulkUpdateGroupBeneficiaryStatusMutation.Field()
+
+    # PmtFormula CRUD
+    create_pmt_formula = CreatePmtFormulaMutation.Field()
+    update_pmt_formula = UpdatePmtFormulaMutation.Field()
+    delete_pmt_formula = DeletePmtFormulaMutation.Field()
+
+    # SelectionQuota CRUD
+    create_selection_quota = CreateSelectionQuotaMutation.Field()
+    update_selection_quota = UpdateSelectionQuotaMutation.Field()
+    delete_selection_quota = DeleteSelectionQuotaMutation.Field()
+
+    # PreCollecte CRUD
+    create_pre_collecte = CreatePreCollecteMutation.Field()
+    update_pre_collecte = UpdatePreCollecteMutation.Field()
+    delete_pre_collecte = DeletePreCollecteMutation.Field()
+
+    # Selection lifecycle
+    apply_quota_selection = ApplyQuotaSelectionMutation.Field()
+    apply_criteria_selection = ApplyCriteriaSelectionMutation.Field()
+    select_all = SelectAllMutation.Field()
+    promote_to_beneficiary = PromoteToBeneficiaryMutation.Field()
+    promote_from_waiting_list = PromoteFromWaitingListMutation.Field()

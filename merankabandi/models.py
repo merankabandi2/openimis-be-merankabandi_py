@@ -668,6 +668,132 @@ class ResultFrameworkSnapshot(models.Model):
         return f"{self.name} - {self.snapshot_date.strftime('%Y-%m-%d')}"
 
 
+class PmtFormula(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True, default="")
+    base_score_urban = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    base_score_rural = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    variables = models.JSONField(
+        default=list,
+        help_text='List of {field, weight, category, urban_weight, rural_weight}'
+    )
+    geographic_adjustments = models.JSONField(
+        default=dict,
+        help_text='Map of province_code -> adjustment value'
+    )
+    is_active = models.BooleanField(default=True)
+
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
+        if save:
+            self.save(*args, user=user, username=username, **kwargs)
+        return self
+
+    class Meta:
+        verbose_name = "PMT Formula"
+        verbose_name_plural = "PMT Formulas"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class SelectionQuota(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    benefit_plan = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT)
+    location = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='selection_quotas')
+    targeting_round = models.IntegerField(default=1)
+    quota = models.IntegerField()
+    collect_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=2.0)
+
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
+        if save:
+            self.save(*args, user=user, username=username, **kwargs)
+        return self
+
+    class Meta:
+        verbose_name = "Selection Quota"
+        verbose_name_plural = "Selection Quotas"
+        unique_together = ('benefit_plan', 'location', 'targeting_round')
+        ordering = ['benefit_plan', 'location']
+
+    def __str__(self):
+        return f"{self.benefit_plan.code} - {self.location.name} (round {self.targeting_round}): {self.quota}"
+
+
+class PreCollecteStatus(models.TextChoices):
+    COLLECTED = "COLLECTED", "Collected"
+    LINKED = "LINKED", "Linked"
+    DELETED = "DELETED", "Deleted"
+
+
+class PreCollecte(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    benefit_plan = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT)
+    location = models.ForeignKey(
+        Location, on_delete=models.PROTECT, related_name='precollecte_records'
+    )
+    origin_location = models.ForeignKey(
+        Location, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='precollecte_origin_records'
+    )
+    nom = models.CharField(max_length=255)
+    prenom = models.CharField(max_length=255)
+    pere = models.CharField(max_length=255, blank=True, default="")
+    mere = models.CharField(max_length=255, blank=True, default="")
+    ci = models.CharField(max_length=50, blank=True, default="")
+    telephone = models.CharField(max_length=15, blank=True, default="")
+    sexe = models.CharField(max_length=1)
+    mutwa = models.BooleanField(default=False)
+    rapatrie = models.BooleanField(default=False)
+    age_handicap = models.BooleanField(default=False)
+    social_id = models.CharField(max_length=14, unique=True, blank=True, default="")
+    social_id_seq = models.IntegerField(default=0)
+    targeting_round = models.IntegerField(default=1)
+    kobo_uuid = models.CharField(max_length=255, blank=True, default="")
+    device_id = models.CharField(max_length=255, blank=True, default="")
+    group = models.ForeignKey(
+        'individual.Group', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='precollecte_records'
+    )
+    status = models.CharField(
+        max_length=20, choices=PreCollecteStatus.choices,
+        default=PreCollecteStatus.COLLECTED
+    )
+    json_ext = models.JSONField(null=True, blank=True)
+
+    def update(self, *args, user=None, username=None, save=True, **kwargs):
+        obj_data = kwargs.pop('data', {})
+        if not obj_data:
+            obj_data = kwargs
+            kwargs = {}
+        for key in obj_data:
+            setattr(self, key, obj_data[key])
+        if save:
+            self.save(*args, user=user, username=username, **kwargs)
+        return self
+
+    class Meta:
+        verbose_name = "Pre-Collecte"
+        verbose_name_plural = "Pre-Collectes"
+        ordering = ['-id']
+
+    def __str__(self):
+        return f"{self.social_id} - {self.nom} {self.prenom}"
+
+
 class IndicatorCalculationRule(models.Model):
     """Configuration for automated indicator calculations"""
     indicator = models.OneToOneField(Indicator, on_delete=models.CASCADE, related_name='calculation_rule')
