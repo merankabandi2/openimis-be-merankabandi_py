@@ -78,12 +78,28 @@ class BurundiPMTCalculationRule(SocialProtectionCalculationRule):
     }
 
     @classmethod
+    def _load_formula(cls, benefit_plan):
+        """Load PmtFormula from BenefitPlan targeting config if configured."""
+        targeting = (benefit_plan.json_ext or {}).get('targeting', {})
+        formula_id = targeting.get('pmt_formula_id')
+        if not formula_id:
+            return None
+        from merankabandi.models import PmtFormula
+        try:
+            return PmtFormula.objects.get(id=formula_id, is_active=True)
+        except PmtFormula.DoesNotExist:
+            logger.warning("PmtFormula %s not found or inactive, using hardcoded defaults", formula_id)
+            return None
+
+    @classmethod
     def calculate(cls, payment_plan, **kwargs):
         benefit_plan = kwargs.get('benefit_plan') or (
             payment_plan.benefit_plan if payment_plan else None
         )
         if not benefit_plan:
             raise ValueError("No benefit plan provided.")
+
+        formula = cls._load_formula(benefit_plan)
 
         beneficiaries_qs = kwargs.get(
             'beneficiaries_queryset',
@@ -93,8 +109,8 @@ class BurundiPMTCalculationRule(SocialProtectionCalculationRule):
         updated_count = 0
         for beneficiary in beneficiaries_qs:
             data = cls._collect_household_data(beneficiary)
-            score_urban = cls._score_urban(data)
-            score_rural = cls._score_rural(data)
+            score_urban = cls._score_urban(data, formula=formula)
+            score_rural = cls._score_rural(data, formula=formula)
 
             # Select score based on commune milieu type
             milieu = data.get('type_milieu_residence', 'MILIEU_RESIDENCE_RURAL')
@@ -108,6 +124,7 @@ class BurundiPMTCalculationRule(SocialProtectionCalculationRule):
             beneficiary.json_ext['pmt_score'] = score
             beneficiary.json_ext['pmt_score_urban'] = score_urban
             beneficiary.json_ext['pmt_score_rural'] = score_rural
+            beneficiary.json_ext['selection_status'] = 'PMT_SCORED'
             beneficiary.save()
             updated_count += 1
 
@@ -140,8 +157,8 @@ class BurundiPMTCalculationRule(SocialProtectionCalculationRule):
         return 0.0
 
     @classmethod
-    def _score_urban(cls, data):
-        score = cls.BASE_URBAN
+    def _score_urban(cls, data, formula=None):
+        score = float(formula.base_score_urban) if formula else cls.BASE_URBAN
 
         # Head of household sex
         if data.get('chef_sexe') == 'M':
@@ -207,8 +224,8 @@ class BurundiPMTCalculationRule(SocialProtectionCalculationRule):
         return int(score * 1000)
 
     @classmethod
-    def _score_rural(cls, data):
-        score = cls.BASE_RURAL
+    def _score_rural(cls, data, formula=None):
+        score = float(formula.base_score_rural) if formula else cls.BASE_RURAL
 
         # Head of household sex
         if data.get('chef_sexe') == 'M':
