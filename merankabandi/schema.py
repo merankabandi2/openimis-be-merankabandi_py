@@ -27,7 +27,8 @@ from merankabandi.gql_mutations import (
     GenerateProvincePayrollMutation, AddProvincePaymentPointMutation,
     CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
-    ImportSurveyDataMutation, TriggerPMTCalculationMutation
+    ImportSurveyDataMutation, TriggerPMTCalculationMutation,
+    BulkUpdateGroupBeneficiaryStatusMutation
 )
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
@@ -1073,3 +1074,4 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     
     import_survey_data = ImportSurveyDataMutation.Field()
     trigger_pmt_calculation = TriggerPMTCalculationMutation.Field()
+    bulk_update_group_beneficiary_status = BulkUpdateGroupBeneficiaryStatusMutation.Field()

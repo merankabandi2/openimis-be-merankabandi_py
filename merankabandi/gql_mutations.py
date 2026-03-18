@@ -711,11 +711,71 @@ class ValidateMicroProjectMutation(BaseMutation):
             status=status,
             comment=comment
         )
-        
+
         if not success:
             raise ValidationError(error)
-        
+
         return {"success": success}
 
     class Input(ValidateKoboDataInputType):
         pass
+
+
+class BulkUpdateGroupBeneficiaryStatusMutation(BaseMutation):
+    _mutation_class = "BulkUpdateGroupBeneficiaryStatusMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from social_protection.models import GroupBeneficiary, BeneficiaryStatus
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        ids = data.get('ids', [])
+        status = data.get('status')
+        benefit_plan_id = data.get('benefit_plan_id')
+        current_status = data.get('current_status')
+        json_ext_update = data.get('json_ext_update')
+
+        valid_statuses = [s.value for s in BeneficiaryStatus]
+        if status not in valid_statuses:
+            raise ValidationError(_(f"Invalid status: {status}"))
+
+        qs = GroupBeneficiary.objects.filter(
+            benefit_plan_id=benefit_plan_id,
+            is_deleted=False,
+        )
+        if ids:
+            qs = qs.filter(id__in=ids)
+        if current_status:
+            qs = qs.filter(status=current_status)
+
+        if json_ext_update:
+            import json
+            update_data = json.loads(json_ext_update) if isinstance(json_ext_update, str) else json_ext_update
+            updated = 0
+            for gb in qs:
+                ext = gb.json_ext or {}
+                ext.update(update_data)
+                gb.json_ext = ext
+                gb.status = status
+                gb.save(username=user.username)
+                updated += 1
+        else:
+            updated = qs.update(status=status)
+
+        return {"success": True, "count": updated}
+
+    class Input(OpenIMISMutation.Input):
+        benefit_plan_id = graphene.UUID(required=True)
+        ids = graphene.List(graphene.UUID, required=False)
+        status = graphene.String(required=True)
+        current_status = graphene.String(required=False)
+        json_ext_update = graphene.JSONString(required=False)
