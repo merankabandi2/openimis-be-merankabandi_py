@@ -8,13 +8,28 @@ from individual.models import IndividualDataSourceUpload, IndividualDataSource, 
 
 logger = logging.getLogger(__name__)
 
-# Burundi-specific field mappings
+# Household fields arrive prefixed with 'hhd_' on the head individual's row.
+# They are stripped of the prefix and stored in Group.json_ext.
 _group_field_prefix = 'hhd_'
-_group_label_field = 'socialid'
-_group_head_field = 'hhd_head'
-_group_responsable_field = 'hhd_responsable'
-_full_name_field = 'nome'
-_dob_field = 'data_de_nascimento'
+
+# The social_id uniquely identifies a household and becomes Group.code.
+_group_label_field = 'social_id'
+
+# Individual-level fields mapped to model columns (removed from json_ext).
+_first_name_field = 'first_name'
+_last_name_field = 'last_name'
+_dob_field = 'dob'
+_head_field = 'head'
+_responsable_field = 'responsable'
+
+# Fields that are used for grouping/linking but should not be stored in
+# Individual.json_ext (they are either mapped to model fields or redundant).
+_individual_pop_fields = {
+    _first_name_field, _last_name_field, _dob_field,
+    _head_field, _responsable_field,
+    # menage_id duplicates social_id at the individual level
+    'menage_id',
+}
 
 
 def merankabandi_import_households_workflow(*args, user_uuid=None, upload_uuid=None, **kwargs):
@@ -22,18 +37,30 @@ def merankabandi_import_households_workflow(*args, user_uuid=None, upload_uuid=N
     Burundi-specific household import workflow.
 
     Processes IndividualDataSource rows from a UI upload and creates:
-    - Group records (one per socialid, with hhd_* fields in json_ext)
+    - Group records (one per social_id, with hhd_* fields in json_ext)
     - Individual records (with remaining fields in json_ext)
     - GroupIndividual links (with HEAD role and PRIMARY recipient type)
 
-    Field conventions:
-    - 'socialid': group code / household identifier
-    - 'hhd_*' prefixed fields: extracted into Group.json_ext (prefix stripped)
-    - 'hhd_head': boolean, marks the household head
-    - 'hhd_responsable': boolean, marks the primary payment recipient
-    - 'nome': full name, split into first_name / last_name
-    - 'data_de_nascimento': date of birth
-    - All other fields: stored in Individual.json_ext
+    Individual fields:
+        menage_id, individu_id, colline_id, social_id, nom, prenom, ci,
+        ci_date_emission, ci_lieu_emission, naissance_lieu, telephone, photo,
+        photo_url, cni_photo_recto, cni_photo_recto_url, cni_photo_verso,
+        cni_photo_verso_url, naissance_date, age_mariage, sexe, nationalite,
+        est_chef, lien, lit, instruction, handicap, type_handicap,
+        handicap_empechement, maladie_chro, maladie_chro_type, activite,
+        autres_activites, autres_activites_typ, prob_sante, prob_sante_issu,
+        fait_soigne, passoigne_raison, soigne_ou, assurance, age, etat_civil,
+        repondant, va_ecole, pas_ecole_raison, semaine_ecole,
+        semaine_ecole_raison, annee_derniere, termine, pas_termine_raison,
+        last_name, first_name, dob, head, responsable, relationship_to_head,
+        member_type, pere, mere, role
+
+    Household fields (hhd_ prefixed on head individual's row):
+        menage_id, province, commune, colline, colline_id, social_id,
+        date_creation, a_adultes, a_enfants, milieu_residence, latitude,
+        longitude, distance_ecole, distance_sanitaire, type_menage,
+        menage_type_monoparental, menage_mutwa, menage_deplace, ...,
+        score_pmt_initial, score_pmt_initial_rural, score_pmt_initial_urbain
     """
     upload = None
     try:
@@ -51,15 +78,15 @@ def merankabandi_import_households_workflow(*args, user_uuid=None, upload_uuid=N
 
             for row in rows:
                 data = copy.deepcopy(row.json_ext)
-                group_label = str(data.pop(_group_label_field)).strip()
+                group_label = str(data.pop(_group_label_field, '')).strip()
 
                 if not group_label:
-                    logger.warning("Row %s has empty socialid, skipping", row.id)
+                    logger.warning("Row %s has empty social_id, skipping", row.id)
                     continue
 
                 group = groups.get(group_label, None)
                 if not group:
-                    # Extract hhd_* prefixed fields into group json_ext
+                    # First row for this household — extract hhd_* fields
                     group_data = {}
                     fields_to_remove = []
                     for key, value in data.items():
@@ -75,22 +102,20 @@ def merankabandi_import_households_workflow(*args, user_uuid=None, upload_uuid=N
                     group.save(username=user.username)
                     groups[group_label] = group
                 else:
-                    # Remove group fields from subsequent individuals in the same group
-                    fields_to_remove = [key for key in data.keys() if key.startswith(_group_field_prefix)]
-                    for key in fields_to_remove:
+                    # Subsequent individuals — just discard any hhd_* fields
+                    for key in [k for k in data if k.startswith(_group_field_prefix)]:
                         data.pop(key)
 
-                # Extract individual identity fields
-                full_name = data.pop(_full_name_field, '').strip()
-                if ' ' in full_name:
-                    first_name, last_name = full_name.split(' ', 1)
-                else:
-                    first_name = full_name
-                    last_name = ''
-
+                # Extract model-level individual fields
+                first_name = str(data.pop(_first_name_field, '')).strip()
+                last_name = str(data.pop(_last_name_field, '')).strip()
                 dob = data.pop(_dob_field, None)
-                is_head = data.pop(_group_head_field, False)
-                is_responsable = data.pop(_group_responsable_field, False)
+                is_head = data.pop(_head_field, False)
+                is_responsable = data.pop(_responsable_field, False)
+
+                # Remove redundant fields that shouldn't go into json_ext
+                for field in _individual_pop_fields:
+                    data.pop(field, None)
 
                 individual = Individual(
                     first_name=first_name,
