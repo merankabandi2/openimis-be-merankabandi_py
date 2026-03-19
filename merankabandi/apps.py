@@ -59,6 +59,7 @@ class MerankabandiConfig(AppConfig):
     def ready(self):
         self.__register_filters_and_payment_methods()
         self.__register_calculation_rules()
+        self.__register_workflows()
         self.__load_config()
         self.__setup_dashboard_optimization()
 
@@ -69,6 +70,20 @@ class MerankabandiConfig(AppConfig):
         if BurundiPMTCalculationRule not in CALCULATION_RULES:
             CALCULATION_RULES.append(BurundiPMTCalculationRule)
             BurundiPMTCalculationRule.ready()
+
+    @staticmethod
+    def __register_workflows():
+        try:
+            from workflow.systems.python import PythonWorkflowAdaptor
+            from merankabandi.workflows import merankabandi_import_households_workflow
+
+            PythonWorkflowAdaptor.register_workflow(
+                'Merankabandi Import Households',
+                'merankabandi',
+                merankabandi_import_households_workflow,
+            )
+        except ImportError:
+            pass
 
     def __register_filters_and_payment_methods(self):
         PaymentsMethodRegistryPoint.register_payment_method(
