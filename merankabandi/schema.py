@@ -5,6 +5,7 @@ from decimal import Decimal
 from gettext import gettext as _
 from django.contrib.auth.models import AnonymousUser
 from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value
+from location.models import UserDistrict
 
 # Import optimized dashboard queries and mutations
 from .optimized_gql_queries import OptimizedDashboardQuery
@@ -329,13 +330,22 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         return gql_optimizer.query(query, info)
 
     def resolve_sensitization_training(self, info, **kwargs):
-        return gql_optimizer.query(SensitizationTraining.objects.all(), info)
+        queryset = Query._apply_user_location_filter(
+            SensitizationTraining.objects.all(), info.context.user
+        )
+        return gql_optimizer.query(queryset, info)
 
     def resolve_behavior_change_promotion(self, info, **kwargs):
-        return gql_optimizer.query(BehaviorChangePromotion.objects.all(), info)
+        queryset = Query._apply_user_location_filter(
+            BehaviorChangePromotion.objects.all(), info.context.user
+        )
+        return gql_optimizer.query(queryset, info)
 
     def resolve_micro_project(self, info, **kwargs):
-        return gql_optimizer.query(MicroProject.objects.all(), info)
+        queryset = Query._apply_user_location_filter(
+            MicroProject.objects.all(), info.context.user
+        )
+        return gql_optimizer.query(queryset, info)
 
     def resolve_monetary_transfer(self, info, **kwargs):
         #Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
@@ -1049,6 +1059,35 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
             query = query.filter(is_active=is_active)
             
         return gql_optimizer.query(query, info)
+
+    @staticmethod
+    def _get_user_province_ids(user):
+        """
+        Returns the list of province (type 'D') location IDs assigned to the user
+        via UserDistrict. Returns None if the user is a superuser (no filtering needed).
+        """
+        if hasattr(user, '_u'):
+            interactive_user = user._u
+        else:
+            interactive_user = user
+        if interactive_user.is_superuser:
+            return None
+        districts = UserDistrict.get_user_districts(user)
+        return [d.location_id for d in districts]
+
+    @staticmethod
+    def _apply_user_location_filter(queryset, user):
+        """
+        Filters a queryset of activities (with a `location` FK pointing to colline level)
+        to only include records within the user's assigned provinces.
+        Superusers bypass this filter.
+        """
+        province_ids = Query._get_user_province_ids(user)
+        if province_ids is None:
+            return queryset
+        if not province_ids:
+            return queryset.none()
+        return queryset.filter(location__parent__parent__id__in=province_ids)
 
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):

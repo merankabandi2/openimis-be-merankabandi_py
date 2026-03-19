@@ -10,7 +10,8 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
-from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PmtFormula, SelectionQuota, PreCollecte
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
+from location.models import UserDistrict
 from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService, 
     IndicatorAchievementService, ProvincePaymentPointService
@@ -601,6 +602,24 @@ class ValidateKoboDataInputType(OpenIMISMutation.Input):
     comment = graphene.String(required=False, description="Validation comment")
 
 
+def _check_user_province_access(user, activity):
+    """
+    Checks that the activity's location falls within one of the user's assigned provinces.
+    Superusers bypass this check. Raises ValidationError if access is denied.
+    """
+    interactive_user = user._u if hasattr(user, '_u') else user
+    if interactive_user.is_superuser:
+        return
+    districts = UserDistrict.get_user_districts(user)
+    province_ids = [d.location_id for d in districts]
+    if not province_ids:
+        raise ValidationError(_("You have no province assignments. Cannot validate activities."))
+    # Activity location is at colline level: colline -> commune -> province
+    activity_province_id = activity.location.parent.parent_id if activity.location.parent else None
+    if activity_province_id not in province_ids:
+        raise ValidationError(_("You are not authorized to validate activities outside your assigned province."))
+
+
 class ValidateSensitizationTrainingMutation(BaseMutation):
     _mutation_class = "ValidateSensitizationTrainingMutation"
     _mutation_module = MerankabandiConfig.name
@@ -609,32 +628,35 @@ class ValidateSensitizationTrainingMutation(BaseMutation):
     def _validate_mutation(cls, user, **data):
         if type(user) is AnonymousUser or not user.id:
             raise ValidationError(_("mutation.authentication_required"))
-        # TODO: Add specific permission check for validation
+        training = SensitizationTraining.objects.select_related(
+            'location__parent'
+        ).get(id=data.get('id'))
+        _check_user_province_access(user, training)
 
     @classmethod
     def _mutate(cls, user, **data):
         from merankabandi.services_validation import KoboDataValidationService
-        
+
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
-        
+
         training_id = data.get('id')
         status = data.get('status')
         comment = data.get('comment')
-        
+
         if status not in ['VALIDATED', 'REJECTED']:
             raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
-        
+
         success, training, error = KoboDataValidationService.validate_sensitization_training(
             user=user,
             training_id=training_id,
             status=status,
             comment=comment
         )
-        
+
         if not success:
             raise ValidationError(error)
-        
+
         return {"success": success}
 
     class Input(ValidateKoboDataInputType):
@@ -649,32 +671,35 @@ class ValidateBehaviorChangeMutation(BaseMutation):
     def _validate_mutation(cls, user, **data):
         if type(user) is AnonymousUser or not user.id:
             raise ValidationError(_("mutation.authentication_required"))
-        # TODO: Add specific permission check for validation
+        behavior_change = BehaviorChangePromotion.objects.select_related(
+            'location__parent'
+        ).get(id=data.get('id'))
+        _check_user_province_access(user, behavior_change)
 
     @classmethod
     def _mutate(cls, user, **data):
         from merankabandi.services_validation import KoboDataValidationService
-        
+
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
-        
+
         behavior_change_id = data.get('id')
         status = data.get('status')
         comment = data.get('comment')
-        
+
         if status not in ['VALIDATED', 'REJECTED']:
             raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
-        
+
         success, behavior_change, error = KoboDataValidationService.validate_behavior_change(
             user=user,
             behavior_change_id=behavior_change_id,
             status=status,
             comment=comment
         )
-        
+
         if not success:
             raise ValidationError(error)
-        
+
         return {"success": success}
 
     class Input(ValidateKoboDataInputType):
@@ -689,22 +714,25 @@ class ValidateMicroProjectMutation(BaseMutation):
     def _validate_mutation(cls, user, **data):
         if type(user) is AnonymousUser or not user.id:
             raise ValidationError(_("mutation.authentication_required"))
-        # TODO: Add specific permission check for validation
+        microproject = MicroProject.objects.select_related(
+            'location__parent'
+        ).get(id=data.get('id'))
+        _check_user_province_access(user, microproject)
 
     @classmethod
     def _mutate(cls, user, **data):
         from merankabandi.services_validation import KoboDataValidationService
-        
+
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
-        
+
         microproject_id = data.get('id')
         status = data.get('status')
         comment = data.get('comment')
-        
+
         if status not in ['VALIDATED', 'REJECTED']:
             raise ValidationError(_("Invalid status. Must be VALIDATED or REJECTED"))
-        
+
         success, microproject, error = KoboDataValidationService.validate_microproject(
             user=user,
             microproject_id=microproject_id,
