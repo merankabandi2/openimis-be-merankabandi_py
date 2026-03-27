@@ -304,15 +304,24 @@ class VulnerableGroupsQuery(graphene.ObjectType):
     
     def resolve_vulnerable_groups_summary(self, info, **kwargs):
         """Resolve vulnerable groups summary data"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         return VulnerableGroupsService.get_vulnerable_groups_summary(kwargs)
     
     def resolve_vulnerable_groups_details(self, info, **kwargs):
         """Resolve vulnerable groups detailed data"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         return VulnerableGroupsService.get_vulnerable_groups_details(kwargs)
     
     
     def resolve_enhanced_beneficiary_breakdown(self, info, **kwargs):
         """Resolve enhanced beneficiary breakdown with vulnerable groups"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         summary = VulnerableGroupsService.get_vulnerable_groups_summary(kwargs)
         details = VulnerableGroupsService.get_vulnerable_groups_details(kwargs)
         

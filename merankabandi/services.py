@@ -58,16 +58,16 @@ class PayrollGenerationService:
                 
             # Validate payment plan
             payment_plan = PaymentPlan.objects.filter(id=payment_plan_id).first()
-            benefit_plan_id = payment_plan.benefit_plan_id
-            benefit_plan = payment_plan.benefit_plan
-            
             if not payment_plan:
                 return {
                     'success': False,
                     'error': 'No payment plan found or invalid',
                     'generated_payrolls': []
                 }
-            
+
+            benefit_plan_id = payment_plan.benefit_plan_id
+            benefit_plan = payment_plan.benefit_plan
+
             # Get the payment point associated with this province and payment plan
             province_payment_point = ProvincePaymentPoint.objects.filter(
                 province_id=province_id, 

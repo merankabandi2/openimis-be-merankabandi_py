@@ -194,6 +194,8 @@ class MaterializedViewsManager:
     @classmethod
     def create_single_view(cls, view_name: str) -> bool:
         """Create a single view by name"""
+        if view_name not in cls.get_all_view_names():
+            raise ValueError(f"Invalid view name '{view_name}'. Not in allowed view registry.")
         # Find the view in all categories
         view_config = None
         for category_views in cls.ALL_VIEWS.values():
@@ -231,6 +233,8 @@ class MaterializedViewsManager:
     @classmethod
     def refresh_single_view(cls, view_name: str, concurrent: bool = True) -> bool:
         """Refresh a single view by name"""
+        if view_name not in cls.get_all_view_names():
+            raise ValueError(f"Invalid view name '{view_name}'. Not in allowed view registry.")
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SET statement_timeout = '30min'")

@@ -26,7 +26,7 @@ class SensitizationTraining(models.Model):
         ('REJECTED', 'Rejected')
     ]
 
-    id = models.UUIDField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     sensitization_date = models.DateField(verbose_name="Date de la sensibilisation/Formation")
     
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
@@ -173,7 +173,7 @@ class BehaviorChangePromotion(models.Model):
     ]
     
     # Metadata
-    id = models.UUIDField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     # Location
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
     report_date = models.DateField(verbose_name="Date de l'activité'")
@@ -300,8 +300,8 @@ class MicroProject(models.Model):
         ('REJECTED', 'Rejected')
     ]
     
-    id = models.UUIDField(primary_key=True)
-    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+
     # Location
     report_date = models.DateField(verbose_name="Date de l'activité'")
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
@@ -408,6 +408,9 @@ class MicroProject(models.Model):
             kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
         
+        # Save micro_project first so it has a PK for FK references
+        micro_project.save()
+
         # Handle other project types
         other_projects = kobo_data.get('group_fb09e52/group_mu7lt44', [])
         if isinstance(other_projects, list):
@@ -418,12 +421,12 @@ class MicroProject(models.Model):
                         name=project.get('Autre_pr_ciser'),
                         beneficiary_count=int(project.get('Effectif', 0))
                     )
-        
+
         return micro_project
     
 
 class MonetaryTransfer(models.Model):
-    id = models.UUIDField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     transfer_date = models.DateField(verbose_name="Date des transferts")
     
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
@@ -564,7 +567,7 @@ class Section(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     def __str__(self):
@@ -586,7 +589,7 @@ class Indicator(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     def __str__(self):
@@ -607,7 +610,7 @@ class IndicatorAchievement(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     def __str__(self):
@@ -636,7 +639,7 @@ class ProvincePaymentPoint(UUIDModel):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     def __str__(self):
@@ -692,7 +695,7 @@ class PmtFormula(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     class Meta:
@@ -720,7 +723,7 @@ class SelectionQuota(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     class Meta:
@@ -782,7 +785,7 @@ class PreCollecte(models.Model):
         for key in obj_data:
             setattr(self, key, obj_data[key])
         if save:
-            self.save(*args, user=user, username=username, **kwargs)
+            self.save()
         return self
 
     class Meta:

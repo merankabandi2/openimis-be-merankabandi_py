@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, FileResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.template.loader import render_to_string
 
@@ -223,6 +224,7 @@ class BeneficiaryCardGenerator:
             font_config=self.font_config
         )
 
+@login_required
 def generate_beneficiary_card_view(request, social_id):
     """View for generating a single beneficiary's card"""
     try:
@@ -240,6 +242,7 @@ def generate_beneficiary_card_view(request, social_id):
     except Beneficiary.DoesNotExist:
         return HttpResponse("Beneficiary not found", status=404)
 
+@login_required
 def generate_colline_cards_view(request, commune_name):
     """View for generating cards for all beneficiaries in a colline"""
     try:
@@ -271,6 +274,7 @@ def generate_colline_cards_view(request, commune_name):
     except Exception as e:
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)  
 
+@login_required
 def generate_location_cards_view(request, location_id):
     """View for generating cards for all beneficiaries in a specific location"""
     try:
@@ -325,6 +329,7 @@ def generate_location_cards_view(request, location_id):
     except Exception as e:
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)
 
+@login_required
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
     household = individual.groupindividuals.get().group
@@ -344,6 +349,7 @@ def beneficiary_photo_view(request, type, id):
     return FileResponse(open(file_path, 'rb'))
 
 
+@login_required
 def beneficiary_photos_view(request, socialid):
     types = ['photo', 'photo_ci1', 'photo_ci2']
 
@@ -405,26 +411,12 @@ def beneficiary_photos_view(request, socialid):
 
 
 def has_image_access_permission(user, image_path):
+    """
+    Check that the user is authenticated before granting image access.
+    """
+    if not user or not user.is_authenticated:
+        return False
     return True
-    """
-    Define your custom permission logic here.
-    This is just an example - modify according to your needs.
-    """
-    # Example: Check if user has specific permission
-    if user.has_perm('myapp.view_protected_images'):
-        return True
-        
-    # Example: Check if image belongs to user's group
-    if image_path.startswith(f'group_{user.groups.first().id}/'):
-        return True
-        
-    # Example: Check if image is in user's allowed categories
-    allowed_categories = user.profile.allowed_image_categories.all()
-    image_category = get_image_category(image_path)
-    if image_category in allowed_categories:
-        return True
-    
-    return False
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
@@ -1440,6 +1432,7 @@ def _run_generate_cards_command(location_type, location_id, location_name):
                     stderr=subprocess.PIPE,
                     cwd=settings.BASE_DIR)
 
+@login_required
 def trigger_background_card_generation(request, location_id, location_type=None):
     """View for triggering card generation as a background task"""
     try:

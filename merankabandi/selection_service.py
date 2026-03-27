@@ -1,7 +1,6 @@
 import datetime
 import logging
 
-from django.db import transaction
 from individual.models import Group
 from social_protection.models import BenefitPlan, GroupBeneficiary, BeneficiaryStatus
 
@@ -37,6 +36,7 @@ class SelectionService:
 
         total_selected = 0
         total_waiting = 0
+        updated_groups = []
 
         for quota in quotas:
             colline = quota.location
@@ -46,12 +46,20 @@ class SelectionService:
             ).order_by('json_ext__pmt_score')
 
             for i, group in enumerate(groups):
+                ext = group.json_ext or {}
                 if i < quota.quota:
-                    cls._update_selection_status(group, 'SELECTED', {'selection_rank': i + 1})
+                    ext['selection_status'] = 'SELECTED'
+                    ext['selection_rank'] = i + 1
                     total_selected += 1
                 else:
-                    cls._update_selection_status(group, 'WAITING_LIST', {'selection_rank': i + 1})
+                    ext['selection_status'] = 'WAITING_LIST'
+                    ext['selection_rank'] = i + 1
                     total_waiting += 1
+                group.json_ext = ext
+                updated_groups.append(group)
+
+        if updated_groups:
+            Group.objects.bulk_update(updated_groups, ['json_ext'], batch_size=500)
 
         logger.info(
             "Quota selection: %d selected, %d waiting list for plan %s round %d",
@@ -71,7 +79,9 @@ class SelectionService:
 
         groups = Group.objects.filter(
             json_ext__selection_status='SURVEYED',
-        )
+            groupbeneficiary__benefit_plan_id=benefit_plan_id,
+            groupbeneficiary__is_deleted=False,
+        ).distinct()
 
         selected = 0
         not_selected = 0
@@ -92,7 +102,9 @@ class SelectionService:
         """Mark all SURVEYED groups as SELECTED (for programs without filtering)."""
         groups = Group.objects.filter(
             json_ext__selection_status='SURVEYED',
-        )
+            groupbeneficiary__benefit_plan_id=benefit_plan_id,
+            groupbeneficiary__is_deleted=False,
+        ).distinct()
         count = 0
         for group in groups:
             cls._update_selection_status(group, 'SELECTED')
@@ -115,33 +127,47 @@ class SelectionService:
             json_ext__selection_status=source_status,
         )
 
-        created = 0
+        # Collect existing group ids to skip duplicates
+        existing_group_ids = set(
+            GroupBeneficiary.objects.filter(
+                benefit_plan=benefit_plan, is_deleted=False
+            ).values_list('group_id', flat=True)
+        )
+
+        beneficiaries_to_create = []
+        groups_to_update = []
+
         for group in groups:
-            if not GroupBeneficiary.objects.filter(
-                group=group, benefit_plan=benefit_plan, is_deleted=False
-            ).exists():
-                gb = GroupBeneficiary(
+            if group.id in existing_group_ids:
+                continue
+            beneficiaries_to_create.append(
+                GroupBeneficiary(
                     group=group,
                     benefit_plan=benefit_plan,
                     status=BeneficiaryStatus.POTENTIAL,
                 )
-                gb.save(username=username)
-                created += 1
+            )
 
-                ext = group.json_ext or {}
-                history = ext.get('selection_history', [])
-                history.append({
-                    'benefit_plan_id': str(benefit_plan.id),
-                    'benefit_plan_name': benefit_plan.name,
-                    'round': targeting.get('targeting_round', 1),
-                    'status': 'BENEFICIARY',
-                    'date': datetime.date.today().isoformat(),
-                    'pmt_score': ext.get('pmt_score'),
-                })
-                ext['selection_history'] = history
-                group.json_ext = ext
-                group.save()
+            ext = group.json_ext or {}
+            history = ext.get('selection_history', [])
+            history.append({
+                'benefit_plan_id': str(benefit_plan.id),
+                'benefit_plan_name': benefit_plan.name,
+                'round': targeting.get('targeting_round', 1),
+                'status': 'BENEFICIARY',
+                'date': datetime.date.today().isoformat(),
+                'pmt_score': ext.get('pmt_score'),
+            })
+            ext['selection_history'] = history
+            group.json_ext = ext
+            groups_to_update.append(group)
 
+        if beneficiaries_to_create:
+            GroupBeneficiary.objects.bulk_create(beneficiaries_to_create, batch_size=500)
+        if groups_to_update:
+            Group.objects.bulk_update(groups_to_update, ['json_ext'], batch_size=500)
+
+        created = len(beneficiaries_to_create)
         logger.info(
             "Promoted %d groups to beneficiary for plan %s", created, benefit_plan.code
         )
@@ -153,6 +179,8 @@ class SelectionService:
         Promote top N from WAITING_LIST to COMMUNITY_VALIDATED in a colline.
         Used when community validation rejects some SELECTED households.
         """
+        if not isinstance(count, int) or count < 1 or count > 1000:
+            raise ValueError("count must be an integer between 1 and 1000")
         groups = Group.objects.filter(
             location_id=colline_id,
             json_ext__selection_status='WAITING_LIST',

@@ -5,6 +5,8 @@ Replaces: optimized_dashboard_service.py, payment_reporting_service.py, reportin
 Single service layer for all dashboard queries against materialized views.
 """
 
+import json as _json
+
 from django.db import connection
 from django.core.cache import cache
 from datetime import datetime
@@ -69,7 +71,7 @@ class DashboardService:
     @classmethod
     def get_master_dashboard_summary(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Dashboard overview: beneficiary counts, transfers, grievances."""
-        cache_key = f"dashboard_summary_{hash(str(filters))}"
+        cache_key = f"dashboard_summary_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -116,19 +118,17 @@ class DashboardService:
     def _summary_from_individual_view(cls, filters: Dict[str, Any]) -> Dict[str, Any]:
         conditions, params = [], []
 
-        if filters.get('province_id'):
-            conditions.append("province_id = %s")
-            params.append(filters['province_id'])
-        if filters.get('commune_id'):
-            conditions.append("commune_id = %s")
-            params.append(filters['commune_id'])
-        else:
-            conditions.append("commune_id IS NULL")
-            conditions.append("colline_id IS NULL")
         if filters.get('colline_id'):
             conditions.append("colline_id = %s")
             params.append(filters['colline_id'])
-        else:
+        elif filters.get('commune_id'):
+            conditions.append("commune_id = %s")
+            params.append(filters['commune_id'])
+            conditions.append("colline_id IS NULL")
+        elif filters.get('province_id'):
+            conditions.append("province_id = %s")
+            params.append(filters['province_id'])
+            conditions.append("commune_id IS NULL")
             conditions.append("colline_id IS NULL")
         if filters.get('year'):
             conditions.append("year = %s")
@@ -173,7 +173,7 @@ class DashboardService:
     @classmethod
     def get_beneficiary_breakdown(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Gender, TWA, household breakdown."""
-        cache_key = f"dashboard_beneficiary_{hash(str(filters))}"
+        cache_key = f"dashboard_beneficiary_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -209,19 +209,17 @@ class DashboardService:
     @classmethod
     def _breakdown_filtered(cls, filters: Dict[str, Any]) -> Dict[str, Any]:
         conditions, params = [], []
-        if filters.get('province_id'):
-            conditions.append("province_id = %s")
-            params.append(filters['province_id'])
-        if filters.get('commune_id'):
-            conditions.append("commune_id = %s")
-            params.append(filters['commune_id'])
-        else:
-            conditions.append("commune_id IS NULL")
-            conditions.append("colline_id IS NULL")
         if filters.get('colline_id'):
             conditions.append("colline_id = %s")
             params.append(filters['colline_id'])
-        else:
+        elif filters.get('commune_id'):
+            conditions.append("commune_id = %s")
+            params.append(filters['commune_id'])
+            conditions.append("colline_id IS NULL")
+        elif filters.get('province_id'):
+            conditions.append("province_id = %s")
+            params.append(filters['province_id'])
+            conditions.append("commune_id IS NULL")
             conditions.append("colline_id IS NULL")
         if filters.get('year'):
             conditions.append("year = %s")
@@ -294,7 +292,7 @@ class DashboardService:
     @classmethod
     def get_transfer_performance(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Payment performance from unified payment views."""
-        cache_key = f"dashboard_transfer_{hash(str(filters))}"
+        cache_key = f"dashboard_transfer_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -395,7 +393,7 @@ class DashboardService:
 
     @classmethod
     def get_quarterly_trends(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
-        cache_key = f"dashboard_trends_{hash(str(filters))}"
+        cache_key = f"dashboard_trends_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -439,7 +437,7 @@ class DashboardService:
     @classmethod
     def get_activities_dashboard(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Activity data from dashboard_activities_summary (replaces dashboard_activities_by_type)."""
-        cache_key = f"dashboard_activities_{hash(str(filters))}"
+        cache_key = f"dashboard_activities_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -549,7 +547,7 @@ class DashboardService:
     @classmethod
     def get_grievance_dashboard(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Grievance summary + distributions from consolidated views."""
-        cache_key = f"dashboard_grievance_{hash(str(filters))}"
+        cache_key = f"dashboard_grievance_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -630,7 +628,7 @@ class DashboardService:
     @classmethod
     def get_payment_summary(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Comprehensive payment summary from unified view."""
-        cache_key = f"payment_summary_{hash(str(filters))}"
+        cache_key = f"payment_summary_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -715,7 +713,7 @@ class DashboardService:
         if level not in ('province', 'commune', 'colline'):
             level = 'province'
 
-        cache_key = f"payment_location_{level}_{hash(str(filters))}"
+        cache_key = f"payment_location_{level}_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -779,7 +777,7 @@ class DashboardService:
     @classmethod
     def get_payment_by_program(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Payment data by benefit plan."""
-        cache_key = f"payment_program_{hash(str(filters))}"
+        cache_key = f"payment_program_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -834,7 +832,7 @@ class DashboardService:
     @classmethod
     def get_payment_trends(cls, filters: Dict[str, Any] = None, granularity: str = 'month') -> Dict[str, Any]:
         """Payment trends over time."""
-        cache_key = f"payment_trends_{granularity}_{hash(str(filters))}"
+        cache_key = f"payment_trends_{granularity}_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -894,7 +892,7 @@ class DashboardService:
     @classmethod
     def get_payment_kpis(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Key performance indicators for payments."""
-        cache_key = f"payment_kpis_{hash(str(filters))}"
+        cache_key = f"payment_kpis_{_json.dumps(sorted((filters or {}).items()), default=str)}"
         cached = cache.get(cache_key)
         if cached:
             return cached

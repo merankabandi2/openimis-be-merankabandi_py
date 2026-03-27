@@ -176,8 +176,14 @@ def refresh_dashboard_views(request):
     try:
         view_name = request.data.get('view_name')
         concurrent = request.data.get('concurrent', True)
-        
+
         if view_name:
+            valid_views = MaterializedViewsManager.get_all_view_names()
+            if view_name not in valid_views:
+                return Response({
+                    'success': False,
+                    'error': f"Invalid view name '{view_name}'. Allowed: {', '.join(sorted(valid_views))}"
+                }, status=status.HTTP_400_BAD_REQUEST)
             MaterializedViewsManager.refresh_single_view(view_name, concurrent)
             message = f"Refreshed view: {view_name}"
         else:

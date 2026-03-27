@@ -214,6 +214,16 @@ class ImportSurveyDataMutation(BaseMutation):
         csv_path = graphene.String(required=True)
 
     @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
+        csv_path = data.get('csv_path', '')
+        if not csv_path.startswith('/data/'):
+            raise ValidationError(_("csv_path must start with /data/"))
+
+    @classmethod
     def _mutate(cls, user, **data):
         call_command(
             'import_households_to_benefit_plan',
@@ -228,6 +238,13 @@ class TriggerPMTCalculationMutation(BaseMutation):
 
     class Input(OpenIMISMutation.Input):
         benefit_plan_id = graphene.UUID(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
+            raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
     def _mutate(cls, user, **data):
@@ -832,7 +849,9 @@ class CreatePmtFormulaMutation(BaseHistoryModelCreateMutationMixin, BaseMutation
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -857,7 +876,9 @@ class UpdatePmtFormulaMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -883,7 +904,9 @@ class DeletePmtFormulaMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        from social_protection.apps import SocialProtectionConfig
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_beneficiary_update_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod

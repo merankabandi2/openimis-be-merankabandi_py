@@ -90,8 +90,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
     
     def resolve_refresh_dashboard_view(self, info, input):
         """Refresh a specific materialized view"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         start_time = datetime.now()
-        
+
         try:
             view_name = input.view_name
             concurrent = input.concurrent
@@ -140,8 +143,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
     
     def resolve_refresh_all_dashboard_views(self, info, input=None):
         """Refresh all dashboard materialized views"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         start_time = datetime.now()
-        
+
         try:
             concurrent = input.concurrent if input else True
             force = input.force if input else False
@@ -193,6 +199,9 @@ class OptimizedDashboardMutation(graphene.ObjectType):
     
     def resolve_clear_dashboard_cache(self, info, input=None):
         """Clear dashboard cache"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         try:
             pattern = input.pattern if input else None
             
@@ -224,8 +233,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
     
     def resolve_create_dashboard_views(self, info):
         """Create all dashboard materialized views and indexes"""
+        user = info.context.user
+        if not user or not user.is_authenticated:
+            raise PermissionError("Authentication required")
         start_time = datetime.now()
-        
+
         try:
             # Create all views and indexes
             MaterializedViewsManager.create_all_views()
