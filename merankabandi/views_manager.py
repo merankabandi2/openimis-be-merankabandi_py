@@ -263,87 +263,25 @@ class MaterializedViewsManager:
     
     @classmethod
     def get_refresh_functions(cls) -> str:
-        """Get refresh function SQL for migration compatibility"""
-        return """
-        -- Function to refresh all dashboard views
+        """Get PL/pgSQL refresh functions using the current view registry"""
+        view_names = cls.get_all_view_names()
+        array_literal = ", ".join(f"'{name}'" for name in view_names)
+        return f"""
         CREATE OR REPLACE FUNCTION refresh_dashboard_views(concurrent_refresh BOOLEAN DEFAULT true)
         RETURNS VOID AS $$
         DECLARE
-            view_name TEXT;
-            view_names TEXT[] := ARRAY[
-                'mv_household_dashboard',
-                'mv_individual_beneficiary_dashboard', 
-                'mv_payment_dashboard',
-                'mv_transfer_dashboard',
-                'mv_grievance_dashboard',
-                'mv_grievance_channel_dashboard',
-                'mv_kpi_dashboard',
-                'mv_monitoring_dashboard',
-                'mv_field_aliases'
-            ];
+            v_name TEXT;
+            v_names TEXT[] := ARRAY[{array_literal}];
         BEGIN
-            FOREACH view_name IN ARRAY view_names LOOP
+            FOREACH v_name IN ARRAY v_names LOOP
                 BEGIN
                     IF concurrent_refresh THEN
-                        EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY ' || view_name;
-                        RAISE NOTICE 'Refreshed view %% concurrently', view_name;
+                        EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY ' || v_name;
                     ELSE
-                        EXECUTE 'REFRESH MATERIALIZED VIEW ' || view_name;
-                        RAISE NOTICE 'Refreshed view %%', view_name;
+                        EXECUTE 'REFRESH MATERIALIZED VIEW ' || v_name;
                     END IF;
                 EXCEPTION WHEN OTHERS THEN
-                    RAISE NOTICE 'Failed to refresh view %%: %%', view_name, SQLERRM;
-                END;
-            END LOOP;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        -- Function to refresh a single dashboard view
-        CREATE OR REPLACE FUNCTION refresh_dashboard_view(view_name TEXT, concurrent_refresh BOOLEAN DEFAULT true)
-        RETURNS VOID AS $$
-        BEGIN
-            BEGIN
-                IF concurrent_refresh THEN
-                    EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY ' || view_name;
-                    RAISE NOTICE 'Refreshed view %% concurrently', view_name;
-                ELSE
-                    EXECUTE 'REFRESH MATERIALIZED VIEW ' || view_name;
-                    RAISE NOTICE 'Refreshed view %%', view_name;
-                END IF;
-            EXCEPTION WHEN OTHERS THEN
-                RAISE NOTICE 'Failed to refresh view %%: %%', view_name, SQLERRM;
-            END;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        -- Function to get view statistics
-        CREATE OR REPLACE FUNCTION get_dashboard_view_stats()
-        RETURNS TABLE(view_name TEXT, row_count BIGINT, size_pretty TEXT) AS $$
-        DECLARE
-            view_names TEXT[] := ARRAY[
-                'mv_household_dashboard',
-                'mv_individual_beneficiary_dashboard', 
-                'mv_payment_dashboard',
-                'mv_transfer_dashboard',
-                'mv_grievance_dashboard',
-                'mv_grievance_channel_dashboard',
-                'mv_kpi_dashboard',
-                'mv_monitoring_dashboard',
-                'mv_field_aliases'
-            ];
-            v TEXT;
-        BEGIN
-            FOREACH v IN ARRAY view_names LOOP
-                BEGIN
-                    EXECUTE 'SELECT COUNT(*) FROM ' || v INTO row_count;
-                    SELECT pg_size_pretty(pg_total_relation_size(v)) INTO size_pretty;
-                    view_name := v;
-                    RETURN NEXT;
-                EXCEPTION WHEN OTHERS THEN
-                    view_name := v;
-                    row_count := -1;
-                    size_pretty := 'ERROR';
-                    RETURN NEXT;
+                    RAISE NOTICE 'Failed to refresh view %%: %%', v_name, SQLERRM;
                 END;
             END LOOP;
         END;

@@ -8,14 +8,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
-from django.views.decorators.cache import cache_page
-from django.views.decorators.vary import vary_on_headers
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from django.views import View
 from django.core.cache import cache
 import json
 from datetime import datetime, date
-from .optimized_dashboard_service import OptimizedDashboardService
+from .dashboard_service import DashboardService as OptimizedDashboardService
 from .views_manager import MaterializedViewsManager
 
 
@@ -27,34 +26,22 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-# Cache decorators
-five_minute_cache = cache_page(60 * 5)  # 5 minutes
-ten_minute_cache = cache_page(60 * 10)  # 10 minutes
-thirty_minute_cache = cache_page(60 * 30)  # 30 minutes
-
-
 def parse_filters(request):
     """Parse common filters from request parameters"""
     filters = {}
-    
     if request.GET.get('start_date'):
         filters['start_date'] = request.GET.get('start_date')
     if request.GET.get('end_date'):
         filters['end_date'] = request.GET.get('end_date')
     if request.GET.get('province_id'):
         filters['province_id'] = int(request.GET.get('province_id'))
-    if request.GET.get('community_type'):
-        filters['community_type'] = request.GET.get('community_type')
     if request.GET.get('year'):
         filters['year'] = int(request.GET.get('year'))
-    
     return filters
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@five_minute_cache
-@vary_on_headers('Authorization')
 def optimized_dashboard_summary(request):
     """
     Fast dashboard summary using materialized views
@@ -81,8 +68,6 @@ def optimized_dashboard_summary(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@ten_minute_cache
-@vary_on_headers('Authorization')
 def optimized_beneficiary_breakdown(request):
     """
     Fast beneficiary breakdown using materialized views
@@ -108,8 +93,6 @@ def optimized_beneficiary_breakdown(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@ten_minute_cache
-@vary_on_headers('Authorization')
 def optimized_transfer_performance(request):
     """
     Fast transfer performance metrics
@@ -135,8 +118,6 @@ def optimized_transfer_performance(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@thirty_minute_cache
-@vary_on_headers('Authorization')
 def optimized_quarterly_trends(request):
     """
     Fast quarterly trends across all programs
@@ -162,8 +143,6 @@ def optimized_quarterly_trends(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@five_minute_cache
-@vary_on_headers('Authorization')
 def optimized_grievance_dashboard(request):
     """
     Fast grievance dashboard data

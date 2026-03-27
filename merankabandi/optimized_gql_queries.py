@@ -8,7 +8,7 @@ from graphene import ObjectType, String, Int, Float, List, Field, Boolean
 from graphene_django import DjangoObjectType
 from django.core.cache import cache
 from datetime import datetime
-from .optimized_dashboard_service import OptimizedDashboardService
+from .dashboard_service import DashboardService
 from .views_manager import MaterializedViewsManager
 from .vulnerable_groups_gql_queries import CommunityBreakdownType, LocationBreakdownType
 
@@ -131,14 +131,14 @@ class QuarterlyTrendsType(graphene.ObjectType):
 
 
 class GrievanceSummaryType(graphene.ObjectType):
-    totalTickets = graphene.Int()
-    openTickets = graphene.Int()
-    inProgressTickets = graphene.Int()
-    resolvedTickets = graphene.Int()
-    closedTickets = graphene.Int()
-    sensitiveTickets = graphene.Int()
-    anonymousTickets = graphene.Int()
-    avgResolutionDays = graphene.Float()
+    total_tickets = graphene.Int()
+    open_tickets = graphene.Int()
+    in_progress_tickets = graphene.Int()
+    resolved_tickets = graphene.Int()
+    closed_tickets = graphene.Int()
+    sensitive_tickets = graphene.Int()
+    anonymous_tickets = graphene.Int()
+    avg_resolution_days = graphene.Float()
 
 
 class GrievanceDistributionType(graphene.ObjectType):
@@ -154,7 +154,7 @@ class MonthlyTrendType(graphene.ObjectType):
 
 class RecentTicketType(graphene.ObjectType):
     id = graphene.String()
-    dateOfIncident = graphene.String()
+    date_of_incident = graphene.String()
     channel = graphene.String()
     category = graphene.String()
     status = graphene.String()
@@ -162,13 +162,13 @@ class RecentTicketType(graphene.ObjectType):
     description = graphene.String()
     priority = graphene.String()
     flags = graphene.List(graphene.String)
-    dateCreated = graphene.String()
-    dateUpdated = graphene.String()
-    reporterType = graphene.String()
-    reporterId = graphene.String()
-    reporterFirstName = graphene.String()
-    reporterLastName = graphene.String()
-    reporterTypeName = graphene.String()
+    date_created = graphene.String()
+    date_updated = graphene.String()
+    reporter_type = graphene.String()
+    reporter_id = graphene.String()
+    reporter_first_name = graphene.String()
+    reporter_last_name = graphene.String()
+    reporter_type_name = graphene.String()
     gender = graphene.String()
 
 
@@ -479,7 +479,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
         
         # Get data from optimized service
-        data = OptimizedDashboardService.get_master_dashboard_summary(service_filters)
+        data = DashboardService.get_master_dashboard_summary(service_filters)
         
         # Convert to GraphQL types
         result = MasterDashboardType(
@@ -519,7 +519,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
         
         # Get data
-        data = OptimizedDashboardService.get_beneficiary_breakdown(service_filters)
+        data = DashboardService.get_beneficiary_breakdown(service_filters)
         
         # Convert to GraphQL types
         result = BeneficiaryBreakdownType(
@@ -571,7 +571,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['aggregation_level'] = filters['aggregation_level']
         
         # Get data
-        data = OptimizedDashboardService.get_transfer_performance(service_filters)
+        data = DashboardService.get_transfer_performance(service_filters)
         
         # Convert to GraphQL types
         result = TransferPerformanceType(
@@ -617,7 +617,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
         
         # Get data
-        data = OptimizedDashboardService.get_quarterly_trends(service_filters)
+        data = DashboardService.get_quarterly_trends(service_filters)
         
         # Convert to GraphQL types
         result = QuarterlyTrendsType(
@@ -656,24 +656,12 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
         
         # Get data
-        data = OptimizedDashboardService.get_grievance_dashboard(service_filters)
+        data = DashboardService.get_grievance_dashboard(service_filters)
         
-        # Convert snake_case to camelCase for summary
+        # Convert to GraphQL types (service already returns snake_case keys)
         summary_data = data.get('summary', {})
-        summary_camel = {
-            'totalTickets': summary_data.get('total_tickets', 0),
-            'openTickets': summary_data.get('open_tickets', 0),
-            'inProgressTickets': summary_data.get('in_progress_tickets', 0),
-            'resolvedTickets': summary_data.get('resolved_tickets', 0),
-            'closedTickets': summary_data.get('closed_tickets', 0),
-            'sensitiveTickets': summary_data.get('sensitive_tickets', 0),
-            'anonymousTickets': summary_data.get('anonymous_tickets', 0),
-            'avgResolutionDays': summary_data.get('avg_resolution_days', 0.0),
-        }
-        
-        # Convert to GraphQL types
         result = GrievanceDashboardType(
-            summary=GrievanceSummaryType(**summary_camel),
+            summary=GrievanceSummaryType(**summary_data),
             status_distribution=[
                 GrievanceDistributionType(**item) for item in data.get('status_distribution', [])
             ],
@@ -742,7 +730,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['activity_type'] = filters['activity_type']
         
         # Get data from optimized service
-        data = OptimizedDashboardService.get_activities_dashboard(service_filters)
+        data = DashboardService.get_activities_dashboard(service_filters)
         
         # Convert by_type dictionary to GraphQL type
         by_type_data = data.get('by_type', {})
@@ -1055,24 +1043,25 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
             
-            # Query aggregated location data from materialized view
+            # Query from individual summary (province-level rows)
             query = f"""
-            SELECT 
+            SELECT
                 province_id::text AS id,
                 province_id::text AS code,
                 province AS name,
-                -- Count beneficiaries by all statuses
-                SUM(CASE WHEN status = 'POTENTIAL' THEN beneficiary_count ELSE 0 END) AS count_potential,
-                SUM(CASE WHEN status = 'VALIDATED' THEN beneficiary_count ELSE 0 END) AS count_validated,
-                SUM(CASE WHEN status = 'ACTIVE' THEN beneficiary_count ELSE 0 END) AS count_active,
-                SUM(CASE WHEN status = 'GRADUATED' THEN beneficiary_count ELSE 0 END) AS count_graduated,
-                SUM(CASE WHEN status = 'SUSPENDED' THEN beneficiary_count ELSE 0 END) AS count_suspended,
-                -- For backward compatibility
-                SUM(CASE WHEN status = 'VALIDATED' THEN beneficiary_count ELSE 0 END) AS count_selected
-            FROM dashboard_beneficiary_summary
+                SUM(total_beneficiaries) AS count_active,
+                0 AS count_potential,
+                0 AS count_validated,
+                0 AS count_graduated,
+                0 AS count_suspended,
+                SUM(total_beneficiaries) AS count_selected
+            FROM dashboard_individual_summary
             {where_clause}
+            {"AND" if where_conditions else "WHERE"} province_id IS NOT NULL
+                AND commune_id IS NULL AND colline_id IS NULL
+                AND benefit_plan_code = 'ALL'
             GROUP BY province_id, province
-            HAVING SUM(beneficiary_count) > 0
+            HAVING SUM(total_beneficiaries) > 0
             ORDER BY province
             """
             

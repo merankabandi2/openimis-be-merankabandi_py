@@ -7,7 +7,7 @@ import graphene
 from graphene import ObjectType, String, Int, Float, List, Field, Boolean
 from django.core.cache import cache
 from datetime import datetime
-from .payment_reporting_service import PaymentReportingService
+from .dashboard_service import DashboardService as PaymentReportingService
 
 
 # GraphQL Types for Payment Reporting

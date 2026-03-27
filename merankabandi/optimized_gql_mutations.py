@@ -8,7 +8,7 @@ from graphene import String, Boolean, Int, Float
 from django.core.cache import cache
 from datetime import datetime
 from .views_manager import MaterializedViewsManager
-from .optimized_dashboard_service import OptimizedDashboardService
+from .dashboard_service import DashboardService as OptimizedDashboardService
 
 
 # Response Types
@@ -96,16 +96,8 @@ class OptimizedDashboardMutation(graphene.ObjectType):
             view_name = input.view_name
             concurrent = input.concurrent
             
-            # Validate view name
-            valid_views = [
-                'dashboard_beneficiary_summary',
-                'dashboard_monetary_transfers',
-                'dashboard_activities_summary',
-                'dashboard_microprojects',
-                'dashboard_grievances', 
-                'dashboard_indicators',
-                'dashboard_master_summary'
-            ]
+            # Validate view name against current registry
+            valid_views = MaterializedViewsManager.get_all_view_names()
             
             if view_name not in valid_views:
                 return RefreshViewResponseType(
