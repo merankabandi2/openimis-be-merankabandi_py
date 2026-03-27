@@ -5,7 +5,6 @@ Single entry point for all dashboard materialized views
 
 from django.db import connection
 import logging
-import time
 from typing import Dict, List, Optional
 
 from .views_beneficiary import BENEFICIARY_VIEWS
@@ -21,7 +20,7 @@ class MaterializedViewsManager:
     """
     Centralized manager for all materialized views in the Merankabandi dashboard
     """
-    
+
     # Consolidated view registry
     ALL_VIEWS = {
         'beneficiary': BENEFICIARY_VIEWS,
@@ -30,7 +29,7 @@ class MaterializedViewsManager:
         'monitoring': MONITORING_VIEWS,
         'utility': UTILITY_VIEWS,
     }
-    
+
     @classmethod
     def get_all_view_names(cls) -> List[str]:
         """Get all view names across all categories"""
@@ -38,24 +37,24 @@ class MaterializedViewsManager:
         for category_views in cls.ALL_VIEWS.values():
             all_names.extend(category_views.keys())
         return all_names
-    
+
     @classmethod
     def get_views_by_category(cls, category: str) -> Dict:
         """Get views for a specific category"""
         return cls.ALL_VIEWS.get(category, {})
-    
+
     @classmethod
     def create_all_views(cls, category: Optional[str] = None) -> Dict[str, bool]:
         """Create all views or views for a specific category"""
         results = {}
-        
+
         if category:
             if category not in cls.ALL_VIEWS:
                 raise ValueError(f"Unknown category: {category}")
             categories_to_process = {category: cls.ALL_VIEWS[category]}
         else:
             categories_to_process = cls.ALL_VIEWS
-        
+
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '30min'")
             for cat_name, views in categories_to_process.items():
@@ -64,10 +63,10 @@ class MaterializedViewsManager:
                     try:
                         # Drop existing view
                         cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {view_name} CASCADE")
-                        
+
                         # Create new view
                         cursor.execute(view_config['sql'])
-                        
+
                         # Create indexes
                         if 'indexes' in view_config:
                             for index_sql in view_config['indexes']:
@@ -75,28 +74,28 @@ class MaterializedViewsManager:
                                     cursor.execute(index_sql)
                                 except Exception as idx_e:
                                     logger.warning(f"Index creation warning for {view_name}: {str(idx_e)}")
-                        
+
                         results[view_name] = True
                         logger.info(f"✓ Created view: {view_name}")
-                        
+
                     except Exception as e:
                         results[view_name] = False
                         logger.error(f"✗ Failed to create view {view_name}: {str(e)}")
-        
+
         return results
-    
+
     @classmethod
     def refresh_all_views(cls, category: Optional[str] = None, concurrent: bool = True) -> Dict[str, bool]:
         """Refresh all views or views for a specific category"""
         results = {}
-        
+
         if category:
             if category not in cls.ALL_VIEWS:
                 raise ValueError(f"Unknown category: {category}")
             view_names = list(cls.ALL_VIEWS[category].keys())
         else:
             view_names = cls.get_all_view_names()
-        
+
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '30min'")
             for view_name in view_names:
@@ -108,21 +107,21 @@ class MaterializedViewsManager:
                 except Exception as e:
                     results[view_name] = False
                     logger.error(f"✗ Failed to refresh view {view_name}: {str(e)}")
-        
+
         return results
-    
+
     @classmethod
     def drop_all_views(cls, category: Optional[str] = None) -> Dict[str, bool]:
         """Drop all views or views for a specific category"""
         results = {}
-        
+
         if category:
             if category not in cls.ALL_VIEWS:
                 raise ValueError(f"Unknown category: {category}")
             view_names = list(cls.ALL_VIEWS[category].keys())
         else:
             view_names = cls.get_all_view_names()
-        
+
         with connection.cursor() as cursor:
             for view_name in view_names:
                 try:
@@ -132,9 +131,9 @@ class MaterializedViewsManager:
                 except Exception as e:
                     results[view_name] = False
                     logger.error(f"✗ Failed to drop view {view_name}: {str(e)}")
-        
+
         return results
-    
+
     @classmethod
     def get_view_stats(cls, category: Optional[str] = None) -> Dict:
         """Get statistics for all views or views for a specific category"""
@@ -144,33 +143,33 @@ class MaterializedViewsManager:
             view_names = list(cls.ALL_VIEWS[category].keys())
         else:
             view_names = cls.get_all_view_names()
-        
+
         stats = {}
-        
+
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '30min'")
             for view_name in view_names:
                 try:
                     # Check if view exists
                     cursor.execute("""
-                        SELECT COUNT(*) 
-                        FROM pg_matviews 
+                        SELECT COUNT(*)
+                        FROM pg_matviews
                         WHERE matviewname = %s AND schemaname = 'public'
                     """, [view_name])
-                    
+
                     exists = cursor.fetchone()[0] > 0
-                    
+
                     if exists:
                         # Get row count
                         cursor.execute(f"SELECT COUNT(*) FROM {view_name}")
                         row_count = cursor.fetchone()[0]
-                        
+
                         # Get size
                         cursor.execute("""
                             SELECT pg_size_pretty(pg_total_relation_size(%s))
                         """, [view_name])
                         size = cursor.fetchone()[0]
-                        
+
                         stats[view_name] = {
                             'exists': True,
                             'row_count': row_count,
@@ -182,15 +181,15 @@ class MaterializedViewsManager:
                             'row_count': 0,
                             'size': '0 bytes'
                         }
-                        
+
                 except Exception as e:
                     stats[view_name] = {
                         'exists': False,
                         'error': str(e)
                     }
-        
+
         return stats
-    
+
     @classmethod
     def create_single_view(cls, view_name: str) -> bool:
         """Create a single view by name"""
@@ -202,19 +201,19 @@ class MaterializedViewsManager:
             if view_name in category_views:
                 view_config = category_views[view_name]
                 break
-        
+
         if not view_config:
             raise ValueError(f"View '{view_name}' not found in any category")
-        
+
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SET statement_timeout = '30min'")
                 # Drop existing view
                 cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {view_name} CASCADE")
-                
+
                 # Create new view
                 cursor.execute(view_config['sql'])
-                
+
                 # Create indexes
                 if 'indexes' in view_config:
                     for index_sql in view_config['indexes']:
@@ -222,14 +221,14 @@ class MaterializedViewsManager:
                             cursor.execute(index_sql)
                         except Exception as idx_e:
                             logger.warning(f"Index creation warning for {view_name}: {str(idx_e)}")
-                
+
                 logger.info(f"✓ Created view: {view_name}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"✗ Failed to create view {view_name}: {str(e)}")
             return False
-    
+
     @classmethod
     def refresh_single_view(cls, view_name: str, concurrent: bool = True) -> bool:
         """Refresh a single view by name"""
@@ -245,7 +244,7 @@ class MaterializedViewsManager:
         except Exception as e:
             logger.error(f"✗ Failed to refresh view {view_name}: {str(e)}")
             return False
-    
+
     @classmethod
     def get_all_views(cls) -> Dict[str, str]:
         """Get all view SQL definitions for migration compatibility"""
@@ -254,7 +253,7 @@ class MaterializedViewsManager:
             for view_name, view_config in category_views.items():
                 all_views[view_name] = view_config['sql']
         return all_views
-    
+
     @classmethod
     def get_all_indexes(cls) -> Dict[str, List[str]]:
         """Get all index definitions for migration compatibility"""
@@ -264,7 +263,7 @@ class MaterializedViewsManager:
                 if 'indexes' in view_config and view_config['indexes']:
                     all_indexes[view_name] = view_config['indexes']
         return all_indexes
-    
+
     @classmethod
     def get_refresh_functions(cls) -> str:
         """Get PL/pgSQL refresh functions using the current view registry"""

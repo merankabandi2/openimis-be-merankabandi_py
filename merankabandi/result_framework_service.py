@@ -1,20 +1,15 @@
-import os
-import json
-from datetime import datetime, date
 from decimal import Decimal
-from django.db.models import Count, Sum, Q, F
+from django.db.models import Sum
 from django.utils import timezone
 
-from location.models import Location
-from social_protection.models import GroupBeneficiary, BenefitPlan
-from individual.models import Individual, GroupIndividual, Group
+from social_protection.models import GroupBeneficiary
+from individual.models import Group
 from payroll.models import BenefitConsumption
 from .models import (
     Section, Indicator, IndicatorAchievement,
     ResultFrameworkSnapshot, IndicatorCalculationRule,
     MonetaryTransfer, SensitizationTraining,
-    BehaviorChangePromotion, MicroProject,
-    HOST_COMMUNES
+    MicroProject, HOST_COMMUNES
 )
 
 # Refugee collines/camps for refugee/host community separation
@@ -23,7 +18,7 @@ REFUGEE_COLLINES = []
 
 class ResultFrameworkService:
     """Service for result framework calculations and document generation"""
-    
+
     def __init__(self):
         self.calculation_methods = {
             # Development indicators (sections 1-3)
@@ -41,7 +36,7 @@ class ResultFrameworkService:
             'count_beneficiaries_employment_refugees': self._count_beneficiaries_employment_refugees,
             'count_beneficiaries_employment_host': self._count_beneficiaries_employment_host,
             'count_farmers_received_services': self._count_farmers_received_services,
-            
+
             # Intermediate indicators (sections 4-8)
             'count_provinces_with_transfers': self._count_provinces_with_transfers,
             'calculate_payment_timeliness': self._calculate_payment_timeliness,
@@ -52,20 +47,20 @@ class ResultFrameworkService:
             'count_climate_resilient_activities': self._count_climate_resilient_activities,
             'calculate_digital_payment_percentage': self._calculate_digital_payment_percentage,
         }
-    
+
     def calculate_indicator_value(self, indicator_id, date_from=None, date_to=None, location=None):
         """Calculate indicator value based on its configuration"""
         try:
             indicator = Indicator.objects.get(id=indicator_id)
             rule = IndicatorCalculationRule.objects.filter(indicator=indicator, is_active=True).first()
-            
+
             if not rule:
                 # Default to manual if no rule exists
                 return self._get_latest_achievement(indicator, date_from, date_to)
-            
+
             if rule.calculation_type == 'MANUAL':
                 return self._get_latest_achievement(indicator, date_from, date_to)
-            
+
             elif rule.calculation_type == 'SYSTEM':
                 method_name = rule.calculation_method
                 if method_name in self.calculation_methods:
@@ -74,7 +69,7 @@ class ResultFrameworkService:
                     )
                 else:
                     return {'value': 0, 'error': f'Unknown calculation method: {method_name}'}
-            
+
             elif rule.calculation_type == 'MIXED':
                 # Get system calculated value
                 system_value = 0
@@ -83,11 +78,11 @@ class ResultFrameworkService:
                         indicator, date_from, date_to, location, rule.calculation_config
                     )
                     system_value = system_result.get('value', 0)
-                
+
                 # Get manual adjustment
                 manual_result = self._get_latest_achievement(indicator, date_from, date_to)
                 manual_value = manual_result.get('value', 0)
-                
+
                 # Combine based on config
                 combine_method = rule.calculation_config.get('combine_method', 'add')
                 if combine_method == 'add':
@@ -98,28 +93,28 @@ class ResultFrameworkService:
                     final_value = manual_value if manual_value > 0 else system_value
                 else:
                     final_value = system_value
-                
+
                 return {
                     'value': final_value,
                     'system_value': system_value,
                     'manual_value': manual_value,
                     'calculation_type': 'MIXED'
                 }
-                
+
         except Exception as e:
             return {'value': 0, 'error': str(e)}
-    
+
     def _get_latest_achievement(self, indicator, date_from=None, date_to=None):
         """Get the latest manual achievement entry"""
         query = IndicatorAchievement.objects.filter(indicator=indicator)
-        
+
         if date_from:
             query = query.filter(date__gte=date_from)
         if date_to:
             query = query.filter(date__lte=date_to)
-        
+
         latest = query.order_by('-date', '-timestamp').first()
-        
+
         if latest:
             return {
                 'value': float(latest.achieved),
@@ -128,61 +123,14 @@ class ResultFrameworkService:
                 'calculation_type': 'MANUAL'
             }
         return {'value': 0, 'calculation_type': 'MANUAL'}
-    
+
     # Calculation methods for each indicator type
     def _count_households_registered(self, indicator, date_from, date_to, location, config):
         """Count total households registered (Indicator 1)"""
         query = Group.objects.filter(
             is_deleted=False
         )
-        
-        if date_from:
-            query = query.filter(date_created__gte=date_from)
-        if date_to:
-            query = query.filter(date_created__lte=date_to)
-        if location:
-            query = query.filter(location__parent__parent=location)
-        
-        count = query.count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
-    
-    def _count_households_refugees(self, indicator, date_from, date_to, location, config):
-        """Count refugee households (Indicator 2)"""
-        query = Group.objects.filter(
-            is_deleted=False
-        ).exclude(
-            location__parent__name__in=HOST_COMMUNES
-        )
-        
-        if date_from:
-            query = query.filter(date_created__gte=date_from)
-        if date_to:
-            query = query.filter(date_created__lte=date_to)
-        if location:
-            query = query.filter(location__parent__parent=location)
-        
-        count = query.count()
-        
-        # Get gender breakdown
-        gender_data = {}
-        for gb in query.select_related('head'):
-            if gb.group.head and gb.group.head.json_ext:
-                gender = gb.group.head.json_ext.get('sexe', 'unknown')
-                gender_data[gender] = gender_data.get(gender, 0) + 1
-        
-        return {
-            'value': count,
-            'gender_breakdown': gender_data,
-            'calculation_type': 'SYSTEM'
-        }
-    
-    def _count_households_host(self, indicator, date_from, date_to, location, config):
-        """Count host community households (Indicator 3)"""
-        query = Group.objects.filter(
-            is_deleted=False,
-            location__parent__name__in=HOST_COMMUNES
-        )
-        
+
         if date_from:
             query = query.filter(date_created__gte=date_from)
         if date_to:
@@ -192,24 +140,71 @@ class ResultFrameworkService:
 
         count = query.count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
+    def _count_households_refugees(self, indicator, date_from, date_to, location, config):
+        """Count refugee households (Indicator 2)"""
+        query = Group.objects.filter(
+            is_deleted=False
+        ).exclude(
+            location__parent__name__in=HOST_COMMUNES
+        )
+
+        if date_from:
+            query = query.filter(date_created__gte=date_from)
+        if date_to:
+            query = query.filter(date_created__lte=date_to)
+        if location:
+            query = query.filter(location__parent__parent=location)
+
+        count = query.count()
+
+        # Get gender breakdown
+        gender_data = {}
+        for gb in query.select_related('head'):
+            if gb.group.head and gb.group.head.json_ext:
+                gender = gb.group.head.json_ext.get('sexe', 'unknown')
+                gender_data[gender] = gender_data.get(gender, 0) + 1
+
+        return {
+            'value': count,
+            'gender_breakdown': gender_data,
+            'calculation_type': 'SYSTEM'
+        }
+
+    def _count_households_host(self, indicator, date_from, date_to, location, config):
+        """Count host community households (Indicator 3)"""
+        query = Group.objects.filter(
+            is_deleted=False,
+            location__parent__name__in=HOST_COMMUNES
+        )
+
+        if date_from:
+            query = query.filter(date_created__gte=date_from)
+        if date_to:
+            query = query.filter(date_created__lte=date_to)
+        if location:
+            query = query.filter(location__parent__parent=location)
+
+        count = query.count()
+        return {'value': count, 'calculation_type': 'SYSTEM'}
+
     def _count_beneficiaries_social_protection(self, indicator, date_from, date_to, location, config):
         """Count total beneficiaries (Indicator 5)"""
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL']
         )
-        
+
         if date_from:
             query = query.filter(date_created__gte=date_from)
         if date_to:
             query = query.filter(date_created__gte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
-        
+
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_women(self, indicator, date_from, date_to, location, config):
         """Count female beneficiaries (Indicator 6)"""
         query = GroupBeneficiary.objects.filter(
@@ -218,7 +213,7 @@ class ResultFrameworkService:
             group__groupindividuals__individual__json_ext__sexe='F',
             group__groupindividuals__recipient_type='PRIMARY'
         )
-        
+
         if date_from:
             query = query.filter(date_due__gte=date_from)
         if date_to:
@@ -228,7 +223,7 @@ class ResultFrameworkService:
 
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_unconditional_transfers(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of unconditional transfers (Indicator 7)"""
         # Filter by benefit plan code for unconditional transfers
@@ -239,23 +234,22 @@ class ResultFrameworkService:
             group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.2']  # Adjust based on actual codes
         )
-        
+
         if date_from:
             query = query.filter(date_due__gte=date_from)
         if date_to:
             query = query.filter(date_due__lte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
-        
+
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_employment(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of employment interventions (Indicator 11)"""
         # Count from training and microproject participants
-        training_query = SensitizationTraining.objects.filter(validation_status='VALIDATED')
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             # training_query = training_query.filter(sensitization_date__gte=date_from)
             microproject_query = microproject_query.filter(report_date__gte=date_from)
@@ -265,37 +259,37 @@ class ResultFrameworkService:
         if location:
             # training_query = training_query.filter(location__parent__parent=location)
             microproject_query = microproject_query.filter(location__parent__parent=location)
-        
+
         # Sum participants
         # training_total = training_query.aggregate(
         #     total=Sum('male_participants') + Sum('female_participants')
         # )['total'] or 0
-        
+
         microproject_total = microproject_query.aggregate(
             total=Sum('male_participants') + Sum('female_participants')
         )['total'] or 0
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_provinces_with_transfers(self, indicator, date_from, date_to, location, config):
         """Count provinces implementing transfers (Indicator 16)"""
         query = MonetaryTransfer.objects.all()
-        
+
         if date_from:
             query = query.filter(transfer_date__gte=date_from)
         if date_to:
             query = query.filter(transfer_date__lte=date_to)
-        
+
         # Get unique provinces
         provinces = query.values('location__parent__parent').distinct().count()
         return {'value': provinces, 'calculation_type': 'SYSTEM'}
-    
+
     def _calculate_payment_timeliness(self, indicator, date_from, date_to, location, config):
         """Calculate percentage of beneficiaries paid on time (Indicator 17)"""
         # This would need payment schedule data to calculate properly
         # For now, return manual value
         return self._get_latest_achievement(indicator, date_from, date_to)
-    
+
     def _count_beneficiaries_emergency_transfers(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
@@ -304,17 +298,17 @@ class ResultFrameworkService:
             group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.1']  # Adjust based on actual codes
         )
-        
+
         if date_from:
             query = query.filter(date_due__gte=date_from)
         if date_to:
             query = query.filter(date_due__lte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
-        
+
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_refugees(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
@@ -323,7 +317,7 @@ class ResultFrameworkService:
             group__groupindividuals__recipient_type='PRIMARY',
             benefit_plan__code__in=['1.4']
         )
-        
+
         if date_from:
             query = query.filter(date_due__gte=date_from)
         if date_to:
@@ -334,7 +328,7 @@ class ResultFrameworkService:
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
         return self._get_latest_achievement(indicator, date_from, date_to)
-    
+
     def _count_beneficiaries_host_communities(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
@@ -343,7 +337,7 @@ class ResultFrameworkService:
             group__groupindividuals__recipient_type='PRIMARY',
             group__location__parent__name__in=HOST_COMMUNES
         )
-        
+
         if date_from:
             query = query.filter(date_created__gte=date_from)
         if date_to:
@@ -353,36 +347,36 @@ class ResultFrameworkService:
 
         count = query.count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_employment_women(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             microproject_query = microproject_query.filter(report_date__gte=date_from)
         if date_to:
             microproject_query = microproject_query.filter(report_date__lte=date_to)
         if location:
             microproject_query = microproject_query.filter(location__parent__parent=location)
-        
+
         # Sum participants
         microproject_total = microproject_query.aggregate(
             total=Sum('female_participants')
         )['total'] or 0
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_employment_refugees(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             microproject_query = microproject_query.filter(report_date__gte=date_from)
         if date_to:
             microproject_query = microproject_query.filter(report_date__lte=date_to)
         if location:
             microproject_query = microproject_query.filter(
-            location__name__in=REFUGEE_COLLINES)
+                location__name__in=REFUGEE_COLLINES)
 
         # Sum participants
         microproject_total = microproject_query.aggregate(
@@ -390,19 +384,19 @@ class ResultFrameworkService:
         )['total'] or 0
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_beneficiaries_employment_host(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             microproject_query = microproject_query.filter(report_date__gte=date_from)
         if date_to:
             microproject_query = microproject_query.filter(report_date__lte=date_to)
         if location:
             microproject_query = microproject_query.filter(
-            location__parent__name__in=HOST_COMMUNES)
-        
+                location__parent__name__in=HOST_COMMUNES)
+
         # Sum participants
         microproject_total = microproject_query.aggregate(
             total=Sum('male_participants') + Sum('female_participants')
@@ -413,38 +407,38 @@ class ResultFrameworkService:
     def _count_farmers_received_services(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
         microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             microproject_query = microproject_query.filter(report_date__gte=date_from)
         if date_to:
             microproject_query = microproject_query.filter(report_date__lte=date_to)
         if location:
             microproject_query = microproject_query.filter(location__parent__parent=location)
-        
+
         # Sum participants
         microproject_total = microproject_query.aggregate(
             total=Sum('agriculture_beneficiaries')
         )['total'] or 0
 
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
-    
+
     def _calculate_behavior_change_participation(self, indicator, date_from, date_to, location, config):
         """Calculate percentage of beneficiaries participating in behavior change activities (Indicator 18)"""
         # Count beneficiaries participating in sensitization trainings
         training_query = SensitizationTraining.objects.filter(validation_status='VALIDATED')
-        
+
         if date_from:
             training_query = training_query.filter(report_date__gte=date_from)
         if date_to:
             training_query = training_query.filter(report_date__lte=date_to)
         if location:
             training_query = training_query.filter(location__parent__parent=location)
-        
+
         # Get total participants
         total_participants = training_query.aggregate(
             total=Sum('male_participants') + Sum('female_participants')
         )['total'] or 0
-        
+
         # Get total beneficiaries in the area
         beneficiary_query = GroupBeneficiary.objects.filter(
             is_deleted=False,
@@ -452,75 +446,75 @@ class ResultFrameworkService:
         )
         if location:
             beneficiary_query = beneficiary_query.filter(group__location__parent__parent=location)
-        
+
         total_beneficiaries = beneficiary_query.count()
-        
+
         if total_beneficiaries > 0:
             percentage = (total_participants / total_beneficiaries) * 100
             return {'value': min(percentage, 100), 'calculation_type': 'SYSTEM'}
-        
+
         return {'value': 0, 'calculation_type': 'SYSTEM'}
-    
+
     def _count_approved_business_plans(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries with approved business plans (Indicator 20)"""
         # Count from microprojects with approved status
         query = MicroProject.objects.filter(
             validation_status='VALIDATED'
         )
-        
+
         if date_from:
             query = query.filter(report_date__gte=date_from)
         if date_to:
             query = query.filter(report_date__lte=date_to)
         if location:
             query = query.filter(location__parent__parent=location)
-        
+
         # Sum all participants
         total = query.aggregate(
             total=Sum('male_participants') + Sum('female_participants')
         )['total'] or 0
-        
+
         return {'value': total, 'calculation_type': 'MIXED'}
-    
+
     def _count_approved_business_plans_women(self, indicator, date_from, date_to, location, config):
         """Count female beneficiaries with approved business plans (Indicator 21)"""
         query = MicroProject.objects.filter(
             validation_status='VALIDATED'
         )
-        
+
         if date_from:
             query = query.filter(report_date__gte=date_from)
         if date_to:
             query = query.filter(report_date__lte=date_to)
         if location:
             query = query.filter(location__parent__parent=location)
-        
+
         total = query.aggregate(total=Sum('female_participants'))['total'] or 0
-        
+
         return {'value': total, 'calculation_type': 'MIXED'}
-    
+
     def _count_approved_business_plans_batwa(self, indicator, date_from, date_to, location, config):
         """Count Batwa beneficiaries with approved business plans (Indicator 22)"""
         # This would need specific tracking of Batwa beneficiaries
         # For now, use manual entry
         return self._get_latest_achievement(indicator, date_from, date_to)
-    
+
     def _count_climate_resilient_activities(self, indicator, date_from, date_to, location, config):
         """Count climate-resilient productive activities (Indicator 23)"""
         query = MicroProject.objects.filter(
             validation_status='VALIDATED'
         )
-        
+
         if date_from:
             query = query.filter(report_date__gte=date_from)
         if date_to:
             query = query.filter(report_date__lte=date_to)
         if location:
             query = query.filter(location__parent__parent=location)
-        
+
         count = query.count()
         return {'value': count, 'calculation_type': 'MIXED'}
-    
+
     def _calculate_digital_payment_percentage(self, indicator, date_from, date_to, location, config):
         """Calculate percentage of beneficiaries receiving digital payments (Indicator 28)"""
         # Count beneficiaries with digital payment method
@@ -528,36 +522,36 @@ class ResultFrameworkService:
             individual__is_deleted=False,
             json_ext__payment_method='DIGITAL'
         )
-        
+
         if date_from:
             query = query.filter(date_created__gte=date_from)
         if date_to:
             query = query.filter(date_created__lte=date_to)
         if location:
             query = query.filter(individual__group__location__parent__parent=location)
-        
+
         digital_count = query.values('individual').distinct().count()
-        
+
         # Get total beneficiaries who received payments
         total_query = BenefitConsumption.objects.filter(
             individual__is_deleted=False
         )
-        
+
         if date_from:
             total_query = total_query.filter(date_created__gte=date_from)
         if date_to:
             total_query = total_query.filter(date_created__lte=date_to)
         if location:
             total_query = total_query.filter(individual__group__location__parent__parent=location)
-        
+
         total_count = total_query.values('individual').distinct().count()
-        
+
         if total_count > 0:
             percentage = (digital_count / total_count) * 100
             return {'value': percentage, 'calculation_type': 'SYSTEM'}
-        
+
         return {'value': 0, 'calculation_type': 'SYSTEM'}
-    
+
     def create_snapshot(self, name, description, user, date_from=None, date_to=None):
         """Create a complete snapshot of the result framework"""
         snapshot_data = {
@@ -569,25 +563,25 @@ class ResultFrameworkService:
                 'date_to': date_to.isoformat() if date_to else None,
             }
         }
-        
+
         for section in Section.objects.all().prefetch_related('indicators'):
             section_data = {
                 'id': section.id,
                 'name': section.name,
                 'indicators': []
             }
-            
+
             for indicator in section.indicators.all():
                 # Calculate current value
                 result = self.calculate_indicator_value(
-                    indicator.id, 
-                    date_from=date_from, 
+                    indicator.id,
+                    date_from=date_from,
                     date_to=date_to
                 )
                 print([indicator.name, result])
                 achieved_value = result.get('value', 0)
                 target_value = float(indicator.target) if indicator.target else 0
-                
+
                 indicator_data = {
                     'id': indicator.id,
                     'name': indicator.name,
@@ -603,9 +597,9 @@ class ResultFrameworkService:
                 # Save IndicatorAchievement record if value was calculated (not manual)
                 if result.get('calculation_type') in ['SYSTEM', 'MIXED'] and achieved_value > 0:
                     achievement_date = date_to if date_to else timezone.now().date()
- 
+
                     # Create or update achievement for this date
-                    achievement = IndicatorAchievement.objects.create(
+                    IndicatorAchievement.objects.create(
                         indicator=indicator,
                         date=achievement_date,
                         achieved=Decimal(str(achieved_value)),
@@ -617,11 +611,11 @@ class ResultFrameworkService:
                     indicator_data['gender_breakdown'] = result['gender_breakdown']
                 if 'error' in result:
                     indicator_data['error'] = result['error']
-                
+
                 section_data['indicators'].append(indicator_data)
-            
+
             snapshot_data['sections'].append(section_data)
-        
+
         # Create snapshot record
         snapshot = ResultFrameworkSnapshot.objects.create(
             name=name,
@@ -630,5 +624,5 @@ class ResultFrameworkService:
             data=snapshot_data,
             status='DRAFT'
         )
-        
+
         return snapshot

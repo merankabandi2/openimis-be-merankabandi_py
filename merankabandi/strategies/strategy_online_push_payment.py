@@ -44,13 +44,14 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
         # Process benefits in batches
         for i in range(0, total_benefits, batch_size):
             batch = benefits[i:i + batch_size]
-            logger.info(f"Processing batch {i//batch_size + 1} of {(total_benefits + batch_size - 1)//batch_size} ({len(batch)}/{total_benefits} benefits)")
+            logger.info(
+                f"Processing batch {i // batch_size + 1} of {(total_benefits + batch_size - 1) // batch_size} ({len(batch)}/{total_benefits} benefits)")
 
             # Refresh token once before processing the entire batch
             # This ensures all parallel requests in the batch use the same valid token
             if hasattr(payment_gateway_connector, '_refresh_token_if_needed'):
                 payment_gateway_connector._refresh_token_if_needed()
-                logger.info(f"Token refreshed for batch {i//batch_size + 1}")
+                logger.info(f"Token refreshed for batch {i // batch_size + 1}")
 
             # Use ThreadPoolExecutor to parallelize requests within the batch
             with ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as executor:
@@ -68,7 +69,6 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
 
         if benefits_to_approve:
             cls.approve_for_payment_benefit_consumption(benefits_to_approve, user)
-
 
     @classmethod
     def _process_accepted_payroll(cls, payroll, user, **kwargs):

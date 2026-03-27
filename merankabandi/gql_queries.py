@@ -1,10 +1,8 @@
 import graphene
-from django.db.models import Sum, Q
 from graphene_django import DjangoObjectType
 
 from core import prefix_filterset, ExtendedConnection
 from core.gql_queries import UserGQLType
-from core.utils import DefaultStorageFileHandler
 
 from location.gql_queries import LocationGQLType
 from location.models import Location
@@ -21,7 +19,7 @@ from social_protection.gql_queries import BenefitPlanGQLType
 class SensitizationTrainingGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
     validation_status_display = graphene.String()
-    
+
     def resolve_validation_status_display(self, info):
         return self.get_validation_status_display()
 
@@ -49,10 +47,10 @@ class SensitizationTrainingGQLType(DjangoObjectType):
 class BehaviorChangePromotionGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
     validation_status_display = graphene.String()
-    
+
     def resolve_validation_status_display(self, info):
         return self.get_validation_status_display()
-    
+
     class Meta:
         model = BehaviorChangePromotion
         interfaces = (graphene.relay.Node,)
@@ -75,10 +73,10 @@ class BehaviorChangePromotionGQLType(DjangoObjectType):
 class MicroProjectGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
     validation_status_display = graphene.String()
-    
+
     def resolve_validation_status_display(self, info):
         return self.get_validation_status_display()
-    
+
     class Meta:
         model = MicroProject
         interfaces = (graphene.relay.Node,)
@@ -168,7 +166,7 @@ class MonetaryTransferBeneficiaryDataGQLType(graphene.ObjectType):
             **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
             **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
         }
-    
+
 
 class TicketResolutionStatusGQLType(graphene.ObjectType):
     status = graphene.String(required=True)
@@ -192,6 +190,7 @@ class TicketResolutionStatusGQLType(graphene.ObjectType):
             **prefix_filterset("attending_staff__", UserGQLType._meta.filter_fields),
         }
 
+
 class BenefitConsumptionByProvinceGQLType(graphene.ObjectType):
     province_id = graphene.String()
     province_name = graphene.String()
@@ -213,6 +212,7 @@ class SectionGQLType(DjangoObjectType):
         }
         connection_class = ExtendedConnection
 
+
 class IndicatorGQLType(DjangoObjectType):
     class Meta:
         model = Indicator
@@ -226,6 +226,7 @@ class IndicatorGQLType(DjangoObjectType):
             "target": ["exact", "lt", "lte", "gt", "gte"],
         }
         connection_class = ExtendedConnection
+
 
 class IndicatorAchievementGQLType(DjangoObjectType):
     class Meta:
@@ -271,7 +272,7 @@ class ResultFrameworkSnapshotGQLType(DjangoObjectType):
             "created_by": ["exact"],
         }
         connection_class = ExtendedConnection
-        
+
     def resolve_created_by(self, info):
         return self.created_by
 
@@ -300,8 +301,8 @@ class IndicatorCalculationResultType(graphene.ObjectType):
     error = graphene.String()
     date = graphene.Date()
     gender_breakdown = graphene.JSONString()
-    
-    
+
+
 class PmtFormulaGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
 

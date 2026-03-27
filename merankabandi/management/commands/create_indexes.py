@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.db import connection
 import time
 
+
 class Command(BaseCommand):
     help = 'Creates optimized indexes for fields in PostgreSQL'
 
@@ -73,7 +74,7 @@ class Command(BaseCommand):
                 'type': 'BTREE',
                 'columns': '(code)'
             },
-            
+
             # Individual indexes
             {
                 'name': 'idx_individual_json_sexe',
@@ -117,7 +118,7 @@ class Command(BaseCommand):
                 'type': 'BTREE',
                 'columns': '(dob)'
             },
-            
+
             # GroupBeneficiary indexes
             {
                 'name': 'idx_beneficiary_json_payment',
@@ -193,7 +194,7 @@ class Command(BaseCommand):
                 'columns': '(status)',
                 'where': 'status = \'ACTIVE\''
             },
-            
+
             # Composite indexes for common queries
             {
                 'name': 'idx_group_active_inscrit',
@@ -209,7 +210,7 @@ class Command(BaseCommand):
                 'columns': '("isDeleted", status)',
                 'where': '"isDeleted" = false AND status = \'ACTIVE\''
             },
-            
+
             # Payment point and location indexes
             {
                 'name': 'idx_payment_point_name',
@@ -224,7 +225,7 @@ class Command(BaseCommand):
                 'columns': '("LocationName", "LocationType")'
             }
         ]
-        
+
         with connection.cursor() as cursor:
             # Drop indexes if requested
             if options['drop']:
@@ -235,23 +236,23 @@ class Command(BaseCommand):
                         self.stdout.write(f"Dropped index {index['name']}")
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"Error dropping {index['name']}: {str(e)}"))
-            
+
             # Create indexes
             self.stdout.write('\nCreating indexes...')
             for index in indexes:
                 try:
                     start_time = time.time()
-                    
+
                     # Build CREATE INDEX statement
                     sql = f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index['name']} "
                     sql += f"ON {index['table']} "
                     sql += f"USING {index['type']} {index['columns']}"
-                    
+
                     if 'where' in index:
                         sql += f" WHERE {index['where']}"
-                    
+
                     cursor.execute(sql)
-                    
+
                     elapsed = time.time() - start_time
                     self.stdout.write(
                         self.style.SUCCESS(
@@ -262,12 +263,12 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.ERROR(f"Error creating {index['name']}: {str(e)}")
                     )
-            
+
             # Analyze tables to update statistics
             self.stdout.write('\nAnalyzing tables...')
             tables = [
-                'individual_group', 
-                'individual_individual', 
+                'individual_group',
+                'individual_individual',
                 'social_protection_groupbeneficiary',
                 'payroll_benefitconsumption',
                 'payroll_paymentpoint',
@@ -280,5 +281,5 @@ class Command(BaseCommand):
                     self.stdout.write(f"Analyzed {table}")
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"Error analyzing {table}: {str(e)}"))
-        
+
         self.stdout.write(self.style.SUCCESS('\nIndex creation complete!'))

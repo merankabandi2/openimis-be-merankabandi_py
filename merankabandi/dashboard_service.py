@@ -10,7 +10,7 @@ import json as _json
 from django.db import connection
 from django.core.cache import cache
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from decimal import Decimal
 
 

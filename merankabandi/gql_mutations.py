@@ -13,7 +13,7 @@ from merankabandi.apps import MerankabandiConfig
 from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
 from location.models import UserDistrict
 from merankabandi.services import (
-    MonetaryTransferService, SectionService, IndicatorService, 
+    MonetaryTransferService, SectionService, IndicatorService,
     IndicatorAchievementService, ProvincePaymentPointService
 )
 from django.core.management import call_command
@@ -124,14 +124,19 @@ class DeleteMonetaryTransferMutation(BaseHistoryModelDeleteMutationMixin, BaseMu
         pass
 
 # Section mutations
+
+
 class CreateSectionInputType(OpenIMISMutation.Input):
     name = graphene.String(required=True)
+
 
 class UpdateSectionInputType(CreateSectionInputType):
     id = graphene.Int(required=True)
 
+
 class DeleteSectionInputType(OpenIMISMutation.Input):
     ids = graphene.List(graphene.Int, required=True)
+
 
 class CreateSectionMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "CreateSectionMutation"
@@ -155,6 +160,7 @@ class CreateSectionMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     class Input(CreateSectionInputType):
         pass
 
+
 class UpdateSectionMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "UpdateSectionMutation"
     _mutation_module = MerankabandiConfig.name
@@ -176,6 +182,7 @@ class UpdateSectionMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
 
     class Input(UpdateSectionInputType):
         pass
+
 
 class DeleteSectionMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
     _mutation_class = "DeleteSectionMutation"
@@ -205,6 +212,8 @@ class DeleteSectionMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
         pass
 
 # Survey & PMT Targeting Mutations
+
+
 class ImportSurveyDataMutation(BaseMutation):
     _mutation_class = "ImportSurveyDataMutation"
     _mutation_module = MerankabandiConfig.name
@@ -253,6 +262,8 @@ class TriggerPMTCalculationMutation(BaseMutation):
         BurundiPMTScoringService.score_beneficiaries(benefit_plan=benefit_plan)
 
 # Indicator mutations
+
+
 class CreateIndicatorInputType(OpenIMISMutation.Input):
     section_id = graphene.Int(required=False)
     name = graphene.String(required=True)
@@ -261,11 +272,14 @@ class CreateIndicatorInputType(OpenIMISMutation.Input):
     target = graphene.Decimal(required=False)
     observation = graphene.String(required=False)
 
+
 class UpdateIndicatorInputType(CreateIndicatorInputType):
     id = graphene.Int(required=True)
 
+
 class DeleteIndicatorInputType(OpenIMISMutation.Input):
     ids = graphene.List(graphene.Int, required=True)
+
 
 class CreateIndicatorMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "CreateIndicatorMutation"
@@ -289,6 +303,7 @@ class CreateIndicatorMutation(BaseHistoryModelCreateMutationMixin, BaseMutation)
     class Input(CreateIndicatorInputType):
         pass
 
+
 class UpdateIndicatorMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "UpdateIndicatorMutation"
     _mutation_module = MerankabandiConfig.name
@@ -310,6 +325,7 @@ class UpdateIndicatorMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation)
 
     class Input(UpdateIndicatorInputType):
         pass
+
 
 class DeleteIndicatorMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
     _mutation_class = "DeleteIndicatorMutation"
@@ -339,17 +355,22 @@ class DeleteIndicatorMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation)
         pass
 
 # IndicatorAchievement mutations
+
+
 class CreateIndicatorAchievementInputType(OpenIMISMutation.Input):
     indicator_id = graphene.Int(required=True)
     achieved = graphene.Decimal(required=True)
     comment = graphene.String(required=False)
     date = graphene.Date(required=False)
 
+
 class UpdateIndicatorAchievementInputType(CreateIndicatorAchievementInputType):
     id = graphene.Int(required=True)
 
+
 class DeleteIndicatorAchievementInputType(OpenIMISMutation.Input):
     ids = graphene.List(graphene.Int, required=True)
+
 
 class CreateIndicatorAchievementMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "CreateIndicatorAchievementMutation"
@@ -373,6 +394,7 @@ class CreateIndicatorAchievementMutation(BaseHistoryModelCreateMutationMixin, Ba
     class Input(CreateIndicatorAchievementInputType):
         pass
 
+
 class UpdateIndicatorAchievementMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "UpdateIndicatorAchievementMutation"
     _mutation_module = MerankabandiConfig.name
@@ -394,6 +416,7 @@ class UpdateIndicatorAchievementMutation(BaseHistoryModelUpdateMutationMixin, Ba
 
     class Input(UpdateIndicatorAchievementInputType):
         pass
+
 
 class DeleteIndicatorAchievementMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
     _mutation_class = "DeleteIndicatorAchievementMutation"
@@ -423,10 +446,13 @@ class DeleteIndicatorAchievementMutation(BaseHistoryModelDeleteMutationMixin, Ba
         pass
 
 # Province Payroll Generation mutation
+
+
 class GenerateProvincePayrollInputType(OpenIMISMutation.Input):
     province_id = graphene.String(required=True, description="UUID of the province location")
     payment_plan_id = graphene.String(required=True, description="UUID of the payment plan")
     payment_date = graphene.Date(required=True, description="Payment date for the payroll")
+
 
 class GenerateProvincePayrollResponseType(graphene.ObjectType):
     success = graphene.Boolean(required=True)
@@ -441,6 +467,7 @@ class GenerateProvincePayrollResponseType(graphene.ObjectType):
     generated_payrolls = graphene.List(graphene.JSONString)
     total_payrolls = graphene.Int()
     total_beneficiaries = graphene.Int()
+
 
 class GenerateProvincePayrollMutation(BaseMutation):
     _mutation_class = "GenerateProvincePayrollMutation"
@@ -476,10 +503,13 @@ class GenerateProvincePayrollMutation(BaseMutation):
         return result
 
 # Add Province Payment Point mutation
+
+
 class AddProvincePaymentPointInputType(OpenIMISMutation.Input):
     province_id = graphene.String(required=True, description="UUID of the province location")
     payment_point_id = graphene.String(required=True, description="UUID of the payment point")
     payment_plan_id = graphene.String(required=False, description="UUID of the payment plan (optional)")
+
 
 class AddProvincePaymentPointResponseType(graphene.ObjectType):
     success = graphene.Boolean(required=True)
@@ -490,6 +520,7 @@ class AddProvincePaymentPointResponseType(graphene.ObjectType):
     payment_point_name = graphene.String()
     benefit_plan_id = graphene.String()
     benefit_plan_name = graphene.String()
+
 
 class AddProvincePaymentPointMutation(BaseMutation):
     _mutation_class = "AddProvincePaymentPointMutation"
@@ -525,17 +556,22 @@ class AddProvincePaymentPointMutation(BaseMutation):
         return result
 
 # ProvincePaymentPoint mutations
+
+
 class CreateProvincePaymentPointInputType(OpenIMISMutation.Input):
     province_id = graphene.String(required=True, description="UUID of the province location")
     payment_point_id = graphene.String(required=True, description="UUID of the payment point")
     payment_plan_id = graphene.String(required=False, description="UUID of the payment plan (optional)")
     is_active = graphene.Boolean(required=False, description="Is the association active")
 
+
 class UpdateProvincePaymentPointInputType(CreateProvincePaymentPointInputType):
     id = graphene.String(required=True)
 
+
 class DeleteProvincePaymentPointInputType(OpenIMISMutation.Input):
     ids = graphene.List(graphene.String, required=True)
+
 
 class CreateProvincePaymentPointMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     _mutation_class = "CreateProvincePaymentPointMutation"
@@ -559,6 +595,7 @@ class CreateProvincePaymentPointMutation(BaseHistoryModelCreateMutationMixin, Ba
     class Input(CreateProvincePaymentPointInputType):
         pass
 
+
 class UpdateProvincePaymentPointMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "UpdateProvincePaymentPointMutation"
     _mutation_module = MerankabandiConfig.name
@@ -580,6 +617,7 @@ class UpdateProvincePaymentPointMutation(BaseHistoryModelUpdateMutationMixin, Ba
 
     class Input(UpdateProvincePaymentPointInputType):
         pass
+
 
 class DeleteProvincePaymentPointMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
     _mutation_class = "DeleteProvincePaymentPointMutation"

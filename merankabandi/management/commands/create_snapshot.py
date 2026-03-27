@@ -1,6 +1,5 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from datetime import datetime
 from merankabandi.result_framework_service import ResultFrameworkService
 
@@ -112,7 +111,7 @@ class Command(BaseCommand):
             # Display summary
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'\nSuccessfully created snapshot:'
+                    '\nSuccessfully created snapshot:'
                 )
             )
             self.stdout.write(f'  ID: {snapshot.id}')
@@ -138,7 +137,7 @@ class Command(BaseCommand):
                 for section in data.get('sections', [])
             )
 
-            self.stdout.write(f'\nSnapshot contains:')
+            self.stdout.write('\nSnapshot contains:')
             self.stdout.write(f'  Sections: {sections_count}')
             self.stdout.write(f'  Indicators: {indicators_count}')
 

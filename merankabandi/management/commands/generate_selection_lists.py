@@ -8,7 +8,6 @@ try:
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.pdfgen import canvas
-    from reportlab.lib import colors
     HAS_REPORTLAB = True
 except ImportError:
     HAS_REPORTLAB = False
@@ -28,10 +27,6 @@ class Command(BaseCommand):
         output_dir = options['output_dir']
         fmt = options['format']
         os.makedirs(output_dir, exist_ok=True)
-
-        groups_qs = Group.objects.filter(
-            groupbeneficiary__benefit_plan=benefit_plan,
-        ).distinct()
 
         # Also include groups linked via json_ext that aren't yet GroupBeneficiary
         # (pre-beneficiary selection phase: groups with selection_status in json_ext)

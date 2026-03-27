@@ -4,7 +4,6 @@ Includes: Twa/Batwa, People with disabilities, Chronic illness, Refugees/Returne
 """
 
 import graphene
-from graphene import ObjectType, String, Int, Float, List, Field, Boolean
 from django.core.cache import cache
 from django.db import connection
 from datetime import datetime
@@ -20,7 +19,7 @@ class VulnerableGroupCountsType(graphene.ObjectType):
     refugee_count = graphene.Int()
     returnee_count = graphene.Int()
     total_vulnerable = graphene.Int()
-    
+
     # Percentages
     twa_percentage = graphene.Float()
     disabled_percentage = graphene.Float()
@@ -38,27 +37,27 @@ class VulnerableGroupDetailsType(graphene.ObjectType):
     chronic_illness_households = graphene.Int()
     refugee_households = graphene.Int()
     returnee_households = graphene.Int()
-    
+
     # Members counts
     twa_members = graphene.Int()
     disabled_members = graphene.Int()
     chronic_illness_members = graphene.Int()
     refugee_members = graphene.Int()
     returnee_members = graphene.Int()
-    
+
     # Beneficiaries (primary recipients) counts
     twa_beneficiaries = graphene.Int()
     disabled_beneficiaries = graphene.Int()
     chronic_illness_beneficiaries = graphene.Int()
     refugee_beneficiaries = graphene.Int()
     returnee_beneficiaries = graphene.Int()
-    
+
     # Disability types breakdown
     physical_disability_count = graphene.Int()
     mental_disability_count = graphene.Int()
     visual_disability_count = graphene.Int()
     hearing_disability_count = graphene.Int()
-    
+
     # Percentages
     twa_coverage = graphene.Float()  # % of twa members who are beneficiaries
     disabled_coverage = graphene.Float()
@@ -75,7 +74,7 @@ class EnhancedGenderBreakdownType(graphene.ObjectType):
     disabled = graphene.Int()
     chronic_illness = graphene.Int()
     total = graphene.Int()
-    
+
     male_percentage = graphene.Float()
     female_percentage = graphene.Float()
     twa_percentage = graphene.Float()
@@ -113,20 +112,20 @@ class EnhancedBeneficiaryBreakdownType(graphene.ObjectType):
 
 class VulnerableGroupsService:
     """Service class to fetch vulnerable groups data from materialized views"""
-    
+
     @staticmethod
     def get_vulnerable_groups_summary(filters=None):
         """Get summary of vulnerable groups from enhanced materialized view"""
         cache_key = f"vulnerable_groups_summary_{json.dumps(filters or {})}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         with connection.cursor() as cursor:
             # Build query with optional filters
             query = """
-                SELECT 
+                SELECT
                     SUM(beneficiary_count) as total,
                     SUM(male_count) as male,
                     SUM(female_count) as female,
@@ -139,7 +138,7 @@ class VulnerableGroupsService:
                 FROM dashboard_beneficiary_summary_enhanced
                 WHERE 1=1
             """
-            
+
             params = []
             if filters:
                 if filters.get('province_id'):
@@ -151,10 +150,10 @@ class VulnerableGroupsService:
                 if filters.get('benefit_plan_code'):
                     query += " AND benefit_plan_code = %s"
                     params.append(filters['benefit_plan_code'])
-            
+
             cursor.execute(query, params)
             result = cursor.fetchone()
-            
+
             if result:
                 total = result[0] or 0
                 data = {
@@ -175,24 +174,24 @@ class VulnerableGroupsService:
                     'returnee_percentage': (result[7] / total * 100) if total > 0 else 0,
                     'vulnerable_percentage': (result[8] / total * 100) if total > 0 else 0,
                 }
-                
+
                 cache.set(cache_key, data, 300)  # Cache for 5 minutes
                 return data
-        
+
         return None
-    
+
     @staticmethod
     def get_vulnerable_groups_details(filters=None):
         """Get detailed vulnerable groups data from dedicated view"""
         cache_key = f"vulnerable_groups_details_{json.dumps(filters or {})}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         with connection.cursor() as cursor:
             query = """
-                SELECT 
+                SELECT
                     SUM(total_households) as total_households,
                     SUM(total_members) as total_members,
                     SUM(total_beneficiaries) as total_beneficiaries,
@@ -224,7 +223,7 @@ class VulnerableGroupsService:
                 FROM dashboard_vulnerable_groups_summary
                 WHERE 1=1
             """
-            
+
             params = []
             if filters:
                 if filters.get('province_id'):
@@ -233,10 +232,10 @@ class VulnerableGroupsService:
                 if filters.get('benefit_plan_code'):
                     query += " AND benefit_plan_code = %s"
                     params.append(filters['benefit_plan_code'])
-            
+
             cursor.execute(query, params)
             result = cursor.fetchone()
-            
+
             if result:
                 data = {
                     # Households
@@ -269,54 +268,51 @@ class VulnerableGroupsService:
                     'refugee_coverage': (result[14] / result[13] * 100) if result[13] > 0 else 0,
                     'returnee_coverage': (result[17] / result[16] * 100) if result[16] > 0 else 0,
                 }
-                
+
                 cache.set(cache_key, data, 300)  # Cache for 5 minutes
                 return data
-        
+
         return None
-    
 
 
 # GraphQL Query definitions
 class VulnerableGroupsQuery(graphene.ObjectType):
     """GraphQL queries for vulnerable groups data"""
-    
+
     vulnerable_groups_summary = graphene.Field(
         VulnerableGroupCountsType,
         province_id=graphene.Int(),
         community_type=graphene.String(),
         benefit_plan_code=graphene.String()
     )
-    
+
     vulnerable_groups_details = graphene.Field(
         VulnerableGroupDetailsType,
         province_id=graphene.Int(),
         benefit_plan_code=graphene.String()
     )
-    
-    
+
     enhanced_beneficiary_breakdown = graphene.Field(
         EnhancedBeneficiaryBreakdownType,
         province_id=graphene.Int(),
         community_type=graphene.String(),
         benefit_plan_code=graphene.String()
     )
-    
+
     def resolve_vulnerable_groups_summary(self, info, **kwargs):
         """Resolve vulnerable groups summary data"""
         user = info.context.user
         if not user or not user.is_authenticated:
             raise PermissionError("Authentication required")
         return VulnerableGroupsService.get_vulnerable_groups_summary(kwargs)
-    
+
     def resolve_vulnerable_groups_details(self, info, **kwargs):
         """Resolve vulnerable groups detailed data"""
         user = info.context.user
         if not user or not user.is_authenticated:
             raise PermissionError("Authentication required")
         return VulnerableGroupsService.get_vulnerable_groups_details(kwargs)
-    
-    
+
     def resolve_enhanced_beneficiary_breakdown(self, info, **kwargs):
         """Resolve enhanced beneficiary breakdown with vulnerable groups"""
         user = info.context.user
@@ -324,7 +320,7 @@ class VulnerableGroupsQuery(graphene.ObjectType):
             raise PermissionError("Authentication required")
         summary = VulnerableGroupsService.get_vulnerable_groups_summary(kwargs)
         details = VulnerableGroupsService.get_vulnerable_groups_details(kwargs)
-        
+
         if summary and details:
             return {
                 'gender_breakdown': {
@@ -344,5 +340,5 @@ class VulnerableGroupsQuery(graphene.ObjectType):
                 'vulnerable_details': details,
                 'last_updated': datetime.now().isoformat()
             }
-        
+
         return None

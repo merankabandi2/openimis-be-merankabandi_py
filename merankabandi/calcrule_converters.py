@@ -30,9 +30,7 @@ class MeraBenefitConverterMixin:
 
 class MeraGroupToBenefitConverter(MeraBenefitConverterMixin, GroupToBenefitConverter):
     """Group benefit converter with Burundi payment data."""
-    pass
 
 
 class MeraBeneficiaryToBenefitConverter(MeraBenefitConverterMixin, BeneficiaryToBenefitConverter):
     """Individual benefit converter with Burundi payment data."""
-    pass

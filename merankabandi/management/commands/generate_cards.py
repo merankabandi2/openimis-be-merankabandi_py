@@ -21,6 +21,7 @@ from functools import lru_cache
 # Set up logging
 logger = logging.getLogger(__name__)
 
+
 class BeneficiaryCardGenerator:
     def __init__(self):
         self.font_config = FontConfiguration()
@@ -35,7 +36,7 @@ class BeneficiaryCardGenerator:
                 size: A4;
                 margin: 1cm;
             }
-            
+
             .card {
                 height: 13cm;
                 width: 18.5cm;
@@ -44,7 +45,7 @@ class BeneficiaryCardGenerator:
                 page-break-inside: avoid;
                 font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
             }
-            
+
             .card-header {
                 display: table;
                 width: 100%;
@@ -52,51 +53,51 @@ class BeneficiaryCardGenerator:
                 table-layout: fixed;
                 margin-bottom: 0.5cm;
             }
-            
+
             .logo, .social-id-container, .photo {
                 display: table-cell;
                 vertical-align: top;
                 padding: 0;
             }
-            
+
             .logo {
                 width: 3cm;
                 text-align: left;
             }
-            
+
             .logo img {
                 height: 2.5cm;
                 width: auto;
                 max-width: 3cm;
                 object-fit: contain;
             }
-            
+
             .social-id-container {
                 width: auto;
                 text-align: center;
                 vertical-align: middle;
                 padding: 0 0.5cm;
             }
-            
+
             .photo {
                 width: 3.5cm;
                 text-align: right;
             }
-            
+
             .photo img {
                 height: 3cm;
                 width: auto;
                 max-width: 3.5cm;
                 object-fit: contain;
             }
-            
+
             .header-text {
                 font-size: 11pt;
                 font-weight: bold;
                 margin-bottom: 0.5cm;
                 line-height: 1.2;
             }
-            
+
             .social-id {
                 font-weight: bold;
                 font-size: 16pt;
@@ -112,18 +113,18 @@ class BeneficiaryCardGenerator:
                 display: flex;
                 align-items: center;
             }
-            
+
             .field-label {
                 display: inline-block;
                 font-size: 10pt;
                 width: 6cm;
             }
-            
+
             .field-value {
                 font-weight: bold;
                 font-size: 12pt;
             }
-            
+
             .declaration {
                 font-size: 10pt;
                 margin-top: 0.6cm;
@@ -184,9 +185,16 @@ class BeneficiaryCardGenerator:
 
     def generate_card_html(self, beneficiary):
         """Generate HTML for beneficiary card"""
-        individual = beneficiary.group.groupindividuals.get(recipient_type=GroupIndividual.RecipientType.PRIMARY).individual
+        individual = beneficiary.group.groupindividuals.get(
+            recipient_type=GroupIndividual.RecipientType.PRIMARY).individual
         household = individual.groupindividuals.get().group
-        base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
+        base_dir = os.path.join(
+            settings.PHOTOS_BASE_PATH, str(
+                household.json_ext.get(
+                    'deviceid', '')), str(
+                household.json_ext.get(
+                    'date_collecte', '')).replace(
+                        '-', ''))
         clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
         photo_path = os.path.join(base_dir, clean_path)
         moyen_telecom = beneficiary.json_ext.get('moyen_telecom', '')
@@ -206,7 +214,7 @@ class BeneficiaryCardGenerator:
             'commune': colline.parent.name,
             'colline': colline.name,
         }
-        
+
         return render_to_string('beneficiary_card.html', context)
 
     def generate_beneficiary_cards_batch(self, beneficiaries_queryset, output_path, batch_size=50):
@@ -214,32 +222,32 @@ class BeneficiaryCardGenerator:
         start_time = time.time()
         total_beneficiaries = beneficiaries_queryset.count()
         logger.info(f"Starting generation of {total_beneficiaries} cards with batch size {batch_size}")
-        
+
         # Create temp directory for batch PDFs
         import tempfile
         temp_dir = tempfile.mkdtemp()
         batch_files = []
-        
+
         # Process in batches with a progress bar
         with tqdm(total=total_beneficiaries, desc="Generating Cards", unit="card") as pbar:
             offset = 0
             batch_num = 1
-            
+
             while offset < total_beneficiaries:
                 batch_start_time = time.time()
                 # Get a batch of beneficiaries
-                beneficiaries_batch = list(beneficiaries_queryset[offset:offset+batch_size])
-                
+                beneficiaries_batch = list(beneficiaries_queryset[offset:offset + batch_size])
+
                 if not beneficiaries_batch:
                     break
-                    
+
                 # Generate batch HTML
                 all_cards_html = []
                 for beneficiary in beneficiaries_batch:
                     all_cards_html.append(self.generate_card_html(beneficiary))
-                
+
                 combined_html = '\n'.join(all_cards_html)
-                
+
                 # Generate batch PDF
                 batch_file = os.path.join(temp_dir, f"batch_{batch_num}.pdf")
                 html_doc = HTML(string=combined_html)
@@ -247,12 +255,12 @@ class BeneficiaryCardGenerator:
                     stylesheets=[self.css],
                     font_config=self.font_config
                 )
-                
+
                 with open(batch_file, 'wb') as pdf_file:
                     pdf_file.write(pdf)
-                
+
                 batch_files.append(batch_file)
-                
+
                 # Update progress and stats
                 batch_size_actual = len(beneficiaries_batch)
                 offset += batch_size_actual
@@ -260,27 +268,27 @@ class BeneficiaryCardGenerator:
                 batch_time = time.time() - batch_start_time
                 logger.info(f"Batch {batch_num} ({batch_size_actual} cards) completed in {batch_time:.2f} seconds")
                 batch_num += 1
-        
+
         # Merge all batch PDFs
         if batch_files:
             merger = PdfMerger()
             for pdf_file in batch_files:
                 merger.append(pdf_file)
-            
+
             merger.write(output_path)
             merger.close()
-            
+
             # Clean up temp files
             for file in batch_files:
                 try:
                     os.remove(file)
-                except:
+                except BaseException:
                     pass
             try:
                 os.rmdir(temp_dir)
-            except:
+            except BaseException:
                 pass
-        
+
         total_time = time.time() - start_time
         logger.info(f"Total card generation time: {total_time:.2f} seconds for {total_beneficiaries} cards")
 
@@ -293,18 +301,18 @@ class BeneficiaryCardGenerator:
         else:
             # Convert to list for the old method
             all_cards_html = []
-            
+
             for beneficiary in beneficiaries:
                 all_cards_html.append(self.generate_card_html(beneficiary))
-            
+
             combined_html = '\n'.join(all_cards_html)
-            
+
             html_doc = HTML(string=combined_html)
             pdf = html_doc.write_pdf(
                 stylesheets=[self.css],
                 font_config=self.font_config
             )
-            
+
             with open(output_path, 'wb') as pdf_file:
                 pdf_file.write(pdf)
 
@@ -317,10 +325,13 @@ class Command(BaseCommand):
         parser.add_argument('--commune', type=str, help='Name of the commune to generate cards for')
         parser.add_argument('--colline', type=str, help='Name of the colline to generate cards for')
         parser.add_argument('--output', type=str, default='cards.pdf', help='Output PDF file name')
-        parser.add_argument('--batch-size', type=int, default=50, 
-                          help='Number of cards to process in each batch (default: 50)')
+        parser.add_argument('--batch-size', type=int, default=50,
+                            help='Number of cards to process in each batch (default: 50)')
         parser.add_argument('--limit', type=int, help='Limit the number of cards to generate (for testing)')
-        parser.add_argument('--financement', type=str, help='Filter by financement type (e.g., "financement additionel")')
+        parser.add_argument(
+            '--financement',
+            type=str,
+            help='Filter by financement type (e.g., "financement additionel")')
 
     def handle(self, *args, **options):
         province_name = options.get('province')
@@ -330,16 +341,16 @@ class Command(BaseCommand):
         batch_size = options['batch_size']
         limit = options.get('limit')
         financement = options.get('financement')
-        
+
         # Check that at least one location parameter is provided
         if not any([province_name, commune_name, colline_name]):
             raise CommandError("Please provide either a province, commune, or colline name.")
-        
+
         # Determine the filter and output filename
         filter_params = {}
         location_type = ""
         location_name = ""
-        
+
         if province_name:
             filter_params = {
                 'group__location__parent__parent__name': province_name,
@@ -358,7 +369,7 @@ class Command(BaseCommand):
             }
             location_type = "colline"
             location_name = colline_name
-        
+
         # Set default output filename if not explicitly provided
         if output_file == 'cards.pdf':
             output_file = f'{location_type}_{location_name}_cards.pdf'
@@ -366,32 +377,33 @@ class Command(BaseCommand):
         try:
             # Add filter for beneficiaries with phone numbers
             filter_params['json_ext__moyen_telecom__status'] = 'SUCCESS'
-            
+
             # Add financement filter if provided
             if financement:
                 filter_params['json_ext__financement'] = financement
-            
+
             # Use select_related to optimize database queries
             beneficiaries = Beneficiary.objects.filter(**filter_params).select_related(
-                'group', 
-                'group__location', 
-                'group__location__parent', 
+                'group',
+                'group__location',
+                'group__location__parent',
                 'group__location__parent__parent'
             )
-            
+
             # Apply limit for testing if specified
             if limit:
                 beneficiaries = beneficiaries[:limit]
-                
+
             if not beneficiaries.exists():
                 raise CommandError(f"No beneficiaries found for {location_type}: {location_name}")
 
             generator = BeneficiaryCardGenerator()
             total_beneficiaries = beneficiaries.count()
 
-            self.stdout.write(f"Generating cards for {total_beneficiaries} beneficiaries in {location_type} {location_name}")
+            self.stdout.write(
+                f"Generating cards for {total_beneficiaries} beneficiaries in {location_type} {location_name}")
             self.stdout.write(f"Using batch size of {batch_size} cards")
-            
+
             # Generate cards with batch processing
             generator.generate_beneficiary_cards_batch(
                 beneficiaries,

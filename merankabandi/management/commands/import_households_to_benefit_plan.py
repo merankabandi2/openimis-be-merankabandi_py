@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction, connection, reset_queries
 from django.utils import timezone
-from django.db.models import Q
 
 from core.models import User
 from individual.models import Group
@@ -120,7 +119,7 @@ class Command(BaseCommand):
         """Parse and validate the JSON extension string."""
         if not json_ext_str:
             return {}
-        
+
         try:
             json_ext = json.loads(json_ext_str)
             if not isinstance(json_ext, dict):
@@ -133,7 +132,7 @@ class Command(BaseCommand):
         """Merge the original json_ext with additional fields."""
         if not additional_json_ext:
             return original_json_ext
-        
+
         # Parse original json_ext if it's a string, otherwise use as-is
         if isinstance(original_json_ext, str):
             try:
@@ -144,10 +143,10 @@ class Command(BaseCommand):
             merged = original_json_ext.copy()
         else:
             merged = {}
-        
+
         # Add/override with additional fields
         merged.update(additional_json_ext)
-        
+
         return merged
 
     def read_csv_file(self, file_path, code_column, delimiter=','):
@@ -156,7 +155,7 @@ class Command(BaseCommand):
             df = pd.read_csv(file_path, delimiter=delimiter)
             if code_column not in df.columns:
                 raise CommandError(f"Column '{code_column}' not found in CSV file")
-                
+
             # Clean and extract household codes
             codes = df[code_column].astype(str).str.strip().tolist()
             return codes
@@ -333,7 +332,7 @@ class Command(BaseCommand):
                                     self.stdout.write(self.style.ERROR(error_msg))
                                     if skip_errors:
                                         # Fall back to individual creation using save()
-                                        self.stdout.write(self.style.WARNING(f"  Bulk create failed, falling back to individual creation..."))
+                                        self.stdout.write(self.style.WARNING("  Bulk create failed, falling back to individual creation..."))
                                         for idx, beneficiary in enumerate(beneficiaries_to_create):
                                             try:
                                                 beneficiary.save(user=user)
@@ -423,13 +422,13 @@ class Command(BaseCommand):
 
             with timer("Process all households", self.stdout.write if profile else None):
                 results = self.process_households(codes, benefit_plan, status, user, additional_json_ext, dry_run, batch_size, skip_errors, update_existing, profile)
-            
+
             # Print results
             self.stdout.write("\nImport Results:")
             self.stdout.write(f"Total households in file: {results['total']}")
             self.stdout.write(f"Households found in system: {results['found']}")
             self.stdout.write(f"Already registered to benefit plan: {results['already_registered']}")
-            
+
             if not dry_run:
                 self.stdout.write(self.style.SUCCESS(f"Newly registered to benefit plan: {results['newly_registered']}"))
                 if update_existing and results['updated'] > 0:
@@ -437,20 +436,20 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"Would register to benefit plan: {results['found'] - results['already_registered']}")
                 if update_existing:
-                    self.stdout.write(f"Would update status for existing beneficiaries: Check individual beneficiary statuses")
-                
+                    self.stdout.write("Would update status for existing beneficiaries: Check individual beneficiary statuses")
+
             self.stdout.write(self.style.WARNING(f"Households not found in system: {results['not_found']}"))
-            
+
             if results['not_found'] > 0 and results['not_found'] <= 20:
                 self.stdout.write("Not found household codes:")
                 for code in results['not_found_codes']:
                     self.stdout.write(f"  - {code}")
-            
+
             if results['errors'] > 0:
                 self.stdout.write(self.style.ERROR(f"Errors encountered: {results['errors']}"))
                 for error in results['error_details']:
                     self.stdout.write(f"  - {error}")
-                    
+
             if dry_run:
                 self.stdout.write(self.style.WARNING("\nThis was a dry run. No changes were made to the database."))
 

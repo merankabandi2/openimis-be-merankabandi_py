@@ -35,7 +35,7 @@ class Command(BaseCommand):
         try:
             with open(csv_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                
+
                 stats = {
                     'total': 0,
                     'created': 0,
@@ -48,10 +48,10 @@ class Command(BaseCommand):
                 with transaction.atomic():
                     for row_num, row in enumerate(reader, start=2):
                         stats['total'] += 1
-                        
+
                         try:
                             result = self.process_row(row, row_num, default_category)
-                            
+
                             if result['status'] == 'success':
                                 stats['created'] += 1
                                 self.stdout.write(
@@ -62,7 +62,7 @@ class Command(BaseCommand):
                                 )
                                 if result.get('unmapped_theme'):
                                     stats['unmapped_themes'].add(result['unmapped_theme'])
-                                    
+
                             elif result['status'] == 'location_not_found':
                                 stats['skipped'] += 1
                                 stats['location_not_found'].append(result['location_info'])
@@ -79,35 +79,37 @@ class Command(BaseCommand):
                                         f"Row {row_num}: Skipped - {result.get('reason', 'Unknown')}"
                                     )
                                 )
-                                
+
                         except Exception as e:
                             stats['errors'] += 1
                             self.stdout.write(
                                 self.style.ERROR(f"Row {row_num}: Error - {str(e)}")
                             )
-                    
+
                     if dry_run:
                         raise CommandError("Dry run complete - rolling back transaction")
 
                 # Print summary
-                self.stdout.write('\n' + '='*60)
+                self.stdout.write('\n' + '=' * 60)
                 self.stdout.write(self.style.SUCCESS('IMPORT SUMMARY'))
-                self.stdout.write('='*60)
+                self.stdout.write('=' * 60)
                 self.stdout.write(f"Total rows processed: {stats['total']}")
                 self.stdout.write(self.style.SUCCESS(f"Successfully created: {stats['created']}"))
                 self.stdout.write(self.style.WARNING(f"Skipped: {stats['skipped']}"))
                 self.stdout.write(self.style.ERROR(f"Errors: {stats['errors']}"))
-                
+
                 if stats['location_not_found']:
                     self.stdout.write('\n' + self.style.WARNING('Locations not found:'))
                     for loc in set(stats['location_not_found']):
                         self.stdout.write(f"  - {loc}")
-                
+
                 if stats['unmapped_themes']:
-                    self.stdout.write('\n' + self.style.WARNING('Themes stored in observations (not in predefined categories):'))
+                    self.stdout.write(
+                        '\n' + self.style.WARNING('Themes stored in observations (not in predefined categories):'))
                     for theme in stats['unmapped_themes']:
                         self.stdout.write(f"  - {theme}")
-                    self.stdout.write('\nNote: Use --default-category option to assign a category, or themes will be stored in observations field')
+                    self.stdout.write(
+                        '\nNote: Use --default-category option to assign a category, or themes will be stored in observations field')
 
         except FileNotFoundError:
             raise CommandError(f'File "{csv_file}" not found')
@@ -119,12 +121,12 @@ class Command(BaseCommand):
 
     def process_row(self, row, row_num, default_category=None):
         """Process a single CSV row and create SensitizationTraining"""
-        
+
         # Parse sensitization date (Date de la sensibilisation/Formation)
         date_str = row.get('Date de la sensibilisation/Formation', '').strip()
         if not date_str:
             return {'status': 'error', 'reason': 'Missing date'}
-        
+
         try:
             # Try MM/DD/YY format (like 9/30/24)
             sensitization_date = datetime.strptime(date_str, '%m/%d/%y').date()
@@ -134,36 +136,36 @@ class Command(BaseCommand):
                 sensitization_date = datetime.strptime(date_str, '%m/%d/%Y').date()
             except ValueError:
                 return {'status': 'error', 'reason': f'Invalid date format: {date_str}'}
-        
+
         # Get location data
         commune = row.get('Commune', '').strip()
         colline = row.get('Colline', '').strip()
-        
+
         if not commune:
             return {'status': 'error', 'reason': 'Missing commune'}
-        
+
         # Find location by commune and colline
         location = self.find_location(commune, colline)
-        
+
         if not location:
             location_info = f"Commune: {commune}, Colline: {colline or 'N/A'}"
             return {
                 'status': 'location_not_found',
                 'location_info': location_info
             }
-        
+
         # Parse participant counts
         male_participants = self.parse_int(row.get('Homme', 0))
         female_participants = self.parse_int(row.get('Femme', 0))
         twa_participants = self.parse_int(row.get('Twa', 0))
-        
+
         # Get theme from CSV
         theme_from_csv = row.get('Thème', '').strip()
-        
+
         # Map theme to category (if it matches predefined categories)
         category = None
         unmapped_theme = None
-        
+
         # Check if theme matches any predefined category
         theme_mapping = {
             'module mip': 'module_mip__mesures_d_inclusio',
@@ -173,28 +175,28 @@ class Command(BaseCommand):
             'capital humain': 'module_mach__mesures_d_accompa',
             'mach': 'module_mach__mesures_d_accompa',
         }
-        
+
         theme_lower = theme_from_csv.lower()
         for key, value in theme_mapping.items():
             if key in theme_lower:
                 category = value
                 break
-        
+
         # If no match found, use default_category or store in observations
         if not category:
             category = default_category
             unmapped_theme = theme_from_csv
-        
+
         # Get facilitator and observations
         facilitator = row.get('Animateur', '').strip() or None
         observations = row.get('Observation', '').strip() or None
-        
+
         # If theme wasn't mapped and we have it, prepend to observations
         if unmapped_theme and observations:
             observations = f"Thème: {unmapped_theme}\n\n{observations}"
         elif unmapped_theme:
             observations = f"Thème: {unmapped_theme}"
-        
+
         # Create SensitizationTraining record
         training = SensitizationTraining(
             id=uuid.uuid4(),
@@ -209,20 +211,20 @@ class Command(BaseCommand):
             observations=observations,
             validation_status='PENDING'
         )
-        
+
         training.save()
-        
+
         result = {
             'status': 'success',
             'commune': commune,
             'colline': colline
         }
-        
+
         if unmapped_theme:
             result['unmapped_theme'] = unmapped_theme
-        
+
         return result
-    
+
     def find_location(self, commune, colline):
         """
         Find location by commune and colline names
@@ -233,19 +235,19 @@ class Command(BaseCommand):
                 name__iexact=colline,
                 parent__name__iexact=commune
             ).first()
-            
+
             if location:
                 return location
-            
+
             # Try finding colline without commune filter
             location = Location.objects.filter(name__iexact=colline).first()
             if location:
                 return location
-        
+
         # If no colline or not found, try to find by commune name only
         location = Location.objects.filter(name__iexact=commune).first()
         return location
-    
+
     def parse_int(self, value):
         """Safely parse integer value"""
         if value is None or value == '':

@@ -1,9 +1,6 @@
 import graphene
-import uuid
 from datetime import datetime
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
-from django.http import HttpResponse
 from core.schema import OpenIMISMutation
 from .models import ResultFrameworkSnapshot, IndicatorAchievement, Indicator
 from .result_framework_service import ResultFrameworkService
@@ -37,21 +34,21 @@ class CreateResultFrameworkSnapshotMutation(OpenIMISMutation):
     """Create a new result framework snapshot"""
     _mutation_module = "merankabandi"
     _mutation_class = "CreateResultFrameworkSnapshotMutation"
-    
+
     class Input:
         name = graphene.String(required=True)
         description = graphene.String()
         date_from = graphene.Date()
         date_to = graphene.Date()
-    
+
     @classmethod
     def async_mutate(cls, user, **data):
         try:
             if not user or user.is_anonymous:
                 raise PermissionDenied("User must be authenticated")
-                
+
             service = ResultFrameworkService()
-            
+
             snapshot = service.create_snapshot(
                 name=data.get('name'),
                 description=data.get('description', ''),
@@ -59,7 +56,7 @@ class CreateResultFrameworkSnapshotMutation(OpenIMISMutation):
                 date_from=data.get('date_from'),
                 date_to=data.get('date_to')
             )
-            
+
             return {
                 'success': True,
                 'message': f'Snapshot created successfully with ID: {snapshot.id}',
@@ -77,21 +74,21 @@ class UpdateIndicatorAchievementMutation(OpenIMISMutation):
     """Update or create indicator achievement"""
     _mutation_module = "merankabandi"
     _mutation_class = "UpdateIndicatorAchievementMutation"
-    
+
     class Input:
         indicator_id = graphene.Int(required=True)
         achieved = graphene.Float(required=True)
         date = graphene.Date()
         comment = graphene.String()
-    
+
     @classmethod
     def async_mutate(cls, user, **data):
         try:
             if not user or user.is_anonymous:
                 raise PermissionDenied("User must be authenticated")
-                
+
             indicator = Indicator.objects.get(id=data['indicator_id'])
-            
+
             # Create new achievement record
             achievement = IndicatorAchievement.objects.create(
                 indicator=indicator,
@@ -99,7 +96,7 @@ class UpdateIndicatorAchievementMutation(OpenIMISMutation):
                 date=data.get('date') or datetime.now().date(),
                 comment=data.get('comment', '')
             )
-            
+
             return {
                 'success': True,
                 'message': f'Achievement updated for indicator: {indicator.name}',
@@ -126,28 +123,25 @@ class GenerateResultFrameworkDocumentMutation(graphene.Mutation):
         format = graphene.String(default_value='docx')
         date_from = graphene.Date()
         date_to = graphene.Date()
-    
+
     success = graphene.Boolean()
     message = graphene.String()
     document_url = graphene.String()
-    
+
     @classmethod
     def mutate(cls, root, info, snapshot_id=None, format='docx', date_from=None, date_to=None):
         try:
             user = info.context.user
             if not user or user.is_anonymous:
                 raise PermissionDenied("User must be authenticated")
-                
-            service = ResultFrameworkService()
-            
+
             # Generate document
-            document = service.generate_document(snapshot_id=snapshot_id, format=format)
-            
+
             # Save document to file
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"result_framework_{timestamp}.{format}"
             filepath = f"result_framework_docs/{filename}"
-            
+
             # Create response
             if format == 'docx':
                 # For now, return the document object
@@ -163,7 +157,7 @@ class GenerateResultFrameworkDocumentMutation(graphene.Mutation):
                     message=f'Unsupported format: {format}',
                     document_url=None
                 )
-                
+
         except Exception as e:
             return cls(
                 success=False,
@@ -176,28 +170,28 @@ class FinalizeSnapshotMutation(OpenIMISMutation):
     """Finalize a snapshot to prevent further changes"""
     _mutation_module = "merankabandi"
     _mutation_class = "FinalizeSnapshotMutation"
-    
+
     class Input:
         snapshot_id = graphene.ID(required=True)
-    
+
     @classmethod
     def async_mutate(cls, user, **data):
         try:
             if not user or user.is_anonymous:
                 raise PermissionDenied("User must be authenticated")
-                
+
             snapshot = ResultFrameworkSnapshot.objects.get(id=data['snapshot_id'])
-            
+
             if snapshot.status != 'DRAFT':
                 return {
                     'success': False,
                     'message': 'Snapshot is not in DRAFT status',
                     'detail': None
                 }
-            
+
             snapshot.status = 'FINALIZED'
             snapshot.save()
-            
+
             return {
                 'success': True,
                 'message': 'Snapshot finalized successfully',

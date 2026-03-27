@@ -6,6 +6,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+
 class IBBPaymentGatewayConnector(PaymentGatewayConnector):
     """
     Connector for IBB M+ API Integration
@@ -67,7 +68,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 # Update session headers with the new token
                 self.session.headers.update({'Authorization': f'Bearer {self.token}'})
 
-                logger.info(f"Token successfully refreshed, expires in 50 seconds")
+                logger.info("Token successfully refreshed, expires in 50 seconds")
                 return True
 
             logger.error("Token not found in response")
@@ -179,7 +180,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
 
                     retry_count += 1
                     time.sleep(0.5)  # Brief delay to allow token propagation
-                    logger.info(f"Token refreshed successfully, retrying payment with new token")
+                    logger.info("Token refreshed successfully, retrying payment with new token")
                     continue
 
                 if data.get('statusCode') == "200":
@@ -209,7 +210,7 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         Check transaction status using IBB M+ API
         """
         url = f'{self.config.gateway_base_url}/ipg/Ibb/IoService/trxLookUp/{invoice_id}'
-        
+
         username = kwargs.get('username')
         try:
             benefit = BenefitConsumption.objects.get(code=invoice_id)

@@ -47,12 +47,11 @@ from .services import PaymentAccountAttributionService, PaymentApiService, Phone
 logger = logging.getLogger(__name__)
 
 
-
 class BeneficiaryCardGenerator:
     def __init__(self):
         self.font_config = FontConfiguration()
         self.css = self._get_card_css()
-    
+
     def _get_card_css(self):
         """Define CSS for card styling"""
         return CSS(string='''
@@ -60,7 +59,7 @@ class BeneficiaryCardGenerator:
                 size: A4;
                 margin: 1cm;
             }
-            
+
             .card {
                 height: 13cm;
                 width: 18.5cm;
@@ -69,7 +68,7 @@ class BeneficiaryCardGenerator:
                 page-break-inside: avoid;
                 font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
             }
-            
+
             .card-header {
                 display: table;
                 width: 100%;
@@ -77,51 +76,51 @@ class BeneficiaryCardGenerator:
                 table-layout: fixed;
                 margin-bottom: 0.5cm;
             }
-            
+
             .logo, .social-id-container, .photo {
                 display: table-cell;
                 vertical-align: top;
                 padding: 0;
             }
-            
+
             .logo {
                 width: 3cm;
                 text-align: left;
             }
-            
+
             .logo img {
                 height: 2.5cm;
                 width: auto;
                 max-width: 3cm;
                 object-fit: contain;
             }
-            
+
             .social-id-container {
                 width: auto;
                 text-align: center;
                 vertical-align: middle;
                 padding: 0 0.5cm;
             }
-            
+
             .photo {
                 width: 3.5cm;
                 text-align: right;
             }
-            
+
             .photo img {
                 height: 3cm;
                 width: auto;
                 max-width: 3.5cm;
                 object-fit: contain;
             }
-            
+
             .header-text {
                 font-size: 11pt;
                 font-weight: bold;
                 margin-bottom: 0.5cm;
                 line-height: 1.2;
             }
-            
+
             .social-id {
                 font-weight: bold;
                 font-size: 16pt;
@@ -137,18 +136,18 @@ class BeneficiaryCardGenerator:
                 display: flex;
                 align-items: center;
             }
-            
+
             .field-label {
                 display: inline-block;
                 font-size: 10pt;
                 width: 6cm;
             }
-            
+
             .field-value {
                 font-weight: bold;
                 font-size: 12pt;
             }
-            
+
             .declaration {
                 font-size: 10pt;
                 margin-top: 0.6cm;
@@ -163,11 +162,11 @@ class BeneficiaryCardGenerator:
         """Convert image to data URL for embedding in HTML"""
         if not image_path or not Path(image_path).exists():
             return ""
-        
+
         # Read the image file and convert to base64
         with open(image_path, 'rb') as img_file:
             image_data = base64.b64encode(img_file.read()).decode('utf-8')
-            
+
         # Get the file extension for MIME type
         file_ext = os.path.splitext(image_path)[1].lower()
         mime_type = {
@@ -187,19 +186,26 @@ class BeneficiaryCardGenerator:
 
     def generate_card_html(self, request, beneficiary):
         """Generate HTML for beneficiary card"""
-        individual = beneficiary.group.groupindividuals.get(recipient_type=GroupIndividual.RecipientType.PRIMARY).individual
+        individual = beneficiary.group.groupindividuals.get(
+            recipient_type=GroupIndividual.RecipientType.PRIMARY).individual
         household = individual.groupindividuals.get().group
-        base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
+        base_dir = os.path.join(
+            settings.PHOTOS_BASE_PATH, str(
+                household.json_ext.get(
+                    'deviceid', '')), str(
+                household.json_ext.get(
+                    'date_collecte', '')).replace(
+                        '-', ''))
         clean_path = f"photo_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
         photo_path = os.path.join(base_dir, clean_path)
         moyen_telecom = beneficiary.json_ext.get('moyen_telecom', '')
 
         colline = beneficiary.group.location
-        
+
         logo_path = os.path.join(settings.STATIC_ROOT, 'merankabandi/logo.png')
         # Get current date for fallback
         current_date = date.today().strftime('%Y-%m-%d')
-        
+
         context = {
             'logo_url': self._get_image_data_url(logo_path),
             'photo_url': self._get_image_data_url(photo_path),
@@ -211,36 +217,38 @@ class BeneficiaryCardGenerator:
             'commune': colline.parent.name,
             'colline': colline.name,
         }
-        
+
         return render_to_string('beneficiary_card.html', context)
 
     def generate_beneficiary_cards(self, request, beneficiary):
         """Generate PDF with front and back cards for a single beneficiary"""
         html = self.generate_card_html(request, beneficiary)
-        
+
         html_doc = HTML(string=html)
         return html_doc.write_pdf(
             stylesheets=[self.css],
             font_config=self.font_config
         )
 
+
 @login_required
 def generate_beneficiary_card_view(request, social_id):
     """View for generating a single beneficiary's card"""
     try:
         beneficiary = Beneficiary.objects.get(group__code=social_id)
-        
+
         generator = BeneficiaryCardGenerator()
         pdf = generator.generate_beneficiary_cards(request, beneficiary)
-        
+
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="card_{social_id}.pdf"'
         response.write(pdf)
-        
+
         return response
-        
+
     except Beneficiary.DoesNotExist:
         return HttpResponse("Beneficiary not found", status=404)
+
 
 @login_required
 def generate_colline_cards_view(request, commune_name):
@@ -250,41 +258,42 @@ def generate_colline_cards_view(request, commune_name):
             group__location__parent__name=commune_name,
             json_ext__moyen_telecom__phoneNumber__isnull=False
         )
-        
+
         generator = BeneficiaryCardGenerator()
         all_cards_html = []
-        
+
         for beneficiary in beneficiaries:
             all_cards_html.append(generator.generate_card_html(request, beneficiary))
-        
+
         combined_html = '\n'.join(all_cards_html)
-        
+
         html_doc = HTML(string=combined_html)
         pdf = html_doc.write_pdf(
             stylesheets=[generator.css],
             font_config=generator.font_config
         )
-        
+
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="colline_{commune_name}_cards.pdf"'
         response.write(pdf)
-        
+
         return response
-        
+
     except Exception as e:
-        return HttpResponse(f"Error generating cards: {str(e)}", status=500)  
+        return HttpResponse(f"Error generating cards: {str(e)}", status=500)
+
 
 @login_required
 def generate_location_cards_view(request, location_id):
     """View for generating cards for all beneficiaries in a specific location"""
     try:
         from location.models import Location
-        
+
         location = Location.objects.get(id=location_id)
-        
+
         # Get beneficiaries for this location based on its type
         location_type = location.type
-        
+
         if location_type == 'D':  # District/Province
             beneficiaries = Beneficiary.objects.filter(
                 group__location__parent__parent_id=location_id,
@@ -302,46 +311,53 @@ def generate_location_cards_view(request, location_id):
             )
         else:
             return HttpResponse(f"Unsupported location type: {location_type}", status=400)
-        
+
         if not beneficiaries.exists():
-            return HttpResponse(f"No beneficiaries with registered phone numbers found for this location", status=404)
-            
+            return HttpResponse("No beneficiaries with registered phone numbers found for this location", status=404)
+
         generator = BeneficiaryCardGenerator()
         all_cards_html = []
-        
+
         for beneficiary in beneficiaries:
             all_cards_html.append(generator.generate_card_html(request, beneficiary))
-        
+
         combined_html = '\n'.join(all_cards_html)
-        
+
         html_doc = HTML(string=combined_html)
         pdf = html_doc.write_pdf(
             stylesheets=[generator.css],
             font_config=generator.font_config
         )
-        
+
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="location_{location_id}_cards.pdf"'
         response.write(pdf)
-        
+
         return response
-        
+
     except Exception as e:
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)
+
 
 @login_required
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
     household = individual.groupindividuals.get().group
-    base_dir = os.path.join(settings.PHOTOS_BASE_PATH, str(household.json_ext.get('deviceid', '')), str(household.json_ext.get('date_collecte', '')).replace('-', ''))
+    base_dir = os.path.join(
+        settings.PHOTOS_BASE_PATH, str(
+            household.json_ext.get(
+                'deviceid', '')), str(
+            household.json_ext.get(
+                'date_collecte', '')).replace(
+            '-', ''))
     clean_path = f"{type}_repondant_{str(household.code)}.jpg"
-    
+
     if not has_image_access_permission(request.user, clean_path):
         return HttpResponseForbidden("Access denied")
-    
+
     # Construct the full file path
     file_path = os.path.join(base_dir, clean_path)
-    
+
     if not os.path.exists(file_path):
         return HttpResponseForbidden("File not found")
 
@@ -359,16 +375,16 @@ def beneficiary_photos_view(request, socialid):
             return HttpResponseNotFound("Household not found")
 
         base_dir = os.path.join(
-            settings.PHOTOS_BASE_PATH, 
-            str(household.json_ext.get('deviceid', '')), 
+            settings.PHOTOS_BASE_PATH,
+            str(household.json_ext.get('deviceid', '')),
             str(household.json_ext.get('date_collecte', '')).replace('-', '')
         )
-        
+
         response_data = {'photos': []}
-        
+
         for photo_type in types:
             clean_path = f"{photo_type}_repondant_{str(household.code)}.jpg"
-            
+
             # Check permissions for each photo
             if not has_image_access_permission(request.user, clean_path):
                 response_data['photos'].append({
@@ -376,17 +392,17 @@ def beneficiary_photos_view(request, socialid):
                     'error': 'Access denied'
                 })
                 continue
-            
+
             # Construct the full file path
             file_path = os.path.join(base_dir, clean_path)
-            
+
             if not os.path.exists(file_path):
                 response_data['photos'].append({
                     'type': photo_type,
                     'error': 'File not found'
                 })
                 continue
-            
+
             # Read and encode the image
             try:
                 with open(file_path, 'rb') as f:
@@ -401,9 +417,9 @@ def beneficiary_photos_view(request, socialid):
                     'type': photo_type,
                     'error': str(e)
                 })
-        
+
         return JsonResponse(response_data)
-        
+
     except Individual.DoesNotExist:
         return HttpResponseNotFound("Individual not found")
     except Exception as e:
@@ -418,6 +434,7 @@ def has_image_access_permission(user, image_path):
         return False
     return True
 
+
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
@@ -427,7 +444,7 @@ class StandardResultsSetPagination(PageNumberPagination):
 class PhoneNumberAttributionViewSet(viewsets.ViewSet):
     """
     API endpoint for phone number attribution.
-    
+
     GET: Retrieve beneficiaries requiring phone number verification
     POST: Verify and attribute phone numbers to beneficiaries
     """
@@ -442,7 +459,6 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             'POST': ['group_beneficiary:write']
         }
         return method_scopes.get(request.method, [])
-    
 
     def list(self, request):
         """
@@ -450,38 +466,38 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         Optional filters: commune, programme
         """
 
-        application_name = request.auth.application.name
+        _ = request.auth.application.name
         commune = request.query_params.get('commune')
         programme = request.query_params.get('programme')
-        
+
         # Get beneficiaries awaiting phone verification
         queryset = PhoneNumberAttributionService.get_pending_phone_verifications(
-            commune=commune, 
+            commune=commune,
             programme=programme
         )
-        
+
         # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
-        
+
         # Check if images should be included
         include_image = request.query_params.get('include_image', 'false').lower() == 'true'
-        
+
         # Serialize data
         if not include_image:
             # Use a lighter serializer without image_data fields
             serializer = BeneficiaryPhoneDataSerializer(
-                page, 
+                page,
                 many=True,
                 context={'request': request}
             )
         else:
             serializer = BeneficiaryPhoneDataWithImageSerializer(
-            page,
-            many=True,
-            context={'request': request}
-        )
-        
+                page,
+                many=True,
+                context={'request': request}
+            )
+
         return paginator.get_paginated_response(serializer.data)
 
     def create(self, request):
@@ -490,12 +506,12 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         Supports both single and batch operations (50-100 items)
         """
 
-        application_name = request.auth.application.name
-        
+        _ = request.auth.application.name
+
         # Check if this is a batch request
         if isinstance(request.data, list):
             return self._handle_batch_creation(request)
-        
+
         # Single request handling
         request_serializer = PhoneNumberAttributionRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
@@ -507,20 +523,20 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
+
         # Process phone number attribution
         success, beneficiary, message = PhoneNumberAttributionService.process_phone_attribution(
             request_serializer.validated_data,
             request.user
         )
-        
+
         if not success:
             response_data = {
                 'status': 'FAILURE',
                 'error_code': 'processing_error',
                 'message': message
             }
-            
+
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
@@ -528,9 +544,9 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-                
+
             return Response(response_data, status=response_status)
-        
+
         # Return success response
         response_serializer = ResponseSerializer(data={
             'status': 'SUCCESS',
@@ -539,13 +555,13 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         })
         response_serializer.is_valid()
         return Response(response_serializer.validated_data)
-    
+
     def _handle_batch_creation(self, request):
         """
         Handle batch phone number attribution
         """
         batch_data = request.data
-        
+
         # Validate batch size
         if len(batch_data) > 100:
             return Response(
@@ -556,11 +572,11 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         results = []
         errors = []
         success_count = 0
-        
+
         for idx, item in enumerate(batch_data):
             # Validate individual item
             request_serializer = PhoneNumberAttributionRequestSerializer(data=item)
@@ -571,13 +587,13 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                     'error': request_serializer.errors
                 })
                 continue
-            
+
             # Process phone number attribution
             success, beneficiary, message = PhoneNumberAttributionService.process_phone_attribution(
                 request_serializer.validated_data,
                 request.user
             )
-            
+
             if success:
                 success_count += 1
                 results.append({
@@ -591,7 +607,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                     'socialid': request_serializer.validated_data['socialid'],
                     'error': message
                 })
-        
+
         # Return batch response
         return Response({
             'status': 'BATCH_COMPLETED',
@@ -601,7 +617,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             'results': results,
             'errors': errors
         })
-    
+
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
         """
@@ -612,11 +628,11 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             pending_count = Beneficiary.objects.filter(
                 json_ext__moyen_telecom__msisdn__isnull=True
             ).count()
-            
+
             rejected_count = Beneficiary.objects.filter(
                 json_ext__moyen_telecom__status='REJECTED'
             ).count()
-            
+
             attributed_count = Beneficiary.objects.filter(
                 json_ext__moyen_telecom__status='SUCCESS',
                 json_ext__moyen_telecom__msisdn__isnull=False
@@ -625,7 +641,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
             failed_count = Beneficiary.objects.filter(
                 json_ext__moyen_telecom__status='FAILED'
             ).count()
-            
+
             # Return statistics
             return Response({
                 'pending_count': pending_count,
@@ -634,7 +650,7 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 'attributed_count': attributed_count,
                 'total': pending_count + rejected_count + failed_count + attributed_count
             })
-            
+
         except Exception as e:
             logger.error(f"Error getting phone verification stats: {str(e)}")
             return Response(
@@ -645,12 +661,12 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-   
+
 
 class PaymentAccountAttributionViewSet(viewsets.ViewSet):
     """
     API endpoint for payment account attribution workflow.
-    
+
     GET: Retrieve beneficiary data for account attribution
     POST: Acknowledge receipt of data or attribute payment account
     """
@@ -665,24 +681,24 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             'POST': ['group_beneficiary:write']
         }
         return method_scopes.get(request.method, [])
-    
+
     def list(self, request):
         """
         GET: List beneficiaries requiring payment account attribution.
         Optional filters: commune, programme
         """
-        application_name = request.auth.application.name
+        _ = request.auth.application.name
         commune = request.query_params.get('commune')
         phonenumber = request.query_params.get('phonenumber')
         programme = request.query_params.get('programme')
-        
+
         # Get beneficiaries awaiting account attribution
         queryset = PaymentAccountAttributionService.get_pending_account_attributions(
             commune=commune,
-            programme=programme, 
+            programme=programme,
             phonenumber=phonenumber
         )
-        
+
         # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
@@ -691,17 +707,17 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         if not include_image:
             # Use a lighter serializer without image_data fields
             serializer = PaymentAccountAttributionListSerializer(
-                page, 
+                page,
                 many=True,
                 context={'request': request}
             )
         else:
             serializer = PaymentAccountAttributionListWithImageSerializer(
-            page,
-            many=True,
-            context={'request': request}
-        )
-            
+                page,
+                many=True,
+                context={'request': request}
+            )
+
         return paginator.get_paginated_response(serializer.data)
 
     def create(self, request):
@@ -712,10 +728,10 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         # Check if this is a batch request
         if isinstance(request.data, list):
             return self._handle_batch_creation(request)
-        
+
         # Single request handling
         payload = request.data
-        
+
         if 'tp_account_number' in payload:
             return self.handle_attribution(request)
         elif 'status' in payload and payload.get('status') in ['ACCEPTED', 'REJECTED']:
@@ -729,13 +745,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     def _handle_batch_creation(self, request):
         """
         Handle batch payment account operations
         """
         batch_data = request.data
-        
+
         # Validate batch size
         if len(batch_data) > 100:
             return Response(
@@ -746,11 +762,11 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         results = []
         errors = []
         success_count = 0
-        
+
         for idx, item in enumerate(batch_data):
             # Determine operation type
             if 'tp_account_number' in item:
@@ -764,13 +780,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                     'error': 'Could not determine operation type from payload'
                 })
                 continue
-            
+
             if result['success']:
                 success_count += 1
                 results.append(result)
             else:
                 errors.append(result)
-        
+
         # Return batch response
         return Response({
             'status': 'BATCH_COMPLETED',
@@ -780,7 +796,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             'results': results,
             'errors': errors
         })
-    
+
     def _process_batch_acknowledgment(self, idx, item, request):
         """Process individual acknowledgment in batch"""
         application_name = request.auth.application.name
@@ -792,11 +808,11 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'socialid': item.get('socialid', 'unknown'),
                 'error': serializer.errors
             }
-        
+
         success, beneficiary, message = PaymentAccountAttributionService.process_acknowledgment(
             serializer.validated_data
         )
-        
+
         if success:
             return {
                 'success': True,
@@ -811,7 +827,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'socialid': serializer.validated_data['socialid'],
                 'error': message
             }
-    
+
     def _process_batch_attribution(self, idx, item, request):
         """Process individual attribution in batch"""
         application_name = request.auth.application.name
@@ -823,11 +839,11 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'socialid': item.get('socialid', 'unknown'),
                 'error': serializer.errors
             }
-        
+
         success, beneficiary, message = PaymentAccountAttributionService.process_account_attribution(
             serializer.validated_data
         )
-        
+
         if success:
             return {
                 'success': True,
@@ -842,7 +858,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'socialid': serializer.validated_data['socialid'],
                 'error': message
             }
-            
+
     def handle_acknowledgment(self, request):
         """
         Handle acknowledgment of beneficiary data
@@ -859,12 +875,12 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
+
         # Process acknowledgment
         success, beneficiary, message = PaymentAccountAttributionService.process_acknowledgment(
             serializer.validated_data
         )
-        
+
         if not success:
             # Determine error code based on message
             error_code = 'processing_error'
@@ -872,13 +888,13 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 error_code = 'already_acknowledged'
             elif message and 'already has a payment account' in message:
                 error_code = 'account_already_created'
-            
+
             response_data = {
                 'status': 'FAILURE',
                 'error_code': error_code,
                 'message': message
             }
-            
+
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
@@ -888,9 +904,9 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-                
+
             return Response(response_data, status=response_status)
-        
+
         # Return success response
         response_serializer = ResponseSerializer(data={
             'status': 'SUCCESS',
@@ -899,7 +915,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         })
         response_serializer.is_valid()
         return Response(response_serializer.validated_data)
-            
+
     def handle_attribution(self, request):
         """
         Handle payment account attribution
@@ -916,19 +932,19 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
+
         # Process account attribution
         success, beneficiary, message = PaymentAccountAttributionService.process_account_attribution(
             serializer.validated_data
         )
-        
+
         if not success:
             response_data = {
                 'status': 'FAILURE',
                 'error_code': 'processing_error',
                 'message': message
             }
-            
+
             # Determine appropriate status code
             if not beneficiary:
                 response_status = status.HTTP_404_NOT_FOUND
@@ -936,9 +952,9 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 response_status = status.HTTP_400_BAD_REQUEST
             else:
                 response_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-                
+
             return Response(response_data, status=response_status)
-        
+
         # Return success response
         response_serializer = ResponseSerializer(data={
             'status': 'SUCCESS',
@@ -947,7 +963,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         })
         response_serializer.is_valid()
         return Response(response_serializer.validated_data)
-    
+
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
         """
@@ -955,7 +971,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         """
         commune = request.query_params.get('commune')
         programme = request.query_params.get('programme')
-        
+
         # Get beneficiaries awaiting account attribution
         queryset = Beneficiary.objects
 
@@ -963,30 +979,30 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
             queryset = queryset.filter(
                 group__location__parent__name__iexact=commune
             )
-            
+
         if programme:
             queryset = queryset.filter(
                 benefit_plan__name__iexact=programme
             )
-        
+
         try:
             # Count beneficiaries by status
             pending_attribution = queryset.filter(
                 json_ext__moyen_paiement__status='ACCEPTED'
             ).count()
-            
+
             rejected = queryset.filter(
                 json_ext__moyen_paiement__status='REJECTED'
             ).count()
-            
+
             created = queryset.filter(
                 json_ext__moyen_paiement__status='SUCCESS'
             ).count()
-            
+
             failed = queryset.filter(
                 json_ext__moyen_paiement__status='FAILED'
             ).count()
-            
+
             # Return statistics
             return Response({
                 'pending_attribution': pending_attribution,
@@ -995,7 +1011,7 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
                 'failed': failed,
                 'total': pending_attribution + rejected + created + failed
             })
-            
+
         except Exception as e:
             logger.error(f"Error getting account attribution stats: {str(e)}")
             return Response(
@@ -1011,14 +1027,14 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
 class PaymentRequestViewSet(viewsets.ViewSet):
     """
     API endpoint for payment requests.
-    
+
     GET: Retrieve individual payment requests for payment agency
     POST: Acknowledge receipt or update payment status
     """
     pagination_class = StandardResultsSetPagination
     permission_classes = [TokenHasScope]
     required_scopes = ['benefit_consumption:read']
-    
+
     def get_required_scopes(self, request):
         """Return appropriate scopes based on request method"""
         method_scopes = {
@@ -1026,7 +1042,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'POST': ['benefit_consumption:write']
         }
         return method_scopes.get(request.method, [])
-
 
     def list(self, request):
         """
@@ -1042,7 +1057,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         has_account = request.query_params.get('account')
-        
+
         # Get payment requests with new filters
         queryset = PaymentApiService.get_individual_payment_requests(
             payment_provider=application_name,
@@ -1053,22 +1068,22 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             end_date=end_date,
             has_account=has_account
         )
-        
+
         # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
-        
+
         # Serialize data with new field names
         serializer = IndividualPaymentRequestSerializer(page, many=True)
-        
+
         return paginator.get_paginated_response(serializer.data)
-    
+
     def retrieve(self, request, pk=None):
         """
         GET: Retrieve a specific payment request by code
         """
         payment_request = PaymentApiService.get_payment_request_by_code(pk)
-        
+
         if not payment_request:
             return Response(
                 {
@@ -1078,10 +1093,10 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         serializer = IndividualPaymentRequestSerializer(payment_request)
         return Response(serializer.data)
-    
+
     def create(self, request):
         """
         POST: Handle acknowledgment and consolidation operations
@@ -1090,7 +1105,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
         # Check if this is a batch request
         if isinstance(request.data, list):
             return self._handle_batch_creation(request)
-            
+
         # Single request handling
         # Determine operation type based on fields present
         operation = None
@@ -1101,7 +1116,6 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             if 'status' in request.data and request.data['status'] in ['SUCCESS', 'FAILURE']:
                 operation = 'consolidate'
 
-        
         # Handle acknowledgment
         if operation == 'acknowledge':
             serializer = PaymentAcknowledgmentSerializer(data=request.data)
@@ -1114,7 +1128,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Process acknowledgment
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
@@ -1126,7 +1140,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 error_code=data.get('error_code'),
                 message=data.get('message')
             )
-            
+
             if not success:
                 return Response(
                     {
@@ -1135,13 +1149,13 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Return success response
             return Response({
                 'status': 'SUCCESS',
                 'error_code': ''
             })
-        
+
         # Handle consolidation
         elif operation == 'consolidate':
             serializer = PaymentConsolidationSerializer(data=request.data)
@@ -1154,7 +1168,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Process consolidation
             data = serializer.validated_data
             application_name = request.auth.application.name if request.auth else None
@@ -1167,7 +1181,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 message=data.get('message'),
                 payment_agency=application_name
             )
-            
+
             if not success:
                 return Response(
                     {
@@ -1176,13 +1190,13 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_404_NOT_FOUND if benefit is None else status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Return success response
             return Response({
                 'status': 'SUCCESS',
                 'error_code': ''
             })
-        
+
         # Invalid operation
         else:
             return Response(
@@ -1193,13 +1207,13 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     def _handle_batch_creation(self, request):
         """
         Handle batch payment request operations
         """
         batch_data = request.data
-        
+
         # Validate batch size
         if len(batch_data) > 100:
             return Response(
@@ -1210,11 +1224,11 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         results = []
         errors = []
         success_count = 0
-        
+
         for idx, item in enumerate(batch_data):
             # Determine operation type based on status in batch items
             operation = None
@@ -1223,7 +1237,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     operation = 'acknowledge'
                 elif item['status'] in ['SUCCESS', 'FAILURE']:
                     operation = 'consolidate'
-            
+
             if not operation:
                 errors.append({
                     'index': idx,
@@ -1231,7 +1245,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                     'error': 'Could not determine operation type from payload'
                 })
                 continue
-            
+
             # Process based on operation type
             if operation == 'acknowledge':
                 result = self._process_batch_acknowledgment(idx, item, request)
@@ -1243,7 +1257,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 results.append(result)
             else:
                 errors.append(result)
-        
+
         # Return batch response
         return Response({
             'status': 'BATCH_COMPLETED',
@@ -1253,7 +1267,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'results': results,
             'errors': errors
         })
-    
+
     def _process_batch_acknowledgment(self, idx, item, request):
         """Process individual acknowledgment in batch"""
         # Map batch fields to single serializer fields
@@ -1264,7 +1278,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'error_code': item.get('error_code'),
             'message': item.get('message')
         }
-        
+
         serializer = PaymentAcknowledgmentSerializer(data=mapped_data)
         if not serializer.is_valid():
             return {
@@ -1273,11 +1287,11 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'code': mapped_data.get('numero_interne_paiement'),
                 'error': str(serializer.errors)
             }
-        
+
         data = serializer.validated_data
         # Get application name from the request
         application_name = request.auth.application.name if request.auth else None
-        
+
         success, benefit, message = PaymentApiService.acknowledge_payment_request(
             code=data['numero_interne_paiement'],
             status=data['status'],
@@ -1286,7 +1300,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             error_code=data.get('error_code'),
             message=data.get('message')
         )
-        
+
         if success:
             return {
                 'success': True,
@@ -1301,7 +1315,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'code': data['numero_interne_paiement'],
                 'error': message or 'Error processing payment acknowledgment'
             }
-    
+
     def _process_batch_consolidation(self, idx, item, request):
         """Process individual consolidation in batch"""
         # Map batch fields to single serializer fields
@@ -1313,10 +1327,10 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             'error_code': item.get('error_code'),
             'message': item.get('message')
         }
-        
+
         # For batch, we may need to find the code from transaction reference
         code = item.get('numero_interne_paiement', item.get('code'))
-        
+
         serializer = PaymentConsolidationSerializer(data=mapped_data)
         if not serializer.is_valid():
             return {
@@ -1325,12 +1339,11 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'code': code,
                 'error': str(serializer.errors)
             }
-        
+
         data = serializer.validated_data
         # Get application name from the request
         application_name = request.auth.application.name if request.auth else None
-        
-        
+
         success, benefit, message = PaymentApiService.consolidate_payment(
             transaction_reference=data['retour_transactionid'],
             payment_date=data['payment_date'],
@@ -1340,7 +1353,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
             message=data.get('message'),
             payment_agency=application_name
         )
-        
+
         if success:
             return {
                 'success': True,
@@ -1355,43 +1368,43 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'code': code,
                 'error': message or 'Error processing payment status update'
             }
-    
+
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
         """
         GET: Get statistics about payment requests
         """
         try:
-            
+
             application_name = request.auth.application.name
-            
+
             # Get payment requests
             payment_requests = PaymentApiService.get_individual_payment_requests(
                 payment_provider=application_name
             )
-            
+
             # Calculate statistics
             total_count = payment_requests.count()
             total_amount = sum(req.amount or 0 for req in payment_requests)
-            
+
             # Count by status from acknowledgments
             acknowledged = 0
             rejected = 0
-            
+
             for req in payment_requests:
                 if not req.json_ext or 'payment_provider' not in req.json_ext:
                     continue
-                    
+
                 if req.json_ext['payment_provider'].get('acknowledgment_status') == 'ACCEPTED':
                     acknowledged += 1
                 elif req.json_ext['payment_provider'].get('acknowledgment_status') == 'REJECTED':
                     rejected += 1
-            
+
             # Count by payment status
             paid = BenefitConsumption.objects.filter(
                 status=BenefitConsumptionStatus.RECONCILED
             ).count()
-            
+
             return Response({
                 'total_requests': total_count,
                 'total_amount': float(total_amount),
@@ -1401,7 +1414,7 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 'paid': paid,
                 'failed': rejected
             })
-            
+
         except Exception as e:
             logger.error(f"Error retrieving payment stats: {str(e)}")
             return Response(
@@ -1413,10 +1426,11 @@ class PaymentRequestViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 def _run_generate_cards_command(location_type, location_id, location_name):
     """Run the generate_cards command in a background thread"""
     output_file = f"{location_type}_{location_id}_{date.today().strftime('%Y%m%d')}.pdf"
-    
+
     if location_type == 'province':
         cmd = ['python', 'manage.py', 'generate_cards', '--province', location_name, '--output', output_file]
     elif location_type == 'commune':
@@ -1425,22 +1439,23 @@ def _run_generate_cards_command(location_type, location_id, location_name):
         cmd = ['python', 'manage.py', 'generate_cards', '--colline', location_name, '--output', output_file]
     else:
         return
-    
+
     # Run the command in a background process
-    subprocess.Popen(cmd, 
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd=settings.BASE_DIR)
+    subprocess.Popen(cmd,
+                     stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE,
+                     cwd=settings.BASE_DIR)
+
 
 @login_required
 def trigger_background_card_generation(request, location_id, location_type=None):
     """View for triggering card generation as a background task"""
     try:
         from location.models import Location
-        
+
         location = Location.objects.get(id=location_id)
         location_name = location.name
-        
+
         # If location type is not specified, determine it from the database
         if not location_type:
             location_type = location.type
@@ -1455,7 +1470,7 @@ def trigger_background_card_generation(request, location_id, location_type=None)
                     "success": False,
                     "message": f"Unsupported location type: {location_type}"
                 }, status=400)
-                
+
         # Start background task
         thread = threading.Thread(
             target=_run_generate_cards_command,
@@ -1463,7 +1478,7 @@ def trigger_background_card_generation(request, location_id, location_type=None)
         )
         thread.daemon = True
         thread.start()
-        
+
         return JsonResponse({
             "success": True,
             "message": f"Card generation for {location_type} {location_name} started in the background. The PDF will be available shortly.",
@@ -1471,7 +1486,7 @@ def trigger_background_card_generation(request, location_id, location_type=None)
             "location_name": location_name,
             "location_type": location_type
         })
-        
+
     except Exception as e:
         return JsonResponse({
             "success": False,
@@ -1484,7 +1499,7 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
     ViewSet for MonetaryTransfer Excel import/export operations
     """
     permission_classes = [IsAuthenticated]
-    
+
     @action(detail=False, methods=['post'], url_path='import')
     def import_excel(self, request):
         """
@@ -1500,18 +1515,18 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             file = request.FILES['file']
-            
+
             # Process import
             result = MonetaryTransferImportService.import_from_excel(
                 file=file,
                 user=request.user
             )
-            
+
             # Return result
             return Response(result, status=status.HTTP_200_OK if result['success'] else status.HTTP_400_BAD_REQUEST)
-            
+
         except Exception as e:
             logger.error(f"Error in MonetaryTransfer import: {str(e)}")
             return Response(
@@ -1521,7 +1536,7 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+
     @action(detail=False, methods=['get'], url_path='export')
     def export_excel(self, request):
         """
@@ -1537,15 +1552,15 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
                 'programme_id': request.query_params.get('programme_id'),
                 'payment_agency_id': request.query_params.get('payment_agency_id'),
             }
-            
+
             # Remove None values
             filters = {k: v for k, v in filters.items() if v is not None}
-            
+
             # Generate Excel file
             response = MonetaryTransferImportService.export_to_excel(filters=filters)
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Error in MonetaryTransfer export: {str(e)}")
             return Response(
@@ -1555,7 +1570,7 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+
     @action(detail=False, methods=['get'], url_path='template')
     def download_template(self, request):
         """
@@ -1564,7 +1579,7 @@ class MonetaryTransferViewSet(viewsets.ViewSet):
         try:
             response = MonetaryTransferImportService.get_import_template()
             return response
-            
+
         except Exception as e:
             logger.error(f"Error generating template: {str(e)}")
             return Response(
@@ -1582,25 +1597,25 @@ class GroupBeneficiaryCheckViewSet(viewsets.ViewSet):
     """
     permission_classes = [TokenHasScope]
     required_scopes = ['beneficiary:status_check']
-    
+
     def get_required_scopes(self, request):
         """Return appropriate scopes based on request method"""
         # Only require the beneficiary:status_check scope for all operations
         return ['beneficiary:status_check']
-    
+
     @action(detail=False, methods=['post'], url_path='check')
     def check_group_beneficiary(self, request):
         """
         POST: Check if a household with given socialID exists and is registered as a beneficiary household
         Returns true if the household exists and is registered as a beneficiary, false otherwise
-        
+
         Request body:
         - socialID: The household's social ID (required)
         - colline: Filter by colline (household location name) (optional)
         - commune: Filter by commune (colline's parent name) (optional)
         - firstname: Filter by primary recipient's first name (optional)
         - lastname: Filter by primary recipient's last name (optional)
-        
+
         Example: POST /api/group-beneficiary/check/
         Body: {"socialID": "BDI001234", "colline": "Rohero", "commune": "Mukaza"}
         Response: {"exists": true, "socialID": "BDI001234"}
@@ -1616,41 +1631,41 @@ class GroupBeneficiaryCheckViewSet(viewsets.ViewSet):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Start with base query
             query = Beneficiary.objects.filter(group__code=social_id)
-            
+
             # Apply optional filters from request body
             colline = request.data.get('colline')
             if colline:
                 query = query.filter(group__location__name__iexact=colline)
-            
+
             commune = request.data.get('commune')
             if commune:
                 query = query.filter(group__location__parent__name__iexact=commune)
-            
+
             firstname = request.data.get('firstname')
             if firstname:
                 query = query.filter(
                     group__groupindividuals__recipient_type='PRIMARY',
                     group__groupindividuals__individual__first_name__iexact=firstname
                 )
-            
+
             lastname = request.data.get('lastname')
             if lastname:
                 query = query.filter(
                     group__groupindividuals__recipient_type='PRIMARY',
                     group__groupindividuals__individual__last_name__iexact=lastname
                 )
-            
+
             # Check if any record exists with all the filters
             exists = query.exists()
-            
+
             return Response({
                 "exists": exists,
                 "socialID": social_id
             })
-            
+
         except Exception as e:
             logger.error(f"Error checking beneficiary household for socialID {request.data.get('socialID')}: {str(e)}")
             return Response(
@@ -1669,11 +1684,11 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
     """
     permission_classes = [TokenHasScope]
     required_scopes = ['location:read']
-    
+
     def get_required_scopes(self, request):
         """Return appropriate scopes based on request method"""
         return ['location:read']
-    
+
     def list(self, request):
         """
         GET: List all communes for provinces that have payment points
@@ -1710,20 +1725,20 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
             province_payment_points = ProvincePaymentPoint.objects.filter(
                 **payment_point_filters
             ).distinct()
-            
+
             # Extract province IDs
             province_ids = [ppp.province_id for ppp in province_payment_points]
-    
+
             # Get communes (type='W') for these provinces
             communes = Location.objects.filter(
                 parent_id__in=province_ids,
                 type='W',
                 validity_to__isnull=True
             ).select_related('parent').order_by('parent__name', 'name')
-            
+
             # Serialize the data
             serializer = CommuneSerializer(communes, many=True)
-            
+
             # Group by province for better organization
             communes_by_province = {}
             for commune_data in serializer.data:
@@ -1739,13 +1754,13 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
                     'code': commune_data['code'],
                     'name': commune_data['name']
                 })
-            
+
             return Response({
                 'count': len(serializer.data),
                 'provinces_count': len(communes_by_province),
                 'data': list(communes_by_province.values())
             })
-            
+
         except Exception as e:
             logger.error(f"Error retrieving communes for provinces with payment points: {str(e)}")
             return Response(
@@ -1755,4 +1770,3 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-

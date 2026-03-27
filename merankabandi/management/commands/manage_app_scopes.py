@@ -28,21 +28,21 @@ class Command(BaseCommand):
 
     def list_app_scopes(self):
         """List all applications and their scope restrictions"""
-        self.stdout.write("\n" + "="*60)
+        self.stdout.write("\n" + "=" * 60)
         self.stdout.write("CONFIGURED SCOPE RESTRICTIONS")
-        self.stdout.write("="*60 + "\n")
-        
+        self.stdout.write("=" * 60 + "\n")
+
         app_scopes = getattr(settings, 'OAUTH2_APPLICATION_SCOPES', {})
         for app_name, scopes in app_scopes.items():
             self.stdout.write(f"{self.style.SUCCESS(app_name)}:")
             for scope in scopes:
                 self.stdout.write(f"  - {scope}")
             self.stdout.write("")
-        
-        self.stdout.write("\n" + "="*60)
+
+        self.stdout.write("\n" + "=" * 60)
         self.stdout.write("EXISTING APPLICATIONS")
-        self.stdout.write("="*60 + "\n")
-        
+        self.stdout.write("=" * 60 + "\n")
+
         for app in Application.objects.all():
             if app.name in app_scopes:
                 self.stdout.write(f"{self.style.SUCCESS(app.name)} - RESTRICTED")
@@ -57,14 +57,14 @@ class Command(BaseCommand):
             app = Application.objects.get(name=app_name)
             self.stdout.write(f"\nApplication: {self.style.SUCCESS(app.name)}")
             self.stdout.write(f"Client ID: {app.client_id}")
-            
+
             app_scopes = getattr(settings, 'OAUTH2_APPLICATION_SCOPES', {})
             if app.name in app_scopes:
-                self.stdout.write(f"\nAllowed scopes:")
+                self.stdout.write("\nAllowed scopes:")
                 for scope in app_scopes[app.name]:
                     self.stdout.write(f"  ✓ {scope}")
             else:
                 self.stdout.write(f"\n{self.style.WARNING('No restrictions')} - can request any scope")
-                
+
         except Application.DoesNotExist:
             self.stdout.write(self.style.ERROR(f"Application '{app_name}' not found"))

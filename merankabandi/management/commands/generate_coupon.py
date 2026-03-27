@@ -1,17 +1,17 @@
-import csv
 import os
 import datetime
 import logging
 from django.core.management.base import BaseCommand
-from docxtpl import DocxTemplate,InlineImage
+from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 import barcode
 from barcode.writer import ImageWriter
 from django.conf import settings
-from individual.models import  Individual
+from individual.models import Individual
 
 
 logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = 'Generate pre-collection documents for selected individuals'
@@ -34,25 +34,25 @@ class Command(BaseCommand):
             com = preselected_individual.location.parent.name if preselected_individual.location and preselected_individual.location.parent else ''
             niveau3_label = preselected_individual.location.name if preselected_individual.location else ''
             # Create directories for output files
-            barcode_dir = os.path.join(racine, 'documents-generes', 'precollecte', 'codebarres', 
-                                    pro, com, niveau3_label)
+            barcode_dir = os.path.join(racine, 'documents-generes', 'precollecte', 'codebarres',
+                                       pro, com, niveau3_label)
             os.makedirs(barcode_dir, exist_ok=True)
 
             nombre_formate = f"{int(id):07d}"
             code = f"{preselected_individual.location.code.zfill(6)}{nombre_formate}"
             barcode_path = os.path.join(barcode_dir, f'codebarre_{code}.png')
-            
+
             # Generate barcode if it doesn't exist``
             if not os.path.exists(barcode_path):
                 code39 = barcode.get_barcode_class('code39')
                 code39_instance = code39(code, writer=ImageWriter(), add_checksum=False)
                 code39_instance.save(os.path.join(barcode_dir, f'codebarre_{code}'))
-            
+
             # Check if fields need to be re-entered
             saisir = ""
             if not preselected_individual.json_ext.get('cni') or preselected_individual.json_ext.get('cni') == '-':
                 saisir = " - SAISIR DE NOUVEAU"
-            
+
             item = {
                 'NOM': preselected_individual.last_name,
                 'PRENOM': preselected_individual.first_name,
@@ -65,7 +65,7 @@ class Command(BaseCommand):
                 'SAISIR': saisir,
                 'CODEBARRE': InlineImage(doc, barcode_path, height=Mm(18))
             }
-            
+
             if pro not in data:
                 data[pro] = {}
             if com not in data[pro]:
@@ -78,7 +78,7 @@ class Command(BaseCommand):
             for com, items in items.items():
                 for niveau3_label, items in items.items():
                     lists_dir = os.path.join(racine, 'documents-generes', 'precollecte', 'listes',
-                                        pro, com, niveau3_label)
+                                             pro, com, niveau3_label)
                     os.makedirs(lists_dir, exist_ok=True)
                     # Set up the context for the template
                     date_gen = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')

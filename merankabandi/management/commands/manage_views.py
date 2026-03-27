@@ -61,7 +61,7 @@ class Command(BaseCommand):
             concurrent = True
         dry_run = options['dry_run']
 
-        self.stdout.write(f"=== Materialized Views Manager ===")
+        self.stdout.write("=== Materialized Views Manager ===")
         self.stdout.write(f"Action: {action}")
         self.stdout.write(f"Category: {category or 'all'}")
         self.stdout.write(f"View: {view_name or 'all'}")
@@ -96,7 +96,7 @@ class Command(BaseCommand):
     def handle_create(self, category, view_name):
         """Handle view creation"""
         self.stdout.write("Creating materialized views...")
-        
+
         if view_name:
             success = MaterializedViewsManager.create_single_view(view_name)
             if success:
@@ -105,22 +105,22 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"✗ Failed to create view: {view_name}"))
         else:
             results = MaterializedViewsManager.create_all_views(category)
-            
+
             successful = sum(1 for success in results.values() if success)
             failed = sum(1 for success in results.values() if not success)
-            
-            self.stdout.write(f"\nResults:")
+
+            self.stdout.write("\nResults:")
             for view_name, success in results.items():
                 status = "✓" if success else "✗"
                 style = self.style.SUCCESS if success else self.style.ERROR
                 self.stdout.write(style(f"  {status} {view_name}"))
-            
+
             self.stdout.write(f"\nSummary: {successful} created, {failed} failed")
 
     def handle_refresh(self, category, view_name, concurrent):
         """Handle view refresh"""
         self.stdout.write("Refreshing materialized views...")
-        
+
         if view_name:
             success = MaterializedViewsManager.refresh_single_view(view_name, concurrent)
             if success:
@@ -129,22 +129,22 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"✗ Failed to refresh view: {view_name}"))
         else:
             results = MaterializedViewsManager.refresh_all_views(category, concurrent)
-            
+
             successful = sum(1 for success in results.values() if success)
             failed = sum(1 for success in results.values() if not success)
-            
-            self.stdout.write(f"\nResults:")
+
+            self.stdout.write("\nResults:")
             for view_name, success in results.items():
                 status = "✓" if success else "✗"
                 style = self.style.SUCCESS if success else self.style.ERROR
                 self.stdout.write(style(f"  {status} {view_name}"))
-            
+
             self.stdout.write(f"\nSummary: {successful} refreshed, {failed} failed")
 
     def handle_drop(self, category, view_name):
         """Handle view dropping"""
         self.stdout.write(self.style.WARNING("Dropping materialized views..."))
-        
+
         if view_name:
             # Drop single view
             try:
@@ -155,23 +155,23 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"✗ Failed to drop view {view_name}: {str(e)}"))
         else:
             results = MaterializedViewsManager.drop_all_views(category)
-            
+
             successful = sum(1 for success in results.values() if success)
             failed = sum(1 for success in results.values() if not success)
-            
-            self.stdout.write(f"\nResults:")
+
+            self.stdout.write("\nResults:")
             for view_name, success in results.items():
                 status = "✓" if success else "✗"
                 style = self.style.SUCCESS if success else self.style.ERROR
                 self.stdout.write(style(f"  {status} {view_name}"))
-            
+
             self.stdout.write(f"\nSummary: {successful} dropped, {failed} failed")
 
     def handle_stats(self, category, view_name):
         """Handle stats display"""
         self.stdout.write("Materialized Views Statistics")
         self.stdout.write("=" * 50)
-        
+
         if view_name:
             # Show stats for single view
             stats = MaterializedViewsManager.get_view_stats()
@@ -181,15 +181,15 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"View '{view_name}' not found"))
         else:
             stats = MaterializedViewsManager.get_view_stats(category)
-            
+
             # Group by category for display
             for cat_name, cat_views in MaterializedViewsManager.ALL_VIEWS.items():
                 if category and category != cat_name:
                     continue
-                    
+
                 self.stdout.write(f"\n{cat_name.upper()} VIEWS:")
                 self.stdout.write("-" * 30)
-                
+
                 for view_name in cat_views.keys():
                     if view_name in stats:
                         self.show_view_stats(view_name, stats[view_name])
@@ -209,7 +209,7 @@ class Command(BaseCommand):
         """Show what would be done in dry run mode"""
         self.stdout.write(self.style.WARNING("DRY RUN - No changes will be made"))
         self.stdout.write("\nWould perform the following actions:")
-        
+
         if view_name:
             self.stdout.write(f"  - {action.upper()} view: {view_name}")
         else:
@@ -221,10 +221,10 @@ class Command(BaseCommand):
             else:
                 total_views = len(MaterializedViewsManager.get_all_view_names())
                 self.stdout.write(f"  - {action.upper()} all {total_views} views across all categories:")
-                
+
                 for cat_name, cat_views in MaterializedViewsManager.ALL_VIEWS.items():
                     self.stdout.write(f"    {cat_name.upper()} ({len(cat_views)} views):")
                     for view_name in cat_views.keys():
                         self.stdout.write(f"      • {view_name}")
 
-        self.stdout.write(f"\nTo execute, run the same command without --dry-run")
+        self.stdout.write("\nTo execute, run the same command without --dry-run")

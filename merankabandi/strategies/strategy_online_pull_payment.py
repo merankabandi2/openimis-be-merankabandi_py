@@ -1,11 +1,7 @@
 import logging
 
-from django.db.models import Q, Sum
-from django.db import transaction
 
-from core.signals import register_service_signal
 from payroll.strategies.strategy_online_payment import StrategyOnlinePayment
-from payroll.utils import CodeGenerator
 
 logger = logging.getLogger(__name__)
 

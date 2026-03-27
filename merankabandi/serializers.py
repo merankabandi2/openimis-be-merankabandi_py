@@ -13,6 +13,7 @@ from location.models import Location
 
 logger = logging.getLogger(__name__)
 
+
 class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
     """
     Serializer for retrieving beneficiary data for phone number attribution.
@@ -44,9 +45,9 @@ class BeneficiaryPhoneDataSerializer(serializers.ModelSerializer):
         """Helper method to get primary recipient individual"""
         try:
             recipient = (obj.group.groupindividuals
-                        .filter(recipient_type='PRIMARY')
-                        .select_related('individual')
-                        .first())
+                         .filter(recipient_type='PRIMARY')
+                         .select_related('individual')
+                         .first())
             return recipient.individual if recipient else None
         except Exception as e:
             logger.error(f"Error getting recipient: {str(e)}")
@@ -171,9 +172,9 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
         """Helper method to get primary recipient individual"""
         try:
             recipient = (obj.group.groupindividuals
-                        .filter(recipient_type='PRIMARY')
-                        .select_related('individual')
-                        .first())
+                         .filter(recipient_type='PRIMARY')
+                         .select_related('individual')
+                         .first())
             return recipient.individual if recipient else None
         except Exception as e:
             logger.error(f"Error getting recipient: {str(e)}")
@@ -184,8 +185,8 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
         try:
             household = individual.groupindividuals.get().group
             base_dir = os.path.join(
-                settings.PHOTOS_BASE_PATH, 
-                str(household.json_ext.get('deviceid', '')), 
+                settings.PHOTOS_BASE_PATH,
+                str(household.json_ext.get('deviceid', '')),
                 str(household.json_ext.get('date_collecte', '')).replace('-', '')
             )
             clean_path = f"{photo_type}_repondant_{str(individual.json_ext.get('social_id', ''))}.jpg"
@@ -214,20 +215,19 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
             return True
         return False
 
-
     def get_photo_data(self, obj):
         """Get photo as base64 encoded data"""
         recipient = self.get_recipient(obj)
         if not recipient:
             return None
-        
+
         file_path, clean_path = self._get_image_path(recipient, 'photo')
         if file_path and clean_path:
             # Check permissions
             if not self._check_image_permission(clean_path):
                 logger.warning(f"Access denied for photo: {clean_path}")
                 return None
-            
+
             return self._read_image_as_base64(file_path)
         return None
 
@@ -236,14 +236,14 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
         recipient = self.get_recipient(obj)
         if not recipient:
             return None
-        
+
         file_path, clean_path = self._get_image_path(recipient, 'photo_ci1')
         if file_path and clean_path:
             # Check permissions
             if not self._check_image_permission(clean_path):
                 logger.warning(f"Access denied for CI recto: {clean_path}")
                 return None
-            
+
             return self._read_image_as_base64(file_path)
         return None
 
@@ -252,17 +252,16 @@ class BeneficiaryPhoneDataWithImageSerializer(BeneficiaryPhoneDataSerializer):
         recipient = self.get_recipient(obj)
         if not recipient:
             return None
-        
+
         file_path, clean_path = self._get_image_path(recipient, 'photo_ci2')
         if file_path and clean_path:
             # Check permissions
             if not self._check_image_permission(clean_path):
                 logger.warning(f"Access denied for CI verso: {clean_path}")
                 return None
-            
+
             return self._read_image_as_base64(file_path)
         return None
-
 
 
 class PhoneNumberAttributionSerializer(serializers.Serializer):
@@ -285,25 +284,25 @@ class PhoneNumberAttributionSerializer(serializers.Serializer):
             if not data.get('message'):
                 raise serializers.ValidationError("message is required when status is REJECTED")
         return data
-        
+
     def save(self, beneficiary):
         """Save phone number attribution data to beneficiary"""
         try:
             data = self.validated_data
             json_ext = beneficiary.json_ext or {}
-            
+
             # Ensure nested structure exists
             if 'moyen_telecom' not in json_ext:
                 json_ext['moyen_telecom'] = {}
-                
+
             # Update phone number info
             json_ext['moyen_telecom']['phoneNumber'] = data['msisdn']
             json_ext['moyen_telecom']['status'] = data['status']
-            
+
             if data['status'] == 'REJECTED':
                 json_ext['moyen_telecom']['error_code'] = data['error_code']
                 json_ext['moyen_telecom']['message'] = data['message']
-            
+
             beneficiary.json_ext = json_ext
             beneficiary.save()
             return True
@@ -387,7 +386,6 @@ class PaymentAccountAttributionListWithImageSerializer(BeneficiaryPhoneDataWithI
         return obj.benefit_plan.name if obj.benefit_plan else None
 
 
-
 class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
     """
     Serializer for acknowledging receipt of beneficiary data for account attribution.
@@ -408,24 +406,24 @@ class PaymentAccountAcknowledgmentSerializer(serializers.Serializer):
             if not data.get('message'):
                 raise serializers.ValidationError("message is required when status is REJECTED")
         return data
-        
+
     def save(self, beneficiary):
         """Save acknowledgment data to beneficiary"""
         try:
             data = self.validated_data
             json_ext = beneficiary.json_ext or {}
-            
+
             # Ensure phone number is also saved to moyen_paiement
             if 'moyen_paiement' not in json_ext:
                 json_ext['moyen_paiement'] = {}
-                
-            #json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
+
+            # json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
             json_ext['moyen_paiement']['status'] = data['status']
-            
+
             if data['status'] == 'REJECTED':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
                 json_ext['moyen_paiement']['message'] = data['message']
-            
+
             beneficiary.json_ext = json_ext
             beneficiary.save()
             return True
@@ -455,26 +453,26 @@ class PaymentAccountAttributionSerializer(serializers.Serializer):
             if not data.get('message'):
                 raise serializers.ValidationError("message is required when status is FAILURE")
         return data
-        
+
     def save(self, beneficiary):
         """Save payment account attribution data to beneficiary"""
         try:
             data = self.validated_data
             json_ext = beneficiary.json_ext or {}
-            
+
             # Ensure nested structure exists
             if 'moyen_paiement' not in json_ext:
                 json_ext['moyen_paiement'] = {}
-                
+
             # Update payment account info
-            #json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
+            # json_ext['moyen_paiement']['phoneNumber'] = data['msisdn']
             json_ext['moyen_paiement']['tp_account_number'] = data['tp_account_number']
             json_ext['moyen_paiement']['status'] = data['status']
-            
+
             if data['status'] == 'FAILURE':
                 json_ext['moyen_paiement']['error_code'] = data['error_code']
                 json_ext['moyen_paiement']['message'] = data['message']
-            
+
             beneficiary.json_ext = json_ext
             beneficiary.save()
             return True
@@ -491,6 +489,7 @@ class ResponseSerializer(serializers.Serializer):
     error_code = serializers.CharField(required=False, allow_null=True)
     message = serializers.CharField(required=False, allow_null=True)
 
+
 class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
     """
     Serializer for individual payment requests to be provided to payment agencies
@@ -500,18 +499,18 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
     tp_account_number = serializers.SerializerMethodField()
     montant = serializers.SerializerMethodField()
     date_effective_demandee = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = BenefitConsumption
         fields = [
-            'numero_interne_paiement', 'numero_telephone', 'tp_account_number', 
+            'numero_interne_paiement', 'numero_telephone', 'tp_account_number',
             'montant', 'date_effective_demandee'
         ]
-    
+
     def get_numero_interne_paiement(self, obj):
         """Get payment code"""
         return obj.code
-    
+
     def get_numero_telephone(self, obj):
         """Get phone number from benefit consumption or group beneficiary's json_ext"""
         # First try to get from BenefitConsumption's own json_ext
@@ -519,7 +518,7 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
             phone = obj.json_ext.get('phoneNumber', '')
             if phone:
                 return phone
-        
+
         # Fallback to group beneficiary's json_ext
         try:
             if obj.individual:
@@ -535,7 +534,7 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
                                 phone = moyen_paiement.get('phoneNumber', '')
                                 if phone:
                                     return phone
-                            
+
                             # Fallback to moyen_telecom (phone attribution)
                             moyen_telecom = group_ben.json_ext.get('moyen_telecom', {})
                             if moyen_telecom and isinstance(moyen_telecom, dict):
@@ -545,7 +544,7 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return ""
-    
+
     def get_tp_account_number(self, obj):
         """Get third-party account number from benefit consumption or group beneficiary's json_ext"""
         # First try to get from BenefitConsumption's own json_ext
@@ -553,7 +552,7 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
             tp_account = obj.json_ext.get('tp_account_number', '')
             if tp_account:
                 return tp_account
-        
+
         # Fallback to group beneficiary's json_ext
         try:
             if obj.individual:
@@ -571,11 +570,11 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return ""
-    
+
     def get_montant(self, obj):
         """Get payment amount"""
         return str(obj.amount) if obj.amount else "0"
-    
+
     def get_date_effective_demandee(self, obj):
         """Get payment request date"""
         return obj.date_created.date().isoformat() if obj.date_created else None
@@ -590,7 +589,7 @@ class PaymentAcknowledgmentSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['ACCEPTED', 'REJECTED'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
-    
+
     def validate(self, data):
         """Validate the acknowledgment data"""
         # Ensure error_code and message are provided if status is REJECTED
@@ -603,7 +602,7 @@ class PaymentAcknowledgmentSerializer(serializers.Serializer):
                 raise serializers.ValidationError({
                     'message': 'message is required when status is REJECTED'
                 })
-        
+
         return data
 
 
@@ -617,7 +616,7 @@ class PaymentConsolidationSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['SUCCESS', 'FAILURE'], required=True)
     error_code = serializers.CharField(required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
-    
+
     def validate(self, data):
         """Validate the consolidation data"""
         # Ensure error_code and message are provided if status is FAILURE
@@ -630,7 +629,7 @@ class PaymentConsolidationSerializer(serializers.Serializer):
                 raise serializers.ValidationError({
                     'message': 'message is required when status is FAILURE'
                 })
-        
+
         return data
 
 
@@ -655,5 +654,3 @@ class CommuneSerializer(serializers.ModelSerializer):
     def get_province_name(self, obj):
         """Get the province (district) name"""
         return obj.parent.name if obj.parent else None
-
-

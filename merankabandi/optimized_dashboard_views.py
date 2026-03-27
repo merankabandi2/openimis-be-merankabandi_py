@@ -20,6 +20,7 @@ from .views_manager import MaterializedViewsManager
 
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder for datetime objects"""
+
     def default(self, obj):
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
@@ -50,14 +51,14 @@ def optimized_dashboard_summary(request):
     try:
         filters = parse_filters(request)
         data = OptimizedDashboardService.get_master_dashboard_summary(filters)
-        
+
         return Response({
             'success': True,
             'data': data,
             'cached': True,
             'source': 'materialized_views'
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -76,14 +77,14 @@ def optimized_beneficiary_breakdown(request):
     try:
         filters = parse_filters(request)
         data = OptimizedDashboardService.get_beneficiary_breakdown(filters)
-        
+
         return Response({
             'success': True,
             'data': data,
             'cached': True,
             'source': 'materialized_views'
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -101,14 +102,14 @@ def optimized_transfer_performance(request):
     try:
         filters = parse_filters(request)
         data = OptimizedDashboardService.get_transfer_performance(filters)
-        
+
         return Response({
             'success': True,
             'data': data,
             'cached': True,
             'source': 'materialized_views'
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -126,14 +127,14 @@ def optimized_quarterly_trends(request):
     try:
         filters = parse_filters(request)
         data = OptimizedDashboardService.get_quarterly_trends(filters)
-        
+
         return Response({
             'success': True,
             'data': data,
             'cached': True,
             'source': 'materialized_views'
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -151,14 +152,14 @@ def optimized_grievance_dashboard(request):
     try:
         filters = parse_filters(request)
         data = OptimizedDashboardService.get_grievance_dashboard(filters)
-        
+
         return Response({
             'success': True,
             'data': data,
             'cached': True,
             'source': 'materialized_views'
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -189,16 +190,16 @@ def refresh_dashboard_views(request):
         else:
             MaterializedViewsManager.refresh_all_views(category=None, concurrent=concurrent)
             message = "Refreshed all dashboard views"
-        
+
         # Clear cache after refresh
         OptimizedDashboardService.clear_cache()
-        
+
         return Response({
             'success': True,
             'message': message,
             'timestamp': datetime.now().isoformat()
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -215,7 +216,7 @@ def dashboard_view_stats(request):
     """
     try:
         stats = MaterializedViewsManager.get_view_stats()
-        
+
         formatted_stats = []
         for view_name, row_count, size_mb, last_refresh in stats:
             formatted_stats.append({
@@ -224,7 +225,7 @@ def dashboard_view_stats(request):
                 'size_mb': float(size_mb) if size_mb else 0,
                 'last_refresh': last_refresh.isoformat() if last_refresh else None
             })
-        
+
         return Response({
             'success': True,
             'data': {
@@ -234,7 +235,7 @@ def dashboard_view_stats(request):
                 'total_rows': sum(s['row_count'] for s in formatted_stats if s['row_count'])
             }
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -248,7 +249,7 @@ class OptimizedDashboardHealthView(View):
     Dashboard health check endpoint
     GET /api/merankabandi/dashboard/optimized/health/
     """
-    
+
     def get(self, request):
         """Check health of dashboard system"""
         try:
@@ -261,39 +262,39 @@ class OptimizedDashboardHealthView(View):
                     'database': self.check_database()
                 }
             }
-            
+
             # Overall health status
             all_healthy = all(
-                check['status'] == 'healthy' 
+                check['status'] == 'healthy'
                 for check in health_data['checks'].values()
             )
             health_data['status'] = 'healthy' if all_healthy else 'degraded'
-            
+
             status_code = 200 if all_healthy else 503
-            
+
             return JsonResponse(health_data, status=status_code, encoder=DateTimeEncoder)
-            
+
         except Exception as e:
             return JsonResponse({
                 'status': 'unhealthy',
                 'timestamp': datetime.now().isoformat(),
                 'error': str(e)
             }, status=500, encoder=DateTimeEncoder)
-    
+
     def check_materialized_views(self):
         """Check materialized views health"""
         try:
             stats = MaterializedViewsManager.get_view_stats()
-            
+
             if not stats:
                 return {
                     'status': 'unhealthy',
                     'message': 'No materialized views found'
                 }
-            
+
             views_with_data = sum(1 for _, row_count, _, _ in stats if row_count and row_count > 0)
             total_views = len(stats)
-            
+
             if views_with_data == total_views:
                 return {
                     'status': 'healthy',
@@ -306,23 +307,23 @@ class OptimizedDashboardHealthView(View):
                     'message': f'Only {views_with_data}/{total_views} views have data',
                     'views_count': total_views
                 }
-                
+
         except Exception as e:
             return {
                 'status': 'unhealthy',
                 'message': f'Error checking views: {e}'
             }
-    
+
     def check_cache(self):
         """Check cache health"""
         try:
             # Test cache read/write
             test_key = 'dashboard_health_check'
             test_value = datetime.now().isoformat()
-            
+
             cache.set(test_key, test_value, 60)
             cached_value = cache.get(test_key)
-            
+
             if cached_value == test_value:
                 return {
                     'status': 'healthy',
@@ -333,22 +334,22 @@ class OptimizedDashboardHealthView(View):
                     'status': 'degraded',
                     'message': 'Cache read/write failed'
                 }
-                
+
         except Exception as e:
             return {
                 'status': 'unhealthy',
                 'message': f'Cache error: {e}'
             }
-    
+
     def check_database(self):
         """Check database connectivity"""
         try:
             from django.db import connection
-            
+
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 result = cursor.fetchone()
-                
+
                 if result and result[0] == 1:
                     return {
                         'status': 'healthy',
@@ -359,7 +360,7 @@ class OptimizedDashboardHealthView(View):
                         'status': 'unhealthy',
                         'message': 'Database query failed'
                     }
-                    
+
         except Exception as e:
             return {
                 'status': 'unhealthy',

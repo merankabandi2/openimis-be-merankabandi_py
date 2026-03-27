@@ -4,7 +4,6 @@ Mutations for refreshing views, clearing cache, and managing dashboard system
 """
 
 import graphene
-from graphene import String, Boolean, Int, Float
 from django.core.cache import cache
 from datetime import datetime
 from .views_manager import MaterializedViewsManager
@@ -64,30 +63,30 @@ class OptimizedDashboardMutation(graphene.ObjectType):
     """
     Dashboard management mutations for materialized views and cache
     """
-    
+
     refresh_dashboard_view = graphene.Field(
         RefreshViewResponseType,
         input=graphene.Argument(RefreshViewInput, required=True),
         description="Refresh a specific materialized view"
     )
-    
+
     refresh_all_dashboard_views = graphene.Field(
         RefreshAllViewsResponseType,
         input=graphene.Argument(RefreshAllViewsInput),
         description="Refresh all dashboard materialized views"
     )
-    
+
     clear_dashboard_cache = graphene.Field(
         ClearCacheResponseType,
         input=graphene.Argument(ClearCacheInput),
         description="Clear dashboard cache"
     )
-    
+
     create_dashboard_views = graphene.Field(
         CreateViewsResponseType,
         description="Create all dashboard materialized views and indexes"
     )
-    
+
     def resolve_refresh_dashboard_view(self, info, input):
         """Refresh a specific materialized view"""
         user = info.context.user
@@ -98,10 +97,10 @@ class OptimizedDashboardMutation(graphene.ObjectType):
         try:
             view_name = input.view_name
             concurrent = input.concurrent
-            
+
             # Validate view name against current registry
             valid_views = MaterializedViewsManager.get_all_view_names()
-            
+
             if view_name not in valid_views:
                 return RefreshViewResponseType(
                     success=False,
@@ -110,17 +109,17 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                     timestamp=start_time.isoformat(),
                     duration_seconds=0
                 )
-            
+
             # Refresh the view
             MaterializedViewsManager.refresh_single_view(view_name, concurrent)
-            
+
             # Clear related cache
             cache_pattern = f"gql_{view_name.replace('dashboard_', '')}"
             OptimizedDashboardService.clear_cache(cache_pattern)
-            
+
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return RefreshViewResponseType(
                 success=True,
                 message=f"Successfully refreshed view: {view_name}",
@@ -128,11 +127,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 timestamp=end_time.isoformat(),
                 duration_seconds=duration
             )
-            
+
         except Exception as e:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return RefreshViewResponseType(
                 success=False,
                 message=f"Error refreshing view: {e}",
@@ -140,7 +139,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 timestamp=end_time.isoformat(),
                 duration_seconds=duration
             )
-    
+
     def resolve_refresh_all_dashboard_views(self, info, input=None):
         """Refresh all dashboard materialized views"""
         user = info.context.user
@@ -151,7 +150,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
         try:
             concurrent = input.concurrent if input else True
             force = input.force if input else False
-            
+
             # Check if refresh is needed (unless forced)
             if not force:
                 needs_refresh = OptimizedDashboardService.refresh_views_if_needed()
@@ -163,20 +162,20 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                         timestamp=start_time.isoformat(),
                         duration_seconds=0
                     )
-            
+
             # Refresh all views
             MaterializedViewsManager.refresh_all_views(concurrent=concurrent)
-            
+
             # Clear all dashboard cache
             OptimizedDashboardService.clear_cache()
-            
+
             # Count views
             stats = MaterializedViewsManager.get_view_stats()
             views_count = len(stats)
-            
+
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return RefreshAllViewsResponseType(
                 success=True,
                 message=f"Successfully refreshed all {views_count} dashboard views",
@@ -184,11 +183,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 timestamp=end_time.isoformat(),
                 duration_seconds=duration
             )
-            
+
         except Exception as e:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return RefreshAllViewsResponseType(
                 success=False,
                 message=f"Error refreshing views: {e}",
@@ -196,7 +195,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 timestamp=end_time.isoformat(),
                 duration_seconds=duration
             )
-    
+
     def resolve_clear_dashboard_cache(self, info, input=None):
         """Clear dashboard cache"""
         user = info.context.user
@@ -204,7 +203,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
             raise PermissionError("Authentication required")
         try:
             pattern = input.pattern if input else None
-            
+
             if pattern:
                 # In production, you'd use cache.delete_pattern(pattern)
                 # For now, clear all cache if pattern is specified
@@ -215,14 +214,14 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 OptimizedDashboardService.clear_cache()
                 message = "Cleared all dashboard cache"
                 pattern = "all"
-            
+
             return ClearCacheResponseType(
                 success=True,
                 message=message,
                 cache_pattern=pattern,
                 timestamp=datetime.now().isoformat()
             )
-            
+
         except Exception as e:
             return ClearCacheResponseType(
                 success=False,
@@ -230,7 +229,7 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 cache_pattern=pattern if input and input.pattern else "all",
                 timestamp=datetime.now().isoformat()
             )
-    
+
     def resolve_create_dashboard_views(self, info):
         """Create all dashboard materialized views and indexes"""
         user = info.context.user
@@ -241,17 +240,17 @@ class OptimizedDashboardMutation(graphene.ObjectType):
         try:
             # Create all views and indexes
             MaterializedViewsManager.create_all_views()
-            
+
             # Get statistics
             stats = MaterializedViewsManager.get_view_stats()
             views_count = len(stats)
-            
+
             # Estimate indexes created (each view has multiple indexes)
             indexes_count = views_count * 5  # Approximate
-            
+
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return CreateViewsResponseType(
                 success=True,
                 message=f"Successfully created {views_count} materialized views and {indexes_count} indexes",
@@ -260,11 +259,11 @@ class OptimizedDashboardMutation(graphene.ObjectType):
                 timestamp=end_time.isoformat(),
                 duration_seconds=duration
             )
-            
+
         except Exception as e:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
             return CreateViewsResponseType(
                 success=False,
                 message=f"Error creating views: {e}",
@@ -292,26 +291,26 @@ class OptimizedDashboardBackgroundMutation(graphene.ObjectType):
     """
     Background task mutations (for future Celery integration)
     """
-    
+
     schedule_view_refresh = graphene.Field(
         BackgroundTaskResponseType,
         input=graphene.Argument(ScheduleViewRefreshInput, required=True),
         description="Schedule periodic view refresh (requires Celery)"
     )
-    
+
     def resolve_schedule_view_refresh(self, info, input):
         """Schedule periodic view refresh (placeholder for Celery integration)"""
         try:
             # This would integrate with Celery in production
             # For now, just return a placeholder response
-            
+
             return BackgroundTaskResponseType(
                 success=True,
                 task_id="placeholder-task-id",
                 message=f"Scheduled refresh for {input.view_name or 'all views'} every {input.schedule_minutes} minutes",
                 timestamp=datetime.now().isoformat()
             )
-            
+
         except Exception as e:
             return BackgroundTaskResponseType(
                 success=False,

@@ -4,8 +4,6 @@ High-performance GraphQL resolvers that use pre-aggregated data
 """
 
 import graphene
-from graphene import ObjectType, String, Int, Float, List, Field, Boolean
-from graphene_django import DjangoObjectType
 from django.core.cache import cache
 from datetime import datetime
 from .dashboard_service import DashboardService
@@ -382,82 +380,82 @@ class OptimizedDashboardQuery(graphene.ObjectType):
     """
     High-performance dashboard queries using materialized views
     """
-    
+
     # Master dashboard summary
     optimized_dashboard_summary = graphene.Field(
         MasterDashboardType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast dashboard summary using materialized views"
     )
-    
+
     # Beneficiary breakdown
     optimized_beneficiary_breakdown = graphene.Field(
         BeneficiaryBreakdownType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast beneficiary breakdown by gender, age, location, etc."
     )
-    
+
     # Transfer performance
     optimized_transfer_performance = graphene.Field(
         TransferPerformanceType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast transfer performance metrics"
     )
-    
+
     # Quarterly trends
     optimized_quarterly_trends = graphene.Field(
         QuarterlyTrendsType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast quarterly trends across all programs"
     )
-    
+
     # Grievance dashboard
     optimizedGrievanceDashboard = graphene.Field(
         GrievanceDashboardType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast grievance dashboard data"
     )
-    
+
     # Activities dashboard
     optimized_activities_dashboard = graphene.Field(
         ActivitiesDashboardType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast activities dashboard data using materialized views"
     )
-    
+
     # Optimized monetary transfer beneficiary data
     optimized_monetary_transfer_beneficiary_data = graphene.List(
         OptimizedMonetaryTransferBeneficiaryDataType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast monetary transfer data by gender and payment status"
     )
-    
+
     # Optimized location data for map
     optimized_location_by_benefit_plan = graphene.List(
         LocationByBenefitPlanType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast location data with beneficiary counts for map display"
     )
-    
+
     # System stats and health
     dashboard_view_stats = graphene.Field(
         DashboardStatsType,
         description="Statistics for materialized views"
     )
-    
+
     dashboard_health = graphene.Field(
         DashboardHealthType,
         description="Health check for dashboard system"
     )
-    
+
     def resolve_optimized_dashboard_summary(self, info, filters=None):
         """Resolve optimized dashboard summary"""
         cache_key = f"gql_dashboard_summary_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert GraphQL filters to service format
         service_filters = {}
         if filters:
@@ -477,10 +475,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['year'] = filters['year']
             if filters.get('benefit_plan_id'):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
-        
+
         # Get data from optimized service
         data = DashboardService.get_master_dashboard_summary(service_filters)
-        
+
         # Convert to GraphQL types
         result = MasterDashboardType(
             summary=DashboardSummaryType(**data['summary']),
@@ -489,19 +487,19 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             ],
             last_updated=data['last_updated']
         )
-        
+
         # Cache for 5 minutes
         cache.set(cache_key, result, 300)
         return result
-    
+
     def resolve_optimized_beneficiary_breakdown(self, info, filters=None):
         """Resolve optimized beneficiary breakdown"""
         cache_key = f"gql_beneficiary_breakdown_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert filters
         service_filters = {}
         if filters:
@@ -517,10 +515,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['colline_id'] = filters['colline_id']
             if filters.get('benefit_plan_id'):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
-        
+
         # Get data
         data = DashboardService.get_beneficiary_breakdown(service_filters)
-        
+
         # Convert to GraphQL types
         result = BeneficiaryBreakdownType(
             gender_breakdown=GenderBreakdownType(**data['gender_breakdown']),
@@ -539,19 +537,19 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             household_breakdown=HouseholdBreakdownType(**data['household_breakdown']),
             last_updated=data['last_updated']
         )
-        
+
         # Cache for 10 minutes
         cache.set(cache_key, result, 600)
         return result
-    
+
     def resolve_optimized_transfer_performance(self, info, filters=None):
         """Resolve optimized transfer performance"""
         cache_key = f"gql_transfer_performance_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert filters
         service_filters = {}
         if filters:
@@ -569,10 +567,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
             if filters.get('aggregation_level'):
                 service_filters['aggregation_level'] = filters['aggregation_level']
-        
+
         # Get data
         data = DashboardService.get_transfer_performance(service_filters)
-        
+
         # Convert to GraphQL types
         result = TransferPerformanceType(
             overall_metrics=TransferMetricsType(**data.get('overall_metrics', {})),
@@ -587,19 +585,19 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             ],
             last_updated=data['last_updated']
         )
-        
+
         # Cache for 10 minutes
         cache.set(cache_key, result, 600)
         return result
-    
+
     def resolve_optimized_quarterly_trends(self, info, filters=None):
         """Resolve optimized quarterly trends"""
         cache_key = f"gql_quarterly_trends_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert filters
         service_filters = {}
         if filters:
@@ -615,10 +613,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['colline_id'] = filters['colline_id']
             if filters.get('benefit_plan_id'):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
-        
+
         # Get data
         data = DashboardService.get_quarterly_trends(service_filters)
-        
+
         # Convert to GraphQL types
         result = QuarterlyTrendsType(
             trends=[
@@ -626,19 +624,19 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             ],
             last_updated=data['last_updated']
         )
-        
+
         # Cache for 30 minutes
         cache.set(cache_key, result, 1800)
         return result
-    
+
     def resolve_optimizedGrievanceDashboard(self, info, filters=None):
         """Resolve optimized grievance dashboard"""
         cache_key = f"gql_grievance_dashboard_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert filters
         service_filters = {}
         if filters:
@@ -654,10 +652,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 service_filters['colline_id'] = filters['colline_id']
             if filters.get('benefit_plan_id'):
                 service_filters['benefit_plan_id'] = filters['benefit_plan_id']
-        
+
         # Get data
         data = DashboardService.get_grievance_dashboard(service_filters)
-        
+
         # Convert to GraphQL types (service already returns snake_case keys)
         summary_data = data.get('summary', {})
         result = GrievanceDashboardType(
@@ -688,19 +686,19 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             ],
             last_updated=data['last_updated']
         )
-        
+
         # Cache for 5 minutes
         cache.set(cache_key, result, 300)
         return result
-    
+
     def resolve_optimized_activities_dashboard(self, info, filters=None):
         """Resolve optimized activities dashboard"""
         cache_key = f"gql_activities_dashboard_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         # Convert filters
         service_filters = {}
         if filters:
@@ -728,10 +726,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             # Activity type filter
             if filters.get('activity_type'):
                 service_filters['activity_type'] = filters['activity_type']
-        
+
         # Get data from optimized service
         data = DashboardService.get_activities_dashboard(service_filters)
-        
+
         # Convert by_type dictionary to GraphQL type
         by_type_data = data.get('by_type', {})
         by_type = ActivitiesByTypeType(
@@ -739,7 +737,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             behavior_change_promotion=ActivitiesSummaryType(**by_type_data.get('BehaviorChangePromotion', {})),
             micro_project=ActivitiesSummaryType(**by_type_data.get('MicroProject', {}))
         )
-        
+
         # Convert to GraphQL types
         result = ActivitiesDashboardType(
             overall=ActivitiesOverallType(**data.get('overall', {})),
@@ -749,26 +747,26 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             ],
             last_updated=data.get('last_updated', '')
         )
-        
+
         # Cache for 5 minutes
         cache.set(cache_key, result, 300)
         return result
-    
+
     def resolve_dashboard_view_stats(self, info):
         """Resolve dashboard view statistics"""
         cache_key = "gql_dashboard_stats"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         try:
             stats = MaterializedViewsManager.get_view_stats()
-            
+
             formatted_stats = []
             total_size = 0
             total_rows = 0
-            
+
             for view_name, row_count, size_mb, last_refresh in stats:
                 formatted_stats.append(ViewStatsType(
                     view_name=view_name,
@@ -778,45 +776,45 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 ))
                 total_size += size_mb or 0
                 total_rows += row_count or 0
-            
+
             result = DashboardStatsType(
                 views=formatted_stats,
                 total_views=len(formatted_stats),
                 total_size_mb=float(total_size),
                 total_rows=total_rows
             )
-            
+
             # Cache for 1 hour
             cache.set(cache_key, result, 3600)
             return result
-            
-        except Exception as e:
+
+        except Exception:
             return DashboardStatsType(
                 views=[],
                 total_views=0,
                 total_size_mb=0.0,
                 total_rows=0
             )
-    
+
     def resolve_dashboard_health(self, info):
         """Resolve dashboard health check"""
         cache_key = "gql_dashboard_health"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         try:
             # Perform health checks
             checks = []
-            
+
             # Check materialized views
             try:
                 stats = MaterializedViewsManager.get_view_stats()
                 if stats:
                     views_with_data = sum(1 for _, row_count, _, _ in stats if row_count and row_count > 0)
                     total_views = len(stats)
-                    
+
                     if views_with_data == total_views:
                         checks.append(HealthCheckType(
                             component="materialized_views",
@@ -841,14 +839,14 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                     status="unhealthy",
                     message=f"Error checking views: {e}"
                 ))
-            
+
             # Check cache
             try:
                 test_key = 'gql_health_check'
                 test_value = datetime.now().isoformat()
                 cache.set(test_key, test_value, 60)
                 cached_value = cache.get(test_key)
-                
+
                 if cached_value == test_value:
                     checks.append(HealthCheckType(
                         component="cache",
@@ -867,14 +865,14 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                     status="unhealthy",
                     message=f"Cache error: {e}"
                 ))
-            
+
             # Check database
             try:
                 from django.db import connection
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     result = cursor.fetchone()
-                    
+
                     if result and result[0] == 1:
                         checks.append(HealthCheckType(
                             component="database",
@@ -893,21 +891,21 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                     status="unhealthy",
                     message=f"Database error: {e}"
                 ))
-            
+
             # Overall status
             all_healthy = all(check.status == "healthy" for check in checks)
             overall_status = "healthy" if all_healthy else "degraded"
-            
+
             result = DashboardHealthType(
                 status=overall_status,
                 timestamp=datetime.now().isoformat(),
                 checks=checks
             )
-            
+
             # Cache for 5 minutes
             cache.set(cache_key, result, 300)
             return result
-            
+
         except Exception as e:
             return DashboardHealthType(
                 status="unhealthy",
@@ -918,22 +916,22 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                     message=f"System error: {e}"
                 )]
             )
-    
+
     def resolve_optimized_monetary_transfer_beneficiary_data(self, info, filters=None):
         """Resolve optimized monetary transfer beneficiary data using materialized views"""
         cache_key = f"gql_monetary_transfer_beneficiary_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         try:
             from django.db import connection
-            
+
             # Build WHERE clause from filters
             where_conditions = []
             params = []
-            
+
             if filters:
                 if filters.get('year'):
                     where_conditions.append("year = %s")
@@ -950,39 +948,39 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                 if filters.get('benefit_plan_id'):
                     where_conditions.append("programme_id = %s")
                     params.append(filters['benefit_plan_id'])
-            
+
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-            
+
             # Query optimized view for payment data by gender
             query = f"""
-            SELECT 
+            SELECT
                 programme_name AS transfer_type,
                 -- Male paid/unpaid (assuming male = total - female)
-                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_beneficiaries - total_female ELSE 0 END) AS male_paid,
-                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_beneficiaries - total_female ELSE 0 END) AS male_unpaid,
                 -- Female paid/unpaid
-                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_female ELSE 0 END) AS female_paid,
-                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_female ELSE 0 END) AS female_unpaid,
                 -- Totals
-                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_beneficiaries ELSE 0 END) AS total_paid,
-                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED') 
+                SUM(CASE WHEN payment_status NOT IN ('PAID', 'RECONCILED', 'ACCEPTED')
                     THEN total_beneficiaries ELSE 0 END) AS total_unpaid
             FROM payment_reporting_unified_summary
             {where_clause}
             GROUP BY programme_name
             ORDER BY programme_name
             """
-            
+
             with connection.cursor() as cursor:
                 cursor.execute(query, params)
                 columns = [col[0] for col in cursor.description]
                 rows = cursor.fetchall()
-                
+
                 result = []
                 for row in rows:
                     row_dict = dict(zip(columns, row))
@@ -995,15 +993,15 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                         total_paid=row_dict['total_paid'] or 0,
                         total_unpaid=row_dict['total_unpaid'] or 0
                     ))
-                
+
                 # Cache for 10 minutes
                 cache.set(cache_key, result, 600)
                 return result
-                
+
         except Exception as e:
             print(f"Error in optimized_monetary_transfer_beneficiary_data: {e}")
             return []
-    
+
     def resolve_optimized_location_by_benefit_plan(self, info, filters=None):
         """
         Resolve location data with beneficiary counts by status
@@ -1011,38 +1009,38 @@ class OptimizedDashboardQuery(graphene.ObjectType):
         """
         cache_key = f"gql_location_benefit_plan_{hash(str(filters))}"
         cached_data = cache.get(cache_key)
-        
+
         if cached_data:
             return cached_data
-        
+
         try:
             # Build where clause
             where_conditions = []
             params = []
-            
+
             if filters:
                 if filters.get('benefit_plan_id'):
                     where_conditions.append("benefit_plan_id = %s")
                     params.append(filters['benefit_plan_id'])
-                    
+
                 if filters.get('year'):
                     where_conditions.append("year = %s")
                     params.append(filters['year'])
-                    
+
                 if filters.get('province_id'):
                     where_conditions.append("province_id = %s")
                     params.append(filters['province_id'])
-                    
+
                 if filters.get('commune_id'):
                     where_conditions.append("commune_id = %s")
                     params.append(filters['commune_id'])
-                    
+
                 if filters.get('colline_id'):
                     where_conditions.append("colline_id = %s")
                     params.append(filters['colline_id'])
-            
+
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-            
+
             # Query from individual summary (province-level rows)
             query = f"""
             SELECT
@@ -1064,13 +1062,13 @@ class OptimizedDashboardQuery(graphene.ObjectType):
             HAVING SUM(total_beneficiaries) > 0
             ORDER BY province
             """
-            
+
             from django.db import connection
             with connection.cursor() as cursor:
                 cursor.execute(query, params)
                 columns = [col[0] for col in cursor.description]
                 rows = cursor.fetchall()
-                
+
                 result = []
                 for row in rows:
                     data = dict(zip(columns, row))
@@ -1085,11 +1083,11 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                         count_validated=data['count_validated'] or 0,
                         count_graduated=data['count_graduated'] or 0
                     ))
-                
+
                 # Cache for 10 minutes
                 cache.set(cache_key, result, 600)
                 return result
-                
+
         except Exception as e:
             print(f"Error in optimized_location_by_benefit_plan: {e}")
             return []

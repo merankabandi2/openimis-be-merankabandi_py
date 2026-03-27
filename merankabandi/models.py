@@ -3,11 +3,10 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from datetime import datetime
 
-from core.models import User, HistoryModel, UUIDModel
+from core.models import User, UUIDModel
 from location.models import Location
 from payroll.models import PaymentPoint
 from social_protection.models import BenefitPlan
-from payment_cycle.models import PaymentCycle
 from contribution_plan.models import PaymentPlan
 
 # Host community communes as specified
@@ -19,7 +18,7 @@ class SensitizationTraining(models.Model):
         ('module_mip__mesures_d_inclusio', 'Module MIP (Mesures d\'Inclusion Productive)'),
         ('module_mach__mesures_d_accompa', 'Module MACH (Mesures d\'Accompagnement pour le développement du Capital Humain)')
     ]
-    
+
     VALIDATION_STATUS_CHOICES = [
         ('PENDING', 'Pending Validation'),
         ('VALIDATED', 'Validated'),
@@ -28,9 +27,9 @@ class SensitizationTraining(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     sensitization_date = models.DateField(verbose_name="Date de la sensibilisation/Formation")
-    
+
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
-    
+
     category = models.CharField(
         verbose_name="Thème",
         max_length=100,
@@ -44,7 +43,7 @@ class SensitizationTraining(models.Model):
         blank=True,
         help_text="Selected modules"
     )
-    
+
     facilitator = models.CharField(
         verbose_name="Animateur",
         max_length=255,
@@ -73,7 +72,7 @@ class SensitizationTraining(models.Model):
         null=True,
         blank=True
     )
-    
+
     # Validation fields
     validation_status = models.CharField(
         max_length=20,
@@ -106,7 +105,6 @@ class SensitizationTraining(models.Model):
         verbose_name='Kobo Submission ID'
     )
 
-
     class Meta:
         verbose_name = "Sensibilisation/Formation"
         verbose_name_plural = "Sensibilisations/Formations"
@@ -121,7 +119,6 @@ class SensitizationTraining(models.Model):
             self.male_participants +
             self.female_participants
         )
-    
 
     @classmethod
     def to_data_element_obj(cls, kobo_data, **kwargs):
@@ -135,11 +132,12 @@ class SensitizationTraining(models.Model):
         if isinstance(mach_modules, str):
             modules = [mach_modules]
 
-        male_participants=int(kobo_data.get('group_zp4mt03/Nombre_dhommes', 0))
-        female_participants=int(kobo_data.get('group_zp4mt03/Nombre_de_femmes', 0))
-        twa_participants=int(kobo_data.get('group_zp4mt03/Nombre_de_Batwa', 0))
+        male_participants = int(kobo_data.get('group_zp4mt03/Nombre_dhommes', 0))
+        female_participants = int(kobo_data.get('group_zp4mt03/Nombre_de_femmes', 0))
+        twa_participants = int(kobo_data.get('group_zp4mt03/Nombre_de_Batwa', 0))
 
-        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7)
+                        )[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
         date = kobo_data.get('Date_de_la_sensibilisation_Formation') or kobo_data.get('start')
 
         return cls(
@@ -159,7 +157,7 @@ class SensitizationTraining(models.Model):
 
             # Additional fields
             observations=kobo_data.get('Observation'),
-            
+
             # Kobo metadata
             kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
@@ -171,13 +169,13 @@ class BehaviorChangePromotion(models.Model):
         ('VALIDATED', 'Validated'),
         ('REJECTED', 'Rejected')
     ]
-    
+
     # Metadata
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     # Location
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
     report_date = models.DateField(verbose_name="Date de l'activité'")
-    
+
     male_participants = models.PositiveIntegerField(
         verbose_name="Participants Hommes",
         validators=[MinValueValidator(0)],
@@ -199,7 +197,7 @@ class BehaviorChangePromotion(models.Model):
         blank=True,
         null=True
     )
-    
+
     # Validation fields
     validation_status = models.CharField(
         max_length=20,
@@ -231,7 +229,7 @@ class BehaviorChangePromotion(models.Model):
         blank=True,
         verbose_name='Kobo Submission ID'
     )
-    
+
     class Meta:
         verbose_name = "Promotion du changement de comportement"
         verbose_name_plural = "Promotion du changement de comportement"
@@ -255,15 +253,16 @@ class BehaviorChangePromotion(models.Model):
         twa_participants = 0
 
         if int(kobo_data.get('group_gy7sg68/Homme', 0)) > 0:
-            male_participants=int(kobo_data.get('group_gy7sg68/Homme', 0))
-            female_participants=int(kobo_data.get('group_gy7sg68/Femme', 0))
-            twa_participants=int(kobo_data.get('group_gy7sg68/Twa', 0))
-        
+            male_participants = int(kobo_data.get('group_gy7sg68/Homme', 0))
+            female_participants = int(kobo_data.get('group_gy7sg68/Femme', 0))
+            twa_participants = int(kobo_data.get('group_gy7sg68/Twa', 0))
+
         # Refugee participants
         if int(kobo_data.get('group_hw5bi20/Femme_001', 0)) > 0:
-            female_participants=int(kobo_data.get('group_hw5bi20/Femme_001', 0))
-            male_participants=int(kobo_data.get('group_hw5bi20/Homme_001', 0))
-        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+            female_participants = int(kobo_data.get('group_hw5bi20/Femme_001', 0))
+            male_participants = int(kobo_data.get('group_hw5bi20/Homme_001', 0))
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7)
+                        )[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
 
         date = kobo_data.get('Date') or kobo_data.get('start')
         return cls(
@@ -271,14 +270,14 @@ class BehaviorChangePromotion(models.Model):
             id=kobo_data.get('_uuid'),
             report_date=datetime.fromisoformat(date).date() if date else None,
             location=Location.objects.filter(code=locationcode).first(),
-            
+
             male_participants=male_participants,
             female_participants=female_participants,
             twa_participants=twa_participants,
-            
+
             # Additional fields
             comments=kobo_data.get('Commentaires'),
-            
+
             # Kobo metadata
             kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
@@ -293,19 +292,20 @@ class OtherProjectType(models.Model):
     def __str__(self):
         return f"{self.name} ({self.beneficiary_count} bénéficiaires)"
 
+
 class MicroProject(models.Model):
     VALIDATION_STATUS_CHOICES = [
         ('PENDING', 'Pending Validation'),
         ('VALIDATED', 'Validated'),
         ('REJECTED', 'Rejected')
     ]
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
 
     # Location
     report_date = models.DateField(verbose_name="Date de l'activité'")
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
-    
+
     male_participants = models.PositiveIntegerField(
         verbose_name="Participants Hommes",
         validators=[MinValueValidator(0)],
@@ -331,7 +331,7 @@ class MicroProject(models.Model):
     livestock_poultry_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
     livestock_cattle_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
     commerce_services_beneficiaries = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
-    
+
     # Validation fields
     validation_status = models.CharField(
         max_length=20,
@@ -379,18 +379,19 @@ class MicroProject(models.Model):
         twa_participants = 0
         # Regular participants
         if int(kobo_data.get('group_bh77o90/Homme', 0)) > 0:
-            male_participants=int(kobo_data.get('group_bh77o90/Homme', 0))
-            female_participants=int(kobo_data.get('group_bh77o90/Femme', 0))
-            twa_participants=int(kobo_data.get('group_bh77o90/Twa', 0))
+            male_participants = int(kobo_data.get('group_bh77o90/Homme', 0))
+            female_participants = int(kobo_data.get('group_bh77o90/Femme', 0))
+            twa_participants = int(kobo_data.get('group_bh77o90/Twa', 0))
 
-        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7)
+                        )[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
         date = kobo_data.get('Date') or kobo_data.get('start')
 
         micro_project = cls(
             id=kobo_data.get('_uuid'),
             report_date=datetime.fromisoformat(date).date() if date else None,
             location=Location.objects.filter(code=locationcode).first(),
-            
+
             male_participants=male_participants,
             female_participants=female_participants,
             twa_participants=twa_participants,
@@ -403,11 +404,11 @@ class MicroProject(models.Model):
             livestock_poultry_beneficiaries=int(kobo_data.get('group_fb09e52/Volailles', 0)),
             livestock_cattle_beneficiaries=int(kobo_data.get('group_fb09e52/Bovins', 0)),
             commerce_services_beneficiaries=int(kobo_data.get('group_fb09e52/Commerce_et_services', 0)),
-            
+
             # Kobo metadata
             kobo_submission_id=kobo_data.get('_submission_id') or kobo_data.get('_id'),
         )
-        
+
         # Save micro_project first so it has a PK for FK references
         micro_project.save()
 
@@ -423,12 +424,12 @@ class MicroProject(models.Model):
                     )
 
         return micro_project
-    
+
 
 class MonetaryTransfer(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     transfer_date = models.DateField(verbose_name="Date des transferts")
-    
+
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
     programme = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT)
     payment_agency = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT)
@@ -449,7 +450,7 @@ class MonetaryTransfer(models.Model):
         validators=[MinValueValidator(0)],
         default=0
     )
-    
+
     # Paid beneficiaries
     paid_women = models.PositiveIntegerField(
         verbose_name="Femmes payées",
@@ -485,7 +486,6 @@ class MonetaryTransfer(models.Model):
         help_text="Montant effectivement transféré (BIF)"
     )
 
-    
     class Meta:
         verbose_name = "Transfert Monétaire"
         verbose_name_plural = "Transferts Monétaires"
@@ -493,7 +493,7 @@ class MonetaryTransfer(models.Model):
 
     def __str__(self):
         return f"Transfert du {self.transfer_date} - {self.location.name}"
-    
+
     @property
     def total_planned(self):
         return (
@@ -501,7 +501,7 @@ class MonetaryTransfer(models.Model):
             self.planned_men +
             self.planned_twa
         )
-    
+
     @property
     def total_paid(self):
         return (
@@ -509,53 +509,54 @@ class MonetaryTransfer(models.Model):
             self.paid_men +
             self.paid_twa
         )
-    
+
     def save(self, *args, **kwargs):
         # check if object has been newly created
         if self.id is None:
             self.id = uuid.uuid4()
         return super().save(*args, **kwargs)
 
-
     @classmethod
     def to_data_element_obj(cls, kobo_data, **kwargs):
-        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
+        locationcode = (str(kobo_data.get('group_ln06g44/Colline')).zfill(7)
+                        )[:4] + (str(kobo_data.get('group_ln06g44/Colline')).zfill(7))[5:]
         date = kobo_data.get('Date_des_transferts') or kobo_data.get('start')
-        
+
         # Planned beneficiaries
         planned_women = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Femme', 0))
         planned_men = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Homme', 0))
         planned_twa = int(kobo_data.get('group_tr1pf23/group_gl1wf27/Twa', 0))
-        
+
         # Paid beneficiaries
         paid_women = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Femme_001', 0))
         paid_men = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Homme_001', 0))
         paid_twa = int(kobo_data.get('group_tr1pf23/group_ee8rm46/Twa_001', 0))
- 
+
         programme_code = '1.1' if kobo_data.get('Nom_du_camp_r_fugi_s') else '1.2'
-        payment_agency_name=kobo_data.get('Nom_de_l_agence_de_paiement')
+        payment_agency_name = kobo_data.get('Nom_de_l_agence_de_paiement')
 
         return cls(
             # Metadata
             id=kobo_data.get('_uuid'),
             transfer_date=datetime.fromisoformat(date).date() if date else None,
             location=Location.objects.filter(code=locationcode).first(),
-        
+
             # Payment details
             payment_agency=PaymentPoint.objects.filter(name=payment_agency_name).first(),
             programme=BenefitPlan.objects.filter(code=programme_code).first(),
-            
+
             # Planned beneficiaries
             planned_women=planned_women,
             planned_men=planned_men,
             planned_twa=planned_twa,
-            
+
             # Paid beneficiaries
             paid_women=paid_women,
             paid_men=paid_men,
             paid_twa=paid_twa,
         )
-    
+
+
 class Section(models.Model):
     name = models.CharField(max_length=255)
 
@@ -572,6 +573,7 @@ class Section(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Indicator(models.Model):
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="indicators", null=True, blank=True)
@@ -595,6 +597,7 @@ class Indicator(models.Model):
     def __str__(self):
         return self.name
 
+
 class IndicatorAchievement(models.Model):
     indicator = models.ForeignKey(Indicator, on_delete=models.CASCADE, related_name="achievements")
     achieved = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
@@ -616,21 +619,23 @@ class IndicatorAchievement(models.Model):
     def __str__(self):
         return f"{self.indicator.name} - {self.achieved} at {self.date}"
 
+
 class ProvincePaymentPoint(UUIDModel):
     """
     Model for associating payment points with provinces and benefit plans
     """
     province = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='province_payment_points')
     payment_point = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT, related_name='province_associations')
-    payment_plan = models.ForeignKey(PaymentPlan, on_delete=models.PROTECT, null=True, blank=True, related_name='province_payment_points')
+    payment_plan = models.ForeignKey(PaymentPlan, on_delete=models.PROTECT, null=True,
+                                     blank=True, related_name='province_payment_points')
     is_active = models.BooleanField(default=True)
     created_date = models.DateTimeField(auto_now_add=True)
     updated_date = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = 'merankabandi_province_payment_point'
         unique_together = ('province', 'payment_point', 'payment_plan')
-    
+
     def update(self, *args, user=None, username=None, save=True, **kwargs):
         obj_data = kwargs.pop('data', {})
         if not obj_data:
@@ -661,12 +666,12 @@ class ResultFrameworkSnapshot(models.Model):
         ('FINALIZED', 'Finalized'),
         ('ARCHIVED', 'Archived')
     ], default='DRAFT')
-    
+
     class Meta:
         verbose_name = "Result Framework Snapshot"
         verbose_name_plural = "Result Framework Snapshots"
         ordering = ['-snapshot_date']
-        
+
     def __str__(self):
         return f"{self.name} - {self.snapshot_date.strftime('%Y-%m-%d')}"
 
@@ -808,10 +813,10 @@ class IndicatorCalculationRule(models.Model):
     calculation_method = models.CharField(max_length=100, blank=True, help_text="Method name for system calculations")
     calculation_config = models.JSONField(default=dict, help_text="Configuration for calculations")
     is_active = models.BooleanField(default=True)
-    
+
     class Meta:
         verbose_name = "Indicator Calculation Rule"
         verbose_name_plural = "Indicator Calculation Rules"
-        
+
     def __str__(self):
         return f"{self.indicator.name} - {self.calculation_type}"
