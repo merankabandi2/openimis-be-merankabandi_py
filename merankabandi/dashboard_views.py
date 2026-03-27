@@ -185,6 +185,12 @@ def excel_export_api(request, report_type):
                 end_date=end_date,
                 location_id=location_id
             )
+        elif report_type == 'subcomponents':
+            return ExcelExportService.export_subcomponents_excel(
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id
+            )
         else:
             return Response({
                 'success': False,

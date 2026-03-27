@@ -4,8 +4,8 @@ from core.gql.export_mixin import ExportableQueryMixin
 from decimal import Decimal
 from gettext import gettext as _
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value
-from location.models import UserDistrict
+from django.db.models import Q, Sum, Count, OuterRef, Subquery, F, Value, Exists
+from location.models import UserDistrict, Location
 
 # Import optimized dashboard queries and mutations
 from .optimized_gql_queries import OptimizedDashboardQuery
@@ -39,7 +39,7 @@ from merankabandi.gql_mutations import (
 from merankabandi.gql_queries import (
     BehaviorChangePromotionGQLType, MicroProjectGQLType, MonetaryTransferBeneficiaryDataGQLType, 
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType, 
-    TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType,
+    TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType, BenefitPlanLocationGQLType,
     SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType,
     PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
 )
@@ -49,7 +49,7 @@ from merankabandi.models import (
     PmtFormula, SelectionQuota, PreCollecte,
 )
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
-from social_protection.models import BenefitPlan, GroupBeneficiary
+from social_protection.models import BenefitPlan, GroupBeneficiary, BeneficiaryStatus
 from payment_cycle.gql_queries import PaymentCycleGQLType
 from payment_cycle.models import PaymentCycle
 from payment_cycle.apps import PaymentCycleConfig
@@ -95,6 +95,16 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         GroupGQLType,
         parentLocation=graphene.String(description="Filter by location UUID"),
         parentLocationLevel=graphene.Int(description="Location level for filtering"),
+    )
+
+    location_by_benefit_plan = OrderedDjangoFilterConnectionField(
+        BenefitPlanLocationGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        benefit_plan__id=graphene.UUID(required=False),
+        search=graphene.String(),
+        sort_alphabetically=graphene.Boolean(),
     )
     
     individual_filtered = OrderedDjangoFilterConnectionField(
@@ -1058,6 +1068,109 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         if is_active is not None:
             query = query.filter(is_active=is_active)
             
+        return gql_optimizer.query(query, info)
+
+    def resolve_location_by_benefit_plan(self, info, **kwargs):
+        def _build_filters(info, **kwargs):
+            filters = append_validity_filter(**kwargs)
+            client_mutation_id = kwargs.get("client_mutation_id")
+            if client_mutation_id:
+                filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+            benefit_plan_id = kwargs.get("benefit_plan__id")
+            location_type = kwargs.get("type", "D")
+
+            if benefit_plan_id:
+                if location_type == "D":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent__parent=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+                elif location_type == "W":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+                elif location_type == "V":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+            else:
+                if location_type == "D":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent__parent=OuterRef('pk')
+                        )
+                    ))
+                elif location_type == "W":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent=OuterRef('pk')
+                        )
+                    ))
+                elif location_type == "V":
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location=OuterRef('pk')
+                        )
+                    ))
+
+            Query._check_permissions(
+                info.context.user,
+                SocialProtectionConfig.gql_beneficiary_search_perms
+            )
+            return filters
+
+        def _annotate_stats(query, **kwargs):
+            benefit_plan_id = kwargs.get("benefit_plan__id")
+            location_type = kwargs.get("type", "D")
+
+            annotations = {}
+
+            if location_type == "D":
+                path_prefix = 'children__children__groups__groupbeneficiary'
+            elif location_type == "W":
+                path_prefix = 'children__groups__groupbeneficiary'
+            elif location_type == "V":
+                path_prefix = 'groups__groupbeneficiary'
+            else:
+                path_prefix = 'children__children__groups__groupbeneficiary'
+
+            for status_name, status_value in [
+                ('count_selected', BeneficiaryStatus.POTENTIAL),
+                ('count_active', BeneficiaryStatus.ACTIVE),
+                ('count_suspended', BeneficiaryStatus.SUSPENDED)
+            ]:
+                annotations[status_name] = Count(
+                    path_prefix,
+                    filter=Q(**{
+                        f'{path_prefix}__status': status_value
+                    })
+                )
+
+            annotations['count_all'] = Count(path_prefix)
+            if benefit_plan_id:
+                query = query.filter(**{f'{path_prefix}__benefit_plan_id': benefit_plan_id})
+            return query.annotate(**annotations)
+
+        filters = _build_filters(info, **kwargs)
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level))
+
+        query = Location.get_queryset(None, info.context.user)
+        query = query.filter(*filters)
+        query = _annotate_stats(query, **kwargs)
+
         return gql_optimizer.query(query, info)
 
     @staticmethod

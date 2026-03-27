@@ -66,10 +66,10 @@ class MerankabandiConfig(AppConfig):
     @staticmethod
     def __register_calculation_rules():
         from calculation.apps import CALCULATION_RULES
-        from merankabandi.burundi_pmt_calculation_rule import BurundiPMTCalculationRule
-        if BurundiPMTCalculationRule not in CALCULATION_RULES:
-            CALCULATION_RULES.append(BurundiPMTCalculationRule)
-            BurundiPMTCalculationRule.ready()
+        from merankabandi.calcrule_rules import MeraPaymentCalcRule
+        if MeraPaymentCalcRule not in CALCULATION_RULES:
+            CALCULATION_RULES.append(MeraPaymentCalcRule)
+            MeraPaymentCalcRule.ready()
 
     @staticmethod
     def __register_workflows():

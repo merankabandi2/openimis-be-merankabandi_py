@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
 
 from payroll.models import Payroll, BenefitConsumptionStatus
-from payroll.tasks import send_partial_reconciliation
+from merankabandi.tasks import send_partial_reconciliation
 
 logger = logging.getLogger(__name__)
 

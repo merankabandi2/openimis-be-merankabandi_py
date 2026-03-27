@@ -7,6 +7,7 @@ from core.gql_queries import UserGQLType
 from core.utils import DefaultStorageFileHandler
 
 from location.gql_queries import LocationGQLType
+from location.models import Location
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining,
     Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
@@ -350,6 +351,25 @@ class PreCollecteGQLType(DjangoObjectType):
             "kobo_uuid": ["exact"],
             **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+        }
+        connection_class = ExtendedConnection
+
+
+class BenefitPlanLocationGQLType(LocationGQLType):
+    count_selected = graphene.Int()
+    count_active = graphene.Int()
+    count_suspended = graphene.Int()
+    count_all = graphene.Int()
+
+    class Meta:
+        model = Location
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "code": ["exact", "istartswith", "icontains", "iexact", "ne"],
+            "name": ["exact", "istartswith", "icontains", "iexact", "ne"],
+            "type": ["exact"],
+            "parent__id": ["exact", "in"],
         }
         connection_class = ExtendedConnection
 

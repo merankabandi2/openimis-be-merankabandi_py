@@ -231,12 +231,9 @@ class TriggerPMTCalculationMutation(BaseMutation):
 
     @classmethod
     def _mutate(cls, user, **data):
-        from merankabandi.burundi_pmt_calculation_rule import BurundiPMTCalculationRule
+        from merankabandi.pmt_scoring_service import BurundiPMTScoringService
         benefit_plan = BenefitPlan.objects.get(id=data['benefit_plan_id'])
-        BurundiPMTCalculationRule.calculate(
-            payment_plan=None,
-            benefit_plan=benefit_plan,
-        )
+        BurundiPMTScoringService.score_beneficiaries(benefit_plan=benefit_plan)
 
 # Indicator mutations
 class CreateIndicatorInputType(OpenIMISMutation.Input):

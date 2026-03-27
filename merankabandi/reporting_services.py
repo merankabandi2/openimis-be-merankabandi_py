@@ -546,6 +546,262 @@ class ExcelExportService:
         return cls._create_excel_file(df, 'Micro-Projets', 'microprojects')
     
     @classmethod
+    def export_subcomponents_excel(cls, start_date=None, end_date=None, location_id=None):
+        """Export the 5 sub-component report — one sheet per sub-component.
+
+        Columns per sheet:
+        Province | Commune | Colline | Planned Men | Planned Women | TOTAL | Twa |
+        Actual Men | Actual Women | TOTAL | Twa
+        """
+        from openpyxl.styles import Border, Side
+
+        wb = Workbook()
+        # Remove default sheet
+        wb.remove(wb.active)
+
+        # Common location filter
+        loc_filter = Q()
+        if location_id:
+            try:
+                location = Location.objects.get(id=location_id)
+                if location.type == 'D':
+                    loc_filter = Q(location__parent__parent=location)
+                elif location.type == 'W':
+                    loc_filter = Q(location__parent=location)
+                elif location.type == 'V':
+                    loc_filter = Q(location=location)
+            except Location.DoesNotExist:
+                pass
+
+        date_filter = Q()
+        if start_date:
+            date_filter &= Q(transfer_date__gte=start_date)
+        if end_date:
+            date_filter &= Q(transfer_date__lte=end_date)
+
+        activity_date_filter = Q()
+        if start_date:
+            activity_date_filter &= Q(report_date__gte=start_date)
+        if end_date:
+            activity_date_filter &= Q(report_date__lte=end_date)
+
+        def _get_location_hierarchy(loc):
+            """Return (province, commune, colline) from a colline-level location."""
+            colline = loc.name if loc else ''
+            commune = loc.parent.name if loc and loc.parent else ''
+            province = loc.parent.parent.name if loc and loc.parent and loc.parent.parent else ''
+            return province, commune, colline
+
+        def _style_sheet(ws, title_text, actual_label):
+            """Add title row and styled headers matching the Excel template."""
+            thin_border = Border(
+                left=Side(style='thin'), right=Side(style='thin'),
+                top=Side(style='thin'), bottom=Side(style='thin'),
+            )
+            header_font = Font(bold=True, size=10)
+            header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+            center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+            # Title row
+            ws.merge_cells('A1:K1')
+            ws['A1'] = title_text
+            ws['A1'].font = Font(bold=True, underline='single', size=11)
+
+            # Header row 1 (merged cells)
+            row = 3
+            for col, val in [(1, 'Province'), (2, 'Commune'), (3, 'Colline')]:
+                ws.merge_cells(start_row=row, start_column=col, end_row=row + 1, end_column=col)
+                cell = ws.cell(row=row, column=col, value=val)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center
+                cell.border = thin_border
+
+            # "Bénéficiaires prévus" group
+            ws.merge_cells(start_row=row, start_column=4, end_row=row, end_column=5)
+            cell = ws.cell(row=row, column=4, value='Bénéficiaires prévus')
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center
+
+            for col, val in [(6, 'TOTAL'), (7, 'Twa')]:
+                ws.merge_cells(start_row=row, start_column=col, end_row=row + 1, end_column=col)
+                cell = ws.cell(row=row, column=col, value=val)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center
+
+            # Actual group
+            ws.merge_cells(start_row=row, start_column=8, end_row=row, end_column=9)
+            cell = ws.cell(row=row, column=8, value=actual_label)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center
+
+            for col, val in [(10, 'TOTAL'), (11, 'Twa')]:
+                ws.merge_cells(start_row=row, start_column=col, end_row=row + 1, end_column=col)
+                cell = ws.cell(row=row, column=col, value=val)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center
+
+            # Header row 2 (sub-headers)
+            row2 = 4
+            for col, val in [(4, 'Homme'), (5, 'Femme'), (8, 'Homme'), (9, 'Femme')]:
+                cell = ws.cell(row=row2, column=col, value=val)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center
+
+            # Apply borders to all header cells
+            for r in range(3, 5):
+                for c in range(1, 12):
+                    ws.cell(row=r, column=c).border = thin_border
+
+            # Column widths
+            for col, width in [(1, 15), (2, 15), (3, 18), (4, 12), (5, 12),
+                               (6, 10), (7, 8), (8, 12), (9, 12), (10, 10), (11, 8)]:
+                ws.column_dimensions[chr(64 + col)].width = width
+
+            return 5  # data start row
+
+        def _add_transfer_data(ws, transfers, data_start_row):
+            """Add MonetaryTransfer data rows aggregated by colline."""
+            from django.db.models import Sum as DjSum
+            agg = transfers.values(
+                'location__parent__parent__name',  # Province
+                'location__parent__name',           # Commune
+                'location__name',                   # Colline
+            ).annotate(
+                p_men=Coalesce(DjSum('planned_men'), 0),
+                p_women=Coalesce(DjSum('planned_women'), 0),
+                p_twa=Coalesce(DjSum('planned_twa'), 0),
+                a_men=Coalesce(DjSum('paid_men'), 0),
+                a_women=Coalesce(DjSum('paid_women'), 0),
+                a_twa=Coalesce(DjSum('paid_twa'), 0),
+            ).order_by('location__parent__parent__name', 'location__parent__name', 'location__name')
+
+            row = data_start_row
+            for rec in agg:
+                ws.cell(row=row, column=1, value=rec['location__parent__parent__name'] or '')
+                ws.cell(row=row, column=2, value=rec['location__parent__name'] or '')
+                ws.cell(row=row, column=3, value=rec['location__name'] or '')
+                ws.cell(row=row, column=4, value=rec['p_men'])
+                ws.cell(row=row, column=5, value=rec['p_women'])
+                ws.cell(row=row, column=6, value=rec['p_men'] + rec['p_women'])
+                ws.cell(row=row, column=7, value=rec['p_twa'])
+                ws.cell(row=row, column=8, value=rec['a_men'])
+                ws.cell(row=row, column=9, value=rec['a_women'])
+                ws.cell(row=row, column=10, value=rec['a_men'] + rec['a_women'])
+                ws.cell(row=row, column=11, value=rec['a_twa'])
+                row += 1
+            return row
+
+        def _add_activity_data(ws, queryset, data_start_row):
+            """Add BehaviorChangePromotion or MicroProject data (no planned fields)."""
+            from django.db.models import Sum as DjSum
+            agg = queryset.values(
+                'location__parent__parent__name',
+                'location__parent__name',
+                'location__name',
+            ).annotate(
+                a_men=Coalesce(DjSum('male_participants'), 0),
+                a_women=Coalesce(DjSum('female_participants'), 0),
+                a_twa=Coalesce(DjSum('twa_participants'), 0),
+            ).order_by('location__parent__parent__name', 'location__parent__name', 'location__name')
+
+            row = data_start_row
+            for rec in agg:
+                ws.cell(row=row, column=1, value=rec['location__parent__parent__name'] or '')
+                ws.cell(row=row, column=2, value=rec['location__parent__name'] or '')
+                ws.cell(row=row, column=3, value=rec['location__name'] or '')
+                # Planned columns left empty (no planned data in these models)
+                ws.cell(row=row, column=8, value=rec['a_men'])
+                ws.cell(row=row, column=9, value=rec['a_women'])
+                ws.cell(row=row, column=10, value=rec['a_men'] + rec['a_women'])
+                ws.cell(row=row, column=11, value=rec['a_twa'])
+                row += 1
+            return row
+
+        # ── Sheet 1: Sous-composante 1.1 (El Nino crisis transfers) ──
+        ws1 = wb.create_sheet('1.1 Transferts El Nino')
+        data_row = _style_sheet(
+            ws1,
+            '1. Sous-composante 1.1 : Transferts monétaires pour la réponse aux crises '
+            'éligibles aux ménages affectés par le phénomène El Nino',
+            'Ménages appuyés',
+        )
+        transfers_11 = MonetaryTransfer.objects.filter(
+            loc_filter, date_filter, programme__code='1.1',
+        ).select_related('location__parent__parent')
+        _add_transfer_data(ws1, transfers_11, data_row)
+
+        # ── Sheet 2: Sous-composante 1.2 (ordinary transfers) ──
+        ws2 = wb.create_sheet('1.2 Transferts ordinaires')
+        data_row = _style_sheet(
+            ws2,
+            '2. Sous-composante 1.2 : Transferts monétaires aux bénéficiaires ordinaires',
+            'Bénéficiaires payés',
+        )
+        transfers_12 = MonetaryTransfer.objects.filter(
+            loc_filter, date_filter, programme__code='1.2',
+        ).select_related('location__parent__parent')
+        _add_transfer_data(ws2, transfers_12, data_row)
+
+        # ── Sheet 3: Sous-composante 1.3 (behavior change) ──
+        ws3 = wb.create_sheet('1.3 Changement comportement')
+        data_row = _style_sheet(
+            ws3,
+            '3. Sous-composante 1.3 : Mesures d\'accompagnement pour le changement de '
+            'comportement pour les investissements dans le capital humain',
+            'Bénéficiaires atteints',
+        )
+        bcp = BehaviorChangePromotion.objects.filter(
+            loc_filter, activity_date_filter,
+        ).select_related('location__parent__parent')
+        _add_activity_data(ws3, bcp, data_row)
+
+        # ── Sheet 4: Composante 2 (productive inclusion / micro-projects) ──
+        ws4 = wb.create_sheet('2 Inclusion productive')
+        data_row = _style_sheet(
+            ws4,
+            '4. Composante 2 : Inclusion productive',
+            'Bénéficiaires atteints',
+        )
+        mp = MicroProject.objects.filter(
+            loc_filter, activity_date_filter,
+        ).select_related('location__parent__parent')
+        _add_activity_data(ws4, mp, data_row)
+
+        # ── Sheet 5: Composante 4 (host communities) ──
+        ws5 = wb.create_sheet('4 Communautés accueil')
+        data_row = _style_sheet(
+            ws5,
+            '5. Composante 4 : Intégration des communautés d\'accueil dans les '
+            'systèmes nationaux de protection sociale',
+            'Bénéficiaires payés',
+        )
+        transfers_host = MonetaryTransfer.objects.filter(
+            loc_filter, date_filter,
+            location__parent__name__in=HOST_COMMUNES,
+        ).select_related('location__parent__parent')
+        _add_transfer_data(ws5, transfers_host, data_row)
+
+        # ── Save and return response ──
+        excel_file = BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'rapport_sous_composantes_{timestamp}.xlsx'
+        response = HttpResponse(
+            excel_file.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @classmethod
     def _create_excel_file(cls, df, sheet_name, filename_prefix):
         """Create formatted Excel file from DataFrame"""
         
