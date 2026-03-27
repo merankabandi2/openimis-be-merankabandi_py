@@ -6,10 +6,13 @@ child locations, programs, payment history, and households.
 """
 
 import json as _json
+import logging
 
 from django.db import connection
 from django.core.cache import cache
 from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class GeographyService:
@@ -167,14 +170,9 @@ class GeographyService:
 
         # Household + individual counts
         group_params = [location_id]
-        bp_group_join = ''
-        bp_group_cond = ''
+        gb_extra_cond = ''
         if benefit_plan_id:
-            bp_group_join = """
-                LEFT JOIN social_protection_groupbeneficiary gb_bp
-                    ON gb_bp.group_id = g."UUID" AND gb_bp."isDeleted" = false
-            """
-            bp_group_cond = 'AND gb_bp.benefit_plan_id = %s'
+            gb_extra_cond = 'AND gb.benefit_plan_id = %s'
             group_params.append(benefit_plan_id)
 
         household_query = f"""
@@ -183,14 +181,13 @@ class GeographyService:
                 COUNT(DISTINCT gi.individual_id) AS total_individuals,
                 COUNT(DISTINCT gb.id) AS total_beneficiaries
             FROM individual_group g
-            {bp_group_join}
             LEFT JOIN individual_groupindividual gi
                 ON gi.group_id = g."UUID" AND gi."isDeleted" = false
             LEFT JOIN social_protection_groupbeneficiary gb
                 ON gb.group_id = g."UUID" AND gb."isDeleted" = false
+                {gb_extra_cond}
             WHERE {group_where}
               AND g."isDeleted" = false
-              {bp_group_cond}
         """
 
         with connection.cursor() as cursor:
@@ -225,7 +222,8 @@ class GeographyService:
             with connection.cursor() as cursor:
                 cursor.execute(payment_query, payment_params)
                 pay = cls._dictfetchone(cursor)
-        except Exception:
+        except Exception as e:
+            logger.warning("Geography query failed: %s", e)
             pay = {}
 
         total_amount_disbursed = cls._safe_float(pay.get('total_amount_disbursed'))
@@ -328,6 +326,7 @@ class GeographyService:
         child_ids = [r['id'] for r in children_rows]
         payment_map = {}
         if child_ids:
+            assert payment_level in ('province_id', 'commune_id', 'colline_id'), f"Invalid payment_level: {payment_level}"
             placeholders = ','.join(['%s'] * len(child_ids))
             payment_conditions = [f'p.{payment_level} IN ({placeholders})']
             payment_params = list(child_ids)
@@ -352,8 +351,8 @@ class GeographyService:
                     cursor.execute(pay_query, payment_params)
                     for row in cls._dictfetchall(cursor):
                         payment_map[row['loc_id']] = cls._safe_float(row['total_amount_disbursed'])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Geography query failed: %s", e)
 
         children = []
         for r in children_rows:
@@ -438,64 +437,53 @@ class GeographyService:
             cursor.execute(query, params)
             rows = cls._dictfetchall(cursor)
 
-        # Fetch disbursed amounts per program
+        # Fetch disbursed amounts and cycle counts for all programs in one query
+        programme_ids = [str(r['id']) for r in rows if r.get('id')]
+        payment_lookup = {}
+        if programme_ids:
+            if location_type == 'D':
+                pay_loc_where = 'p.province_id = %s'
+            elif location_type == 'W':
+                pay_loc_where = 'p.commune_id = %s'
+            else:
+                pay_loc_where = 'p.colline_id = %s'
+
+            placeholders = ','.join(['%s'] * len(programme_ids))
+            batch_query = f"""
+                SELECT
+                    p.programme_id,
+                    COALESCE(SUM(p.total_amount_paid), 0) AS amount,
+                    COUNT(DISTINCT (p.year, p.quarter)) AS cycle_count
+                FROM payment_reporting_unified_summary p
+                WHERE {pay_loc_where}
+                  AND p.programme_id::text IN ({placeholders})
+                GROUP BY p.programme_id
+            """
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(batch_query, [location_id] + programme_ids)
+                    for pay_row in cls._dictfetchall(cursor):
+                        pid = str(pay_row['programme_id']) if pay_row.get('programme_id') else None
+                        if pid:
+                            payment_lookup[pid] = {
+                                'amount': cls._safe_float(pay_row.get('amount')),
+                                'cycle_count': cls._safe_int(pay_row.get('cycle_count')),
+                            }
+            except Exception as e:
+                logger.warning("Geography query failed: %s", e)
+
         programs = []
         for r in rows:
             program_id = str(r['id']) if r.get('id') else None
-
-            # Get amount disbursed for this program at this location
-            amt = 0.0
-            if program_id:
-                if location_type == 'D':
-                    pay_where = 'p.province_id = %s'
-                elif location_type == 'W':
-                    pay_where = 'p.commune_id = %s'
-                else:
-                    pay_where = 'p.colline_id = %s'
-
-                pay_query = f"""
-                    SELECT COALESCE(SUM(p.total_amount_paid), 0) AS amount
-                    FROM payment_reporting_unified_summary p
-                    WHERE {pay_where} AND p.programme_id = %s
-                """
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(pay_query, [location_id, program_id])
-                        pay_row = cls._dictfetchone(cursor)
-                        amt = cls._safe_float(pay_row.get('amount'))
-                except Exception:
-                    pass
-
-            cycle_count = 0
-            if program_id:
-                if location_type == 'D':
-                    cyc_where = 'p.province_id = %s'
-                elif location_type == 'W':
-                    cyc_where = 'p.commune_id = %s'
-                else:
-                    cyc_where = 'p.colline_id = %s'
-
-                cyc_query = f"""
-                    SELECT COUNT(DISTINCT (p.year, p.quarter)) AS cnt
-                    FROM payment_reporting_unified_summary p
-                    WHERE {cyc_where} AND p.programme_id = %s
-                """
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(cyc_query, [location_id, program_id])
-                        cyc_row = cls._dictfetchone(cursor)
-                        cycle_count = cls._safe_int(cyc_row.get('cnt'))
-                except Exception:
-                    pass
-
+            pay_data = payment_lookup.get(program_id, {})
             programs.append({
                 'id': program_id,
                 'name': r.get('name'),
                 'code': r.get('code'),
                 'beneficiary_count': cls._safe_int(r.get('beneficiary_count')),
                 'household_count': cls._safe_int(r.get('household_count')),
-                'amount_disbursed': amt,
-                'cycle_count': cycle_count,
+                'amount_disbursed': pay_data.get('amount', 0.0),
+                'cycle_count': pay_data.get('cycle_count', 0),
                 'status': r.get('status', ''),
             })
 
@@ -544,7 +532,8 @@ class GeographyService:
             with connection.cursor() as cursor:
                 cursor.execute(query, params)
                 rows = cls._dictfetchall(cursor)
-        except Exception:
+        except Exception as e:
+            logger.warning("Geography query failed: %s", e)
             rows = []
 
         history = []
@@ -655,14 +644,9 @@ class GeographyService:
             return []
 
         params = [location_id]
-        bp_join = ''
-        bp_cond = ''
+        gb_extra_cond = ''
         if benefit_plan_id:
-            bp_join = """
-                LEFT JOIN social_protection_groupbeneficiary gb
-                    ON gb.group_id = g."UUID" AND gb."isDeleted" = false
-            """
-            bp_cond = 'AND gb.benefit_plan_id = %s'
+            gb_extra_cond = 'AND gb.benefit_plan_id = %s'
             params.append(benefit_plan_id)
 
         query = f"""
@@ -672,7 +656,7 @@ class GeographyService:
                 head_ind."LastName" AS head_last_name,
                 head_ind."OtherNames" AS head_other_names,
                 COUNT(DISTINCT gi_all.individual_id) AS member_count,
-                gb_any.status AS status
+                COALESCE(MAX(gb.status), 'UNKNOWN') AS status
             FROM individual_group g
             LEFT JOIN individual_groupindividual gi_head
                 ON gi_head.group_id = g."UUID"
@@ -684,16 +668,14 @@ class GeographyService:
             LEFT JOIN individual_groupindividual gi_all
                 ON gi_all.group_id = g."UUID"
                 AND gi_all."isDeleted" = false
-            LEFT JOIN social_protection_groupbeneficiary gb_any
-                ON gb_any.group_id = g."UUID"
-                AND gb_any."isDeleted" = false
-            {bp_join}
+            LEFT JOIN social_protection_groupbeneficiary gb
+                ON gb.group_id = g."UUID"
+                AND gb."isDeleted" = false
+                {gb_extra_cond}
             WHERE g.location_id = %s
               AND g."isDeleted" = false
-              {bp_cond}
             GROUP BY g."UUID", g."Json_ext",
-                     head_ind."LastName", head_ind."OtherNames",
-                     gb_any.status
+                     head_ind."LastName", head_ind."OtherNames"
             ORDER BY head_ind."LastName", head_ind."OtherNames"
         """
 
@@ -891,8 +873,8 @@ class GeographyService:
                         'total_amount_disbursed': cls._safe_float(row['total_amount_disbursed']),
                         'payment_cycle_count': cls._safe_int(row['payment_cycle_count']),
                     }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Geography query failed: %s", e)
 
         # Get agency count per province
         agency_query = """
@@ -910,8 +892,8 @@ class GeographyService:
                 cursor.execute(agency_query)
                 for row in cls._dictfetchall(cursor):
                     agency_map[row['province_id']] = cls._safe_int(row['agency_count'])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Geography query failed: %s", e)
 
         provinces = []
         for r in province_rows:
