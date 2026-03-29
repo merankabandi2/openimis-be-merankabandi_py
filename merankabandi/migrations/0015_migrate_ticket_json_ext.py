@@ -8,7 +8,7 @@ def migrate_ticket_fields_to_json_ext(apps, schema_editor):
         cursor.execute(
             """
             SELECT
-                id,
+                "UUID",
                 "Json_ext",
                 reporter_name,
                 reporter_phone,
@@ -56,7 +56,7 @@ def migrate_ticket_fields_to_json_ext(apps, schema_editor):
         updated = 0
         for row in rows:
             data = dict(zip(columns, row))
-            ticket_id = data['id']
+            ticket_id = data['UUID']
 
             existing_json_ext = data.get('Json_ext') or {}
             if isinstance(existing_json_ext, str):
@@ -122,7 +122,7 @@ def migrate_ticket_fields_to_json_ext(apps, schema_editor):
             merged = {**new_json_ext, **existing_json_ext}
 
             cursor.execute(
-                'UPDATE grievance_social_protection_ticket SET "Json_ext" = %s WHERE id = %s',
+                'UPDATE grievance_social_protection_ticket SET "Json_ext" = %s WHERE "UUID" = %s',
                 [json.dumps(merged), ticket_id],
             )
             updated += 1
@@ -141,7 +141,7 @@ def reverse_migrate_ticket_fields(apps, schema_editor):
     ]
     with schema_editor.connection.cursor() as cursor:
         cursor.execute(
-            'SELECT id, "Json_ext" FROM grievance_social_protection_ticket WHERE "isDeleted" = false'
+            'SELECT "UUID", "Json_ext" FROM grievance_social_protection_ticket WHERE "isDeleted" = false'
         )
         rows = cursor.fetchall()
         for ticket_id, json_ext in rows:
@@ -155,7 +155,7 @@ def reverse_migrate_ticket_fields(apps, schema_editor):
             for key in keys_to_remove:
                 json_ext.pop(key, None)
             cursor.execute(
-                'UPDATE grievance_social_protection_ticket SET "Json_ext" = %s WHERE id = %s',
+                'UPDATE grievance_social_protection_ticket SET "Json_ext" = %s WHERE "UUID" = %s',
                 [json.dumps(json_ext), ticket_id],
             )
 
@@ -164,7 +164,8 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('merankabandi', '0014_workflow_models'),
-        ('grievance_social_protection', '0019_historicalticket_account_detail_and_more'),
+        # grievance_social_protection 0019 is already applied (added custom columns)
+        # Dependency removed because editable install doesn't expose migration files
     ]
 
     operations = [
