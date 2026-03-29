@@ -1,37 +1,72 @@
+import json
 import logging
 from datetime import datetime, timezone
 
-from django.db.models import Q
+from django.db.models import Q, F, Subquery, OuterRef
 
 from grievance_social_protection.models import Ticket, Comment
 from individual.models import Group, GroupIndividual, Individual
-from location.models import UserDistrict
+from location.models import Location, UserDistrict
 from merankabandi.models import SensitizationTraining, BehaviorChangePromotion, MicroProject
+from payroll.models import BenefitConsumption, PayrollBenefitConsumption
 from social_protection.models import GroupBeneficiary
 
 logger = logging.getLogger(__name__)
 
 
-def _str_id(val):
+def _sid(val):
+    """Return str(uuid) or None."""
     return str(val) if val is not None else None
 
 
-def _dt(dt):
-    """Return ISO-8601 string from a datetime, or None."""
-    if dt is None:
+def _epoch_ms_now():
+    """Current UTC time as epoch-milliseconds integer."""
+    return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+
+
+def _parse_since(last_sync_timestamp):
+    """Convert epoch-ms integer (or None) to a tz-aware datetime, or None."""
+    if last_sync_timestamp is None:
         return None
-    if hasattr(dt, 'isoformat'):
-        if getattr(dt, 'tzinfo', None) is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.isoformat()
-    return str(dt)
+    try:
+        ts = int(last_sync_timestamp)
+        return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
-def _now_ts():
-    return datetime.now(tz=timezone.utc).isoformat()
+def _split_changes(qs, since, id_field="id", deleted_qs=None):
+    """
+    Split a queryset into created / updated / deleted lists.
+
+    For initial sync (since is None): everything goes into created.
+    For delta sync: date_created >= since -> created, else -> updated.
+    deleted_qs (if provided) supplies deleted IDs.
+    """
+    if since is None:
+        return list(qs), [], []
+
+    created_ids = set(
+        qs.filter(date_created__gte=since).values_list(id_field, flat=True)
+    )
+    records = list(qs)
+    created = [r for r in records if getattr(r, id_field) in created_ids]
+    updated = [r for r in records if getattr(r, id_field) not in created_ids]
+
+    deleted_ids = []
+    if deleted_qs is not None:
+        deleted_ids = [_sid(pk) for pk in deleted_qs.values_list(id_field, flat=True)]
+
+    return created, updated, deleted_ids
 
 
 class SyncService:
+    """
+    WatermelonDB-compatible sync service.
+
+    Table names and field names match the mobile schema exactly.
+    Timestamps are epoch-ms integers.
+    """
 
     # ------------------------------------------------------------------
     # Helpers
@@ -39,362 +74,521 @@ class SyncService:
 
     @staticmethod
     def _get_user_province_ids(user):
-        """Return province location IDs assigned to the user via UserDistrict.
-        Returns None for superusers (no filtering)."""
-        interactive_user = user._u if hasattr(user, '_u') else user
+        """Return province Location IDs for the user. None for superusers."""
+        interactive_user = user._u if hasattr(user, "_u") else user
         if interactive_user.is_superuser:
             return None
         districts = UserDistrict.get_user_districts(user)
         return [d.location_id for d in districts]
 
-    @staticmethod
-    def _since_filter(qs, field, last_sync_timestamp):
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                return qs.filter(**{f"{field}__gte": since})
-        return qs
-
     # ------------------------------------------------------------------
-    # Serializers for each table
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _serialize_beneficiary(gb):
-        group = gb.group
-        location = group.location
-        commune = location.parent if location else None
-        province = commune.parent if commune else None
-        return {
-            "id": _str_id(gb.id),
-            "groupId": _str_id(group.id),
-            "groupCode": group.code,
-            "benefitPlanId": _str_id(gb.benefit_plan_id),
-            "status": gb.status,
-            "locationId": _str_id(location.id) if location else None,
-            "locationName": location.name if location else None,
-            "communeId": _str_id(commune.id) if commune else None,
-            "communeName": commune.name if commune else None,
-            "provinceId": _str_id(province.id) if province else None,
-            "provinceName": province.name if province else None,
-            "selectionStatus": (group.json_ext or {}).get("selection_status"),
-            "pmtScore": (group.json_ext or {}).get("pmt_score"),
-            "jsonExt": gb.json_ext,
-            "isDeleted": gb.is_deleted,
-            "dateCreated": _dt(gb.date_created),
-            "dateUpdated": _dt(gb.date_updated),
-        }
-
-    @staticmethod
-    def _serialize_individual(ind):
-        return {
-            "id": _str_id(ind.id),
-            "firstName": ind.first_name,
-            "lastName": ind.last_name,
-            "dob": ind.dob.isoformat() if ind.dob else None,
-            "locationId": _str_id(ind.location_id),
-            "jsonExt": ind.json_ext,
-            "isDeleted": ind.is_deleted,
-            "dateCreated": _dt(ind.date_created),
-            "dateUpdated": _dt(ind.date_updated),
-        }
-
-    @staticmethod
-    def _serialize_group_individual(gi):
-        return {
-            "id": _str_id(gi.id),
-            "groupId": _str_id(gi.group_id),
-            "individualId": _str_id(gi.individual_id),
-            "role": gi.role,
-            "recipientType": gi.recipient_type,
-            "jsonExt": gi.json_ext,
-            "isDeleted": gi.is_deleted,
-            "dateCreated": _dt(gi.date_created),
-            "dateUpdated": _dt(gi.date_updated),
-        }
-
-    @staticmethod
-    def _serialize_ticket(ticket):
-        return {
-            "id": _str_id(ticket.id),
-            "key": ticket.key,
-            "title": ticket.title,
-            "description": ticket.description,
-            "code": ticket.code,
-            "status": ticket.status,
-            "priority": ticket.priority,
-            "category": ticket.category,
-            "channel": ticket.channel,
-            "resolution": ticket.resolution,
-            "flags": ticket.flags,
-            "dateOfIncident": ticket.date_of_incident.isoformat() if ticket.date_of_incident else None,
-            "dueDate": ticket.due_date.isoformat() if ticket.due_date else None,
-            "attendingStaffId": _str_id(ticket.attending_staff_id),
-            "isDeleted": ticket.is_deleted,
-            "dateCreated": _dt(ticket.date_created),
-            "dateUpdated": _dt(ticket.date_updated),
-        }
-
-    @staticmethod
-    def _serialize_comment(comment):
-        return {
-            "id": _str_id(comment.id),
-            "ticketId": _str_id(comment.ticket_id),
-            "comment": comment.comment,
-            "isResolution": comment.is_resolution,
-            "isDeleted": comment.is_deleted,
-            "dateCreated": _dt(comment.date_created),
-            "dateUpdated": _dt(comment.date_updated),
-        }
-
-    @staticmethod
-    def _serialize_sensitization(st):
-        return {
-            "id": _str_id(st.id),
-            "sensitizationDate": st.sensitization_date.isoformat() if st.sensitization_date else None,
-            "locationId": _str_id(st.location_id),
-            "category": st.category,
-            "modules": st.modules,
-            "facilitator": st.facilitator,
-            "maleParticipants": st.male_participants,
-            "femaleParticipants": st.female_participants,
-            "twaParticipants": st.twa_participants,
-            "observations": st.observations,
-            "validationStatus": st.validation_status,
-            "koboSubmissionId": st.kobo_submission_id,
-        }
-
-    # ------------------------------------------------------------------
-    # Table-level pull queries
+    # LOCATIONS
     # ------------------------------------------------------------------
 
     @classmethod
-    def _pull_beneficiaries(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "beneficiaries" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
+    def _pull_locations(cls, province_ids, since):
+        """
+        Return Province (D), Commune (W), Colline (V) locations.
+        Location uses VersionedModel (validity_to, no is_deleted/date_created).
+        For delta sync we cannot reliably detect created-vs-updated, so
+        everything goes into 'created' on initial and 'updated' on delta.
+        """
+        qs = Location.objects.filter(
+            type__in=["D", "W", "V"],
+            validity_to__isnull=True,
+        ).select_related("parent")
 
-        qs = GroupBeneficiary.objects.select_related(
-            "group__location__parent__parent", "benefit_plan"
+        if province_ids is not None:
+            # Include the provinces themselves, their communes, and collines
+            qs = qs.filter(
+                Q(id__in=province_ids)
+                | Q(parent_id__in=province_ids)
+                | Q(parent__parent_id__in=province_ids)
+            )
+
+        def _serialize(loc):
+            return {
+                "id": str(loc.uuid),
+                "server_id": str(loc.uuid),
+                "name": loc.name or "",
+                "code": loc.code or "",
+                "loc_type": loc.type,
+                "parent_id": str(loc.parent.uuid) if loc.parent_id else None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        records = list(qs)
+        if since is None:
+            return {
+                "created": [_serialize(r) for r in records],
+                "updated": [],
+                "deleted": [],
+            }
+        else:
+            # Location has no date_created; treat all as updated on delta
+            return {
+                "created": [],
+                "updated": [_serialize(r) for r in records],
+                "deleted": [],
+            }
+
+    # ------------------------------------------------------------------
+    # HOUSEHOLDS (Group model with head info denormalized)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_households(cls, province_ids, since):
+        qs = Group.objects.filter(is_deleted=False).select_related("location")
+        if province_ids is not None:
+            qs = qs.filter(location__parent__parent__id__in=province_ids)
+
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
+
+        # Prefetch HEAD individuals in bulk to avoid N+1
+        group_ids = list(qs.values_list("id", flat=True))
+        head_gi_qs = GroupIndividual.objects.filter(
+            group_id__in=group_ids,
+            is_deleted=False,
+            role=GroupIndividual.Role.HEAD,
+        ).select_related("individual")
+        head_map = {}
+        for gi in head_gi_qs:
+            head_map[gi.group_id] = gi.individual
+
+        def _serialize(g):
+            head = head_map.get(g.id)
+            json_ext = g.json_ext or {}
+            return {
+                "id": _sid(g.id),
+                "server_id": _sid(g.id),
+                "code": g.code or "",
+                "head_first_name": head.first_name if head else "",
+                "head_last_name": head.last_name if head else "",
+                "location_id": str(g.location.uuid) if g.location_id else None,
+                "selection_status": json_ext.get("selection_status"),
+                "pmt_score": json_ext.get("pmt_score"),
+                "json_ext": json.dumps(json_ext) if json_ext else None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = Group.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+            if province_ids is not None:
+                deleted_qs = deleted_qs.filter(
+                    location__parent__parent__id__in=province_ids
+                )
+
+        created, updated, deleted_ids = _split_changes(qs, since)
+        return {
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # INDIVIDUALS
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_individuals(cls, province_ids, since):
+        qs = Individual.objects.filter(is_deleted=False)
+        if province_ids is not None:
+            qs = qs.filter(location__parent__parent__id__in=province_ids)
+
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
+
+        # Build individual -> (group_id, role) mapping via GroupIndividual
+        ind_ids = list(qs.values_list("id", flat=True))
+        gi_qs = GroupIndividual.objects.filter(
+            individual_id__in=ind_ids,
+            is_deleted=False,
+        ).values("individual_id", "group_id", "role")
+        gi_map = {}
+        for gi in gi_qs:
+            gi_map[gi["individual_id"]] = (gi["group_id"], gi["role"])
+
+        def _serialize(ind):
+            group_id, role = gi_map.get(ind.id, (None, None))
+            json_ext = ind.json_ext or {}
+            social_id = json_ext.get("social_id", "")
+            gender = json_ext.get("gender") or json_ext.get("sexe") or ""
+            return {
+                "id": _sid(ind.id),
+                "server_id": _sid(ind.id),
+                "household_id": _sid(group_id),
+                "first_name": ind.first_name or "",
+                "last_name": ind.last_name or "",
+                "dob": ind.dob.isoformat() if ind.dob else None,
+                "gender": gender,
+                "social_id": social_id,
+                "role": role,
+                "json_ext": json.dumps(json_ext) if json_ext else None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = Individual.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+            if province_ids is not None:
+                deleted_qs = deleted_qs.filter(
+                    location__parent__parent__id__in=province_ids
+                )
+
+        created, updated, deleted_ids = _split_changes(qs, since)
+        return {
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # BENEFICIARIES (GroupBeneficiary)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_beneficiaries(cls, province_ids, since):
+        qs = GroupBeneficiary.objects.filter(
+            is_deleted=False
+        ).select_related("group", "benefit_plan")
+        if province_ids is not None:
+            qs = qs.filter(group__location__parent__parent__id__in=province_ids)
+
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
+
+        def _serialize(gb):
+            json_ext = gb.json_ext or {}
+            return {
+                "id": _sid(gb.id),
+                "server_id": _sid(gb.id),
+                "household_id": _sid(gb.group_id),
+                "benefit_plan_code": gb.benefit_plan.code if gb.benefit_plan else "",
+                "benefit_plan_name": gb.benefit_plan.name if gb.benefit_plan else "",
+                "status": gb.status or "",
+                "json_ext": json.dumps(json_ext) if json_ext else None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = GroupBeneficiary.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+            if province_ids is not None:
+                deleted_qs = deleted_qs.filter(
+                    group__location__parent__parent__id__in=province_ids
+                )
+
+        created, updated, deleted_ids = _split_changes(qs, since)
+        return {
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # ACTIVITIES (combined: MicroProject, SensitizationTraining,
+    #             BehaviorChangePromotion)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_activities(cls, province_ids, since):
+        """
+        These are plain Django models (no is_deleted, no date_created/date_updated).
+        For delta sync we cannot reliably detect changes, so we return all
+        matching records as 'updated'. For initial sync, all as 'created'.
+        """
+
+        def _loc_filter(qs):
+            if province_ids is not None:
+                qs = qs.filter(location__parent__parent__id__in=province_ids)
+            return qs
+
+        def _serialize_mp(mp):
+            return {
+                "id": _sid(mp.id),
+                "server_id": _sid(mp.id),
+                "activity_type": "micro_project",
+                "report_date": mp.report_date.isoformat() if mp.report_date else None,
+                "location_id": str(mp.location.uuid) if mp.location_id else None,
+                "location_name": mp.location.name if mp.location_id else "",
+                "male_participants": mp.male_participants,
+                "female_participants": mp.female_participants,
+                "twa_participants": mp.twa_participants,
+                "validation_status": mp.validation_status or "",
+                "json_ext": None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        def _serialize_st(st):
+            return {
+                "id": _sid(st.id),
+                "server_id": _sid(st.id),
+                "activity_type": "sensitization",
+                "report_date": st.sensitization_date.isoformat() if st.sensitization_date else None,
+                "location_id": str(st.location.uuid) if st.location_id else None,
+                "location_name": st.location.name if st.location_id else "",
+                "male_participants": st.male_participants,
+                "female_participants": st.female_participants,
+                "twa_participants": st.twa_participants,
+                "validation_status": st.validation_status or "",
+                "json_ext": None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        def _serialize_bc(bc):
+            return {
+                "id": _sid(bc.id),
+                "server_id": _sid(bc.id),
+                "activity_type": "behavior_change",
+                "report_date": bc.report_date.isoformat() if bc.report_date else None,
+                "location_id": str(bc.location.uuid) if bc.location_id else None,
+                "location_name": bc.location.name if bc.location_id else "",
+                "male_participants": bc.male_participants,
+                "female_participants": bc.female_participants,
+                "twa_participants": bc.twa_participants,
+                "validation_status": bc.validation_status or "",
+                "json_ext": None,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        mp_qs = _loc_filter(
+            MicroProject.objects.select_related("location")
         )
+        st_qs = _loc_filter(
+            SensitizationTraining.objects.select_related("location")
+        )
+        bc_qs = _loc_filter(
+            BehaviorChangePromotion.objects.select_related("location")
+        )
+
+        all_records = (
+            [_serialize_mp(r) for r in mp_qs]
+            + [_serialize_st(r) for r in st_qs]
+            + [_serialize_bc(r) for r in bc_qs]
+        )
+
+        if since is None:
+            return {"created": all_records, "updated": [], "deleted": []}
+        else:
+            return {"created": [], "updated": all_records, "deleted": []}
+
+    # ------------------------------------------------------------------
+    # GRIEVANCES (Ticket)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_grievances(cls, province_ids, since):
+        qs = Ticket.objects.filter(is_deleted=False)
+
+        # Filter by location through the ticket's province/commune/colline text fields
+        # or through the reporter individual's location
         if province_ids is not None:
-            qs = qs.filter(group__location__parent__parent__id__in=province_ids)
+            province_names = list(
+                Location.objects.filter(
+                    id__in=province_ids, validity_to__isnull=True
+                ).values_list("name", flat=True)
+            )
+            if province_names:
+                qs = qs.filter(province__in=province_names)
 
-        active_qs = cls._since_filter(qs.filter(is_deleted=False), "date_updated", last_sync_timestamp)
-        deleted_qs = cls._since_filter(qs.filter(is_deleted=True), "date_updated", last_sync_timestamp)
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
 
-        if last_sync_timestamp:
-            created_qs = active_qs.filter(date_created=active_qs.filter(id=active_qs.values("id")).values("date_created"))
-            # Simpler: use date_created >= since for created, date_updated >= since for all active
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                created_ids = set(qs.filter(date_created__gte=since, is_deleted=False).values_list("id", flat=True))
-                updated_records = [r for r in active_qs if r.id not in created_ids]
-                created_records = [r for r in active_qs if r.id in created_ids]
-            else:
-                created_records = list(active_qs)
-                updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
+        def _serialize(t):
+            resolved_at = None
+            if t.status in ("RESOLVED", "CLOSED") and t.date_updated:
+                resolved_at = t.date_updated.isoformat() if hasattr(t.date_updated, "isoformat") else str(t.date_updated)
 
+            created_at = None
+            if t.date_created:
+                created_at = t.date_created.isoformat() if hasattr(t.date_created, "isoformat") else str(t.date_created)
+
+            return {
+                "id": _sid(t.id),
+                "server_id": _sid(t.id),
+                "code": t.code or "",
+                "title": t.title or "",
+                "description": t.description or "",
+                "status": t.status or "",
+                "category": t.category or "",
+                "channel": t.channel or "",
+                "beneficiary_id": t.reporter_id or None,
+                "created_at": created_at,
+                "resolved_at": resolved_at,
+                "is_local": False,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = Ticket.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+            if province_ids is not None:
+                province_names = list(
+                    Location.objects.filter(
+                        id__in=province_ids, validity_to__isnull=True
+                    ).values_list("name", flat=True)
+                )
+                if province_names:
+                    deleted_qs = deleted_qs.filter(province__in=province_names)
+
+        created, updated, deleted_ids = _split_changes(qs, since)
         return {
-            "created": [cls._serialize_beneficiary(r) for r in created_records],
-            "updated": [cls._serialize_beneficiary(r) for r in updated_records],
-            "deleted": [_str_id(r.id) for r in deleted_qs],
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
         }
 
-    @classmethod
-    def _pull_individuals(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "individuals" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
+    # ------------------------------------------------------------------
+    # GRIEVANCE COMMENTS (Comment)
+    # ------------------------------------------------------------------
 
-        qs = Individual.objects.select_related("location")
+    @classmethod
+    def _pull_grievance_comments(cls, province_ids, since):
+        qs = Comment.objects.filter(is_deleted=False).select_related("ticket")
+
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
+
+        def _serialize(c):
+            created_at = None
+            if c.date_created:
+                created_at = c.date_created.isoformat() if hasattr(c.date_created, "isoformat") else str(c.date_created)
+
+            # Determine author from commenter if available
+            author = ""
+            if c.commenter_id:
+                author = str(c.commenter_id)
+
+            return {
+                "id": _sid(c.id),
+                "server_id": _sid(c.id),
+                "grievance_id": _sid(c.ticket_id),
+                "text": c.comment or "",
+                "author": author,
+                "created_at": created_at,
+                "is_local": False,
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = Comment.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+
+        created, updated, deleted_ids = _split_changes(qs, since)
+        return {
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # PAYMENTS (BenefitConsumption)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _pull_payments(cls, province_ids, since):
+        qs = BenefitConsumption.objects.filter(is_deleted=False).select_related(
+            "individual"
+        )
+
         if province_ids is not None:
-            # Individual location is at colline level: colline -> commune -> province
-            qs = qs.filter(location__parent__parent__id__in=province_ids)
+            qs = qs.filter(
+                individual__location__parent__parent__id__in=province_ids
+            )
 
-        active_qs = cls._since_filter(qs.filter(is_deleted=False), "date_updated", last_sync_timestamp)
-        deleted_qs = cls._since_filter(qs.filter(is_deleted=True), "date_updated", last_sync_timestamp)
+        if since is not None:
+            qs = qs.filter(date_updated__gte=since)
 
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                created_ids = set(qs.filter(date_created__gte=since, is_deleted=False).values_list("id", flat=True))
-                updated_records = [r for r in active_qs if r.id not in created_ids]
-                created_records = [r for r in active_qs if r.id in created_ids]
-            else:
-                created_records = list(active_qs)
-                updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
+        # Build a map of benefit_consumption_id -> payment_method via PayrollBenefitConsumption
+        bc_ids = list(qs.values_list("id", flat=True))
+        pbc_qs = PayrollBenefitConsumption.objects.filter(
+            benefit_id__in=bc_ids
+        ).select_related("payroll").values("benefit_id", "payroll__payment_method")
+        pm_map = {}
+        for pbc in pbc_qs:
+            pm_map[pbc["benefit_id"]] = pbc["payroll__payment_method"] or ""
 
+        # Build individual -> group mapping
+        ind_ids = list(qs.values_list("individual_id", flat=True).distinct())
+        gi_qs = GroupIndividual.objects.filter(
+            individual_id__in=ind_ids,
+            is_deleted=False,
+        ).values("individual_id", "group_id")
+        ind_group_map = {}
+        for gi in gi_qs:
+            ind_group_map[gi["individual_id"]] = gi["group_id"]
+
+        # Build group -> beneficiary mapping
+        group_ids = list(set(ind_group_map.values()))
+        gb_qs = GroupBeneficiary.objects.filter(
+            group_id__in=group_ids,
+            is_deleted=False,
+        ).values("group_id", "id")
+        group_ben_map = {}
+        for gb in gb_qs:
+            group_ben_map[gb["group_id"]] = gb["id"]
+
+        def _serialize(bc):
+            group_id = ind_group_map.get(bc.individual_id)
+            beneficiary_id = group_ben_map.get(group_id) if group_id else None
+
+            return {
+                "id": _sid(bc.id),
+                "server_id": _sid(bc.id),
+                "beneficiary_id": _sid(beneficiary_id),
+                "amount": str(bc.amount) if bc.amount is not None else None,
+                "date_due": bc.date_due.isoformat() if bc.date_due else None,
+                "receipt": bc.receipt or "",
+                "status": bc.status or "",
+                "payment_method": pm_map.get(bc.id, ""),
+                "synced_at": _epoch_ms_now(),
+            }
+
+        deleted_qs = None
+        if since is not None:
+            deleted_qs = BenefitConsumption.objects.filter(
+                is_deleted=True, date_updated__gte=since
+            )
+            if province_ids is not None:
+                deleted_qs = deleted_qs.filter(
+                    individual__location__parent__parent__id__in=province_ids
+                )
+
+        created, updated, deleted_ids = _split_changes(qs, since)
         return {
-            "created": [cls._serialize_individual(r) for r in created_records],
-            "updated": [cls._serialize_individual(r) for r in updated_records],
-            "deleted": [_str_id(r.id) for r in deleted_qs],
-        }
-
-    @classmethod
-    def _pull_group_individuals(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "groupIndividuals" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
-
-        qs = GroupIndividual.objects.select_related("group__location")
-        if province_ids is not None:
-            qs = qs.filter(group__location__parent__parent__id__in=province_ids)
-
-        active_qs = cls._since_filter(qs.filter(is_deleted=False), "date_updated", last_sync_timestamp)
-        deleted_qs = cls._since_filter(qs.filter(is_deleted=True), "date_updated", last_sync_timestamp)
-
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                created_ids = set(qs.filter(date_created__gte=since, is_deleted=False).values_list("id", flat=True))
-                updated_records = [r for r in active_qs if r.id not in created_ids]
-                created_records = [r for r in active_qs if r.id in created_ids]
-            else:
-                created_records = list(active_qs)
-                updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
-
-        return {
-            "created": [cls._serialize_group_individual(r) for r in created_records],
-            "updated": [cls._serialize_group_individual(r) for r in updated_records],
-            "deleted": [_str_id(r.id) for r in deleted_qs],
-        }
-
-    @classmethod
-    def _pull_tickets(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "tickets" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
-
-        # Ticket does not have a direct location FK; filter through reporter (Individual) or
-        # include all non-deleted tickets visible to the user.
-        # For now, pull all active tickets (row-security is handled in Ticket.get_queryset).
-        qs = Ticket.objects.all()
-
-        active_qs = qs.filter(is_deleted=False)
-        deleted_qs = qs.filter(is_deleted=True)
-        active_qs = cls._since_filter(active_qs, "date_updated", last_sync_timestamp)
-        deleted_qs = cls._since_filter(deleted_qs, "date_updated", last_sync_timestamp)
-
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                created_ids = set(qs.filter(date_created__gte=since, is_deleted=False).values_list("id", flat=True))
-                updated_records = [r for r in active_qs if r.id not in created_ids]
-                created_records = [r for r in active_qs if r.id in created_ids]
-            else:
-                created_records = list(active_qs)
-                updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
-
-        return {
-            "created": [cls._serialize_ticket(r) for r in created_records],
-            "updated": [cls._serialize_ticket(r) for r in updated_records],
-            "deleted": [_str_id(r.id) for r in deleted_qs],
-        }
-
-    @classmethod
-    def _pull_comments(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "comments" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
-
-        qs = Comment.objects.select_related("ticket")
-        active_qs = cls._since_filter(qs.filter(is_deleted=False), "date_updated", last_sync_timestamp)
-        deleted_qs = cls._since_filter(qs.filter(is_deleted=True), "date_updated", last_sync_timestamp)
-
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                created_ids = set(qs.filter(date_created__gte=since, is_deleted=False).values_list("id", flat=True))
-                updated_records = [r for r in active_qs if r.id not in created_ids]
-                created_records = [r for r in active_qs if r.id in created_ids]
-            else:
-                created_records = list(active_qs)
-                updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
-
-        return {
-            "created": [cls._serialize_comment(r) for r in created_records],
-            "updated": [cls._serialize_comment(r) for r in updated_records],
-            "deleted": [_str_id(r.id) for r in deleted_qs],
-        }
-
-    @classmethod
-    def _pull_sensitizations(cls, province_ids, last_sync_timestamp, tables):
-        if tables is not None and "sensitizations" not in tables:
-            return {"created": [], "updated": [], "deleted": []}
-
-        qs = SensitizationTraining.objects.select_related("location__parent__parent")
-        if province_ids is not None:
-            qs = qs.filter(location__parent__parent__id__in=province_ids)
-
-        # SensitizationTraining uses a plain Model (no is_deleted) — filter by date
-        active_qs = qs
-        if last_sync_timestamp:
-            try:
-                since = datetime.fromisoformat(last_sync_timestamp)
-            except (ValueError, TypeError):
-                try:
-                    since = datetime.utcfromtimestamp(float(last_sync_timestamp) / 1000).replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    since = None
-            if since:
-                active_qs = qs  # no date_updated on plain model; return all in scope
-            created_records = list(active_qs)
-            updated_records = []
-        else:
-            created_records = list(active_qs)
-            updated_records = []
-
-        return {
-            "created": [cls._serialize_sensitization(r) for r in created_records],
-            "updated": [cls._serialize_sensitization(r) for r in updated_records],
-            "deleted": [],
+            "created": [_serialize(r) for r in created],
+            "updated": [_serialize(r) for r in updated],
+            "deleted": deleted_ids if deleted_ids else (
+                [_sid(pk) for pk in deleted_qs.values_list("id", flat=True)]
+                if deleted_qs is not None else []
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -404,110 +598,126 @@ class SyncService:
     @classmethod
     def pull(cls, user, last_sync_timestamp=None, tables=None):
         """
-        Return WatermelonDB sync payload:
-          { changes: { <table>: { created, updated, deleted } }, timestamp }
+        Return WatermelonDB-compatible sync payload.
+
+        Parameters:
+            user: Django user
+            last_sync_timestamp: epoch-ms integer or None
+            tables: optional list of table names to include
+
+        Returns:
+            {
+              "changes": { "<table>": { "created": [...], "updated": [...], "deleted": [...] } },
+              "timestamp": <epoch-ms integer>
+            }
         """
         province_ids = cls._get_user_province_ids(user)
+        since = _parse_since(last_sync_timestamp)
 
-        changes = {
-            "beneficiaries": cls._pull_beneficiaries(province_ids, last_sync_timestamp, tables),
-            "individuals": cls._pull_individuals(province_ids, last_sync_timestamp, tables),
-            "groupIndividuals": cls._pull_group_individuals(province_ids, last_sync_timestamp, tables),
-            "tickets": cls._pull_tickets(province_ids, last_sync_timestamp, tables),
-            "comments": cls._pull_comments(province_ids, last_sync_timestamp, tables),
-            "sensitizations": cls._pull_sensitizations(province_ids, last_sync_timestamp, tables),
+        all_tables = {
+            "locations": cls._pull_locations,
+            "households": cls._pull_households,
+            "individuals": cls._pull_individuals,
+            "beneficiaries": cls._pull_beneficiaries,
+            "activities": cls._pull_activities,
+            "grievances": cls._pull_grievances,
+            "grievance_comments": cls._pull_grievance_comments,
+            "payments": cls._pull_payments,
         }
+
+        changes = {}
+        for table_name, pull_fn in all_tables.items():
+            if tables is not None and table_name not in tables:
+                changes[table_name] = {"created": [], "updated": [], "deleted": []}
+            else:
+                try:
+                    changes[table_name] = pull_fn(province_ids, since)
+                except Exception:
+                    logger.exception("sync pull error for table %s", table_name)
+                    changes[table_name] = {"created": [], "updated": [], "deleted": []}
 
         return {
             "changes": changes,
-            "timestamp": _now_ts(),
+            "timestamp": _epoch_ms_now(),
         }
 
     @classmethod
     def push(cls, user, changes):
         """
         Apply offline changes from mobile client.
-        Only tickets and comments are pushable from the mobile app.
-        Returns { success: true, errors: [...] }
+        Only grievances and grievance_comments are pushable.
+        Field names from mobile are snake_case matching the mobile schema.
+
+        Returns: { "success": true|false, "errors": [...] }
         """
         errors = []
 
-        ticket_changes = changes.get("tickets", {})
-        comment_changes = changes.get("comments", {})
+        grievance_changes = changes.get("grievances", {})
+        comment_changes = changes.get("grievance_comments", {})
 
-        # --- Tickets (created offline) ---
-        for record in ticket_changes.get("created", []):
+        # --- Grievances created offline ---
+        for record in grievance_changes.get("created", []):
             try:
-                ticket_id = record.get("id")
                 Ticket.objects.create(
-                    id=ticket_id,
-                    title=record.get("title"),
-                    description=record.get("description"),
+                    id=record.get("id"),
+                    title=record.get("title", ""),
+                    description=record.get("description", ""),
                     status=record.get("status", Ticket.TicketStatus.RECEIVED),
-                    priority=record.get("priority"),
-                    category=record.get("category"),
-                    channel=record.get("channel"),
-                    flags=record.get("flags"),
-                    date_of_incident=record.get("dateOfIncident"),
-                    key=record.get("key"),
+                    category=record.get("category", ""),
+                    channel=record.get("channel", ""),
+                    code=record.get("code"),
                 )
             except Exception as exc:
-                logger.exception("sync push: error creating ticket %s", record.get("id"))
-                errors.append({"table": "tickets", "id": record.get("id"), "error": str(exc)})
+                logger.exception("sync push: error creating grievance %s", record.get("id"))
+                errors.append({"table": "grievances", "id": record.get("id"), "error": str(exc)})
 
-        # --- Tickets (updated offline) ---
-        for record in ticket_changes.get("updated", []):
+        # --- Grievances updated offline ---
+        for record in grievance_changes.get("updated", []):
             try:
                 ticket = Ticket.objects.get(id=record["id"])
-                for field, col in [
+                for mobile_field, model_field in [
                     ("title", "title"),
                     ("description", "description"),
                     ("status", "status"),
-                    ("priority", "priority"),
                     ("category", "category"),
                     ("channel", "channel"),
-                    ("flags", "flags"),
-                    ("resolution", "resolution"),
                 ]:
-                    if field in record:
-                        setattr(ticket, col, record[field])
+                    if mobile_field in record:
+                        setattr(ticket, model_field, record[mobile_field])
                 ticket.save(user=user)
             except Ticket.DoesNotExist:
-                errors.append({"table": "tickets", "id": record.get("id"), "error": "not found"})
+                errors.append({"table": "grievances", "id": record.get("id"), "error": "not found"})
             except Exception as exc:
-                logger.exception("sync push: error updating ticket %s", record.get("id"))
-                errors.append({"table": "tickets", "id": record.get("id"), "error": str(exc)})
+                logger.exception("sync push: error updating grievance %s", record.get("id"))
+                errors.append({"table": "grievances", "id": record.get("id"), "error": str(exc)})
 
-        # --- Comments (created offline) ---
+        # --- Grievance comments created offline ---
         for record in comment_changes.get("created", []):
             try:
-                ticket_id = record.get("ticketId")
-                ticket = Ticket.objects.get(id=ticket_id)
+                ticket = Ticket.objects.get(id=record.get("grievance_id"))
                 Comment.objects.create(
                     id=record.get("id"),
                     ticket=ticket,
-                    comment=record.get("comment", ""),
-                    is_resolution=record.get("isResolution", False),
+                    comment=record.get("text", ""),
+                    is_resolution=False,
                 )
             except Ticket.DoesNotExist:
-                errors.append({"table": "comments", "id": record.get("id"), "error": "ticket not found"})
+                errors.append({"table": "grievance_comments", "id": record.get("id"), "error": "ticket not found"})
             except Exception as exc:
                 logger.exception("sync push: error creating comment %s", record.get("id"))
-                errors.append({"table": "comments", "id": record.get("id"), "error": str(exc)})
+                errors.append({"table": "grievance_comments", "id": record.get("id"), "error": str(exc)})
 
-        # --- Comments (updated offline) ---
+        # --- Grievance comments updated offline ---
         for record in comment_changes.get("updated", []):
             try:
                 comment = Comment.objects.get(id=record["id"])
-                if "comment" in record:
-                    comment.comment = record["comment"]
-                if "isResolution" in record:
-                    comment.is_resolution = record["isResolution"]
+                if "text" in record:
+                    comment.comment = record["text"]
                 comment.save(user=user)
             except Comment.DoesNotExist:
-                errors.append({"table": "comments", "id": record.get("id"), "error": "not found"})
+                errors.append({"table": "grievance_comments", "id": record.get("id"), "error": "not found"})
             except Exception as exc:
                 logger.exception("sync push: error updating comment %s", record.get("id"))
-                errors.append({"table": "comments", "id": record.get("id"), "error": str(exc)})
+                errors.append({"table": "grievance_comments", "id": record.get("id"), "error": str(exc)})
 
         return {"success": len(errors) == 0, "errors": errors}

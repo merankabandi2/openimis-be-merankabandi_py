@@ -15,15 +15,26 @@ logger = logging.getLogger(__name__)
 def sync_pull(request):
     """
     WatermelonDB pull endpoint.
+
     Body (JSON):
       {
-        "lastSyncTimestamp": "<ISO-8601 or epoch-ms>",  // omit for full sync
-        "tables": ["beneficiaries", "tickets", ...]     // omit for all tables
+        "lastSyncTimestamp": <epoch-ms integer or null>,
+        "tables": ["households", "grievances", ...]  // optional, omit for all
       }
+
     Returns:
       {
-        "changes": { "<table>": { "created": [...], "updated": [...], "deleted": [...] } },
-        "timestamp": "<ISO-8601>"
+        "changes": {
+          "locations":          { "created": [...], "updated": [...], "deleted": [...] },
+          "households":         { "created": [...], "updated": [...], "deleted": [...] },
+          "individuals":        { "created": [...], "updated": [...], "deleted": [...] },
+          "beneficiaries":      { "created": [...], "updated": [...], "deleted": [...] },
+          "activities":         { "created": [...], "updated": [...], "deleted": [...] },
+          "grievances":         { "created": [...], "updated": [...], "deleted": [...] },
+          "grievance_comments": { "created": [...], "updated": [...], "deleted": [...] },
+          "payments":           { "created": [...], "updated": [...], "deleted": [...] }
+        },
+        "timestamp": <epoch-ms integer>
       }
     """
     try:
@@ -52,13 +63,17 @@ def sync_pull(request):
 def sync_push(request):
     """
     WatermelonDB push endpoint.
+
     Body (JSON):
       {
         "changes": {
-          "tickets":  { "created": [...], "updated": [...], "deleted": [...] },
-          "comments": { "created": [...], "updated": [...], "deleted": [...] }
+          "grievances":         { "created": [...], "updated": [...] },
+          "grievance_comments": { "created": [...], "updated": [...] }
         }
       }
+
+    Field names in records use snake_case matching the mobile WatermelonDB schema.
+
     Returns:
       { "success": true|false, "errors": [...] }
     """
