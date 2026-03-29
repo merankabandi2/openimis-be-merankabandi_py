@@ -2,6 +2,7 @@ from django.urls import path, include
 from . import views
 from . import optimized_dashboard_views
 from . import analytics_views
+from . import views_export
 from . import sync_views
 from rest_framework.routers import DefaultRouter
 
@@ -85,6 +86,9 @@ urlpatterns = [
         'dashboard/optimized/health/',
         optimized_dashboard_views.OptimizedDashboardHealthView.as_view(),
         name='dashboard_health'),
+
+    # Excel exports
+    path('export/subcomponents/', views_export.export_subcomponents_report, name='export_subcomponents'),
 
     # Mobile sync endpoints (WatermelonDB pull/push)
     path('sync/pull/', sync_views.sync_pull, name='sync_pull'),
