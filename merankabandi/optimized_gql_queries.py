@@ -115,7 +115,7 @@ class TransferPerformanceType(graphene.ObjectType):
     last_updated = graphene.String()
 
 
-class QuarterlyTrendType(graphene.ObjectType):
+class MerankabandiQuarterlyTrendType(graphene.ObjectType):
     quarter = graphene.Int()
     year = graphene.Int()
     metric = graphene.String()
@@ -124,7 +124,7 @@ class QuarterlyTrendType(graphene.ObjectType):
 
 
 class QuarterlyTrendsType(graphene.ObjectType):
-    trends = graphene.List(QuarterlyTrendType)
+    trends = graphene.List(MerankabandiQuarterlyTrendType)
     last_updated = graphene.String()
 
 
@@ -620,7 +620,7 @@ class OptimizedDashboardQuery(graphene.ObjectType):
         # Convert to GraphQL types
         result = QuarterlyTrendsType(
             trends=[
-                QuarterlyTrendType(**item) for item in data['trends']
+                MerankabandiQuarterlyTrendType(**item) for item in data['trends']
             ],
             last_updated=data['last_updated']
         )
