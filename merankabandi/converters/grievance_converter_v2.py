@@ -236,7 +236,7 @@ def _build_json_ext(data):
             'attachments': {
                 'cni_recto': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_au_percepteur_Retro'),
                 'cni_verso': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_percepteur_Verso_'),
-                'photo_passeport': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_nouveau_percepteur_'),
+                'photo_repondant': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_nouveau_percepteur_'),
                 'certificat_deces': _resolve_attachment('group_qj06k38/Si_d_c_s_Prendre_un_Certificat_de_d_c_s_'),
                 'pv_familial': _resolve_attachment('group_qj06k38/Prendre_une_photo_du_le_comit_collinaire'),
             },
