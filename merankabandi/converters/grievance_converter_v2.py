@@ -369,8 +369,10 @@ class GrievanceConverterV2:
         if not items:
             return 0, 0, 0
 
-        created, updated = bulk_upsert(model_class=Ticket, data_list=items)
-        logger.info(f"bulk_upsert: {created} created, {updated} updated")
+        # update_fields=[] → insert new only, never overwrite existing tickets.
+        # Once in the system, local changes (status, workflow, resolution) own the record.
+        created, updated = bulk_upsert(model_class=Ticket, data_list=items, update_fields=[])
+        logger.info(f"bulk_upsert: {created} created, {updated} skipped (existing)")
 
         # Refetch from DB to get saved instances with PKs
         import uuid as uuid_mod
