@@ -1,0 +1,91 @@
+from merankabandi.action_handlers.generic import (
+    ManualResolutionHandler,
+    NotifyCompletionHandler,
+    ProvideInformationHandler,
+    ExternalReferralHandler,
+)
+from merankabandi.action_handlers.verification import (
+    VerifySocialIdHandler,
+    VerifyPaymentHistoryHandler,
+    VerifyIndividualHandler,
+    VerifyTargetingHandler,
+    VerifyPhoneRecordsHandler,
+)
+from merankabandi.action_handlers.beneficiary import (
+    BeneficiaryDeactivateHandler,
+    BeneficiaryReplaceHandler,
+    CreateReplacementRequestHandler,
+)
+from merankabandi.action_handlers.account import (
+    AccountSuspendHandler,
+    AccountReactivateHandler,
+    CreateMobileAccountHandler,
+    UnblockAccountHandler,
+    SimAttributionHandler,
+    PhoneAttributionHandler,
+    PinResetHandler,
+    PaymentReissueHandler,
+)
+from merankabandi.action_handlers.data import (
+    IndividualUpdateHandler,
+    LocationUpdateHandler,
+    PhoneNumberSwapHandler,
+    AddToCollectionHandler,
+    ReRegisterHandler,
+)
+
+ACTION_HANDLERS = {
+    'manual_resolution': ManualResolutionHandler(),
+    'notify_completion': NotifyCompletionHandler(),
+    'provide_information': ProvideInformationHandler(),
+    'external_referral': ExternalReferralHandler(),
+    'hospital_referral': ExternalReferralHandler(),
+    'legal_complaint': ExternalReferralHandler(),
+    'psychosocial_support': ExternalReferralHandler(),
+    'verify_social_id': VerifySocialIdHandler(),
+    'verify_payment_history': VerifyPaymentHistoryHandler(),
+    'verify_individual': VerifyIndividualHandler(),
+    'verify_targeting': VerifyTargetingHandler(),
+    'verify_phone_records': VerifyPhoneRecordsHandler(),
+    'beneficiary_deactivate': BeneficiaryDeactivateHandler(),
+    'beneficiary_replace': BeneficiaryReplaceHandler(),
+    'create_replacement_request': CreateReplacementRequestHandler(),
+    'account_suspend': AccountSuspendHandler(),
+    'account_reactivate': AccountReactivateHandler(),
+    'create_mobile_account': CreateMobileAccountHandler(),
+    'unblock_account': UnblockAccountHandler(),
+    'sim_attribution': SimAttributionHandler(),
+    'phone_attribution': PhoneAttributionHandler(),
+    'pin_reset': PinResetHandler(),
+    'payment_reissue': PaymentReissueHandler(),
+    'individual_update': IndividualUpdateHandler(),
+    'location_update': LocationUpdateHandler(),
+    'phone_number_swap': PhoneNumberSwapHandler(),
+    'add_to_collection': AddToCollectionHandler(),
+    're_register': ReRegisterHandler(),
+    'investigate_payment': ManualResolutionHandler(),
+    'investigate_delay': ManualResolutionHandler(),
+    'investigate_inclusion': ManualResolutionHandler(),
+    'investigate_household': ManualResolutionHandler(),
+    'investigate_account': ManualResolutionHandler(),
+    'investigate_incident': ManualResolutionHandler(),
+    'investigate_funds': ManualResolutionHandler(),
+    'investigate_corruption': ManualResolutionHandler(),
+    'calculate_complement': ManualResolutionHandler(),
+    'escalate_payment_agency': ManualResolutionHandler(),
+    'escalate_management': ManualResolutionHandler(),
+    'disciplinary_action': ManualResolutionHandler(),
+    'confirm_voluntary': ManualResolutionHandler(),
+    'validate_death_certificate': ManualResolutionHandler(),
+    'validate_migration_data': ManualResolutionHandler(),
+    'identify_duplicate': ManualResolutionHandler(),
+    'merge_records': ManualResolutionHandler(),
+    'mediation': ManualResolutionHandler(),
+    'reassign_payment_recipient': ManualResolutionHandler(),
+    'technical_diagnostic': ManualResolutionHandler(),
+    'sim_check': ManualResolutionHandler(),
+}
+
+
+def get_handler(action_type):
+    return ACTION_HANDLERS.get(action_type, ManualResolutionHandler())
