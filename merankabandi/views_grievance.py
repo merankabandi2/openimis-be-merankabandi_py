@@ -60,10 +60,10 @@ category_expanded AS (
         t.status,
         t.channel,
         t.priority,
-        t.is_anonymous,
+        t."Json_ext"->'reporter'->>'is_anonymous' AS is_anonymous,
         t."DateCreated" AS date_created,
         t."DateUpdated" AS date_updated,
-        t.is_resolved,
+        t."Json_ext"->'resolution_initial'->>'is_resolved' AS is_resolved,
         t.date_of_incident,
         CASE
             WHEN (t.category)::text LIKE '[%'
@@ -84,7 +84,7 @@ category_expanded AS (
 ),
 -- Map individual categories to groups
 ce AS (
-    SELECT *, individual_category AS individual_category
+    SELECT *
     FROM category_expanded
 )
 SELECT
@@ -104,7 +104,7 @@ SELECT
     EXTRACT(quarter FROM ce.date_created) AS quarter,
     -- Resolution time in days (only for resolved tickets)
     CASE
-        WHEN ce.is_resolved::text = 'true' AND ce.date_updated IS NOT NULL
+        WHEN ce.is_resolved = 'oui' AND ce.date_updated IS NOT NULL
         THEN EXTRACT(epoch FROM (ce.date_updated - ce.date_created)) / 86400.0
         ELSE NULL
     END AS resolution_days
@@ -139,10 +139,10 @@ SELECT
             '%"discrimination_ethnie_religion"%'
         ])
     ) AS sensitive_tickets,
-    COUNT(*) FILTER (WHERE is_anonymous::text = 'true') AS anonymous_tickets,
+    COUNT(*) FILTER (WHERE "Json_ext"->'reporter'->>'is_anonymous' = 'oui') AS anonymous_tickets,
     AVG(
         CASE
-            WHEN is_resolved::text = 'true' AND "DateUpdated" IS NOT NULL
+            WHEN "Json_ext"->'resolution_initial'->>'is_resolved' = 'oui' AND "DateUpdated" IS NOT NULL
             THEN EXTRACT(epoch FROM ("DateUpdated" - "DateCreated")) / 86400.0
             ELSE NULL
         END
