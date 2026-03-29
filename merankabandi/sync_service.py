@@ -645,9 +645,14 @@ class SyncService:
     def push(cls, user, changes):
         """
         Apply offline changes from mobile client.
-        Only grievances and grievance_comments are pushable.
-        Field names from mobile are snake_case matching the mobile schema.
 
+        Pushable tables:
+        - grievances / grievance_comments: create + update
+        - households (updated): community validation status changes
+        - beneficiaries (updated): contact info / json_ext merges
+        - activities (updated): validation_status changes
+
+        Field names from mobile are snake_case matching the mobile schema.
         Returns: { "success": true|false, "errors": [...] }
         """
         errors = []
@@ -719,5 +724,126 @@ class SyncService:
             except Exception as exc:
                 logger.exception("sync push: error updating comment %s", record.get("id"))
                 errors.append({"table": "grievance_comments", "id": record.get("id"), "error": str(exc)})
+
+        # --- Households updated offline (community validation) ---
+        for record in changes.get("households", {}).get("updated", []):
+            try:
+                group = Group.objects.get(id=record["server_id"])
+                json_ext = group.json_ext or {}
+                if "selection_status" in record:
+                    new_status = record["selection_status"]
+                    json_ext["selection_status"] = new_status
+
+                    # Track community validation metadata
+                    if new_status in ("COMMUNITY_VALIDATED", "COMMUNITY_REJECTED"):
+                        json_ext["community_validation"] = {
+                            "status": "VALIDATED" if new_status == "COMMUNITY_VALIDATED" else "REJECTED",
+                            "date": record.get(
+                                "community_validation_date",
+                                datetime.now(tz=timezone.utc).isoformat(),
+                            ),
+                        }
+
+                    group.json_ext = json_ext
+                    group.save()
+
+                    # If rejected, trigger waiting list promotion
+                    if new_status == "COMMUNITY_REJECTED" and group.location_id:
+                        from merankabandi.selection_service import SelectionService
+                        try:
+                            gb = GroupBeneficiary.objects.filter(
+                                group=group, is_deleted=False
+                            ).first()
+                            if gb and gb.benefit_plan_id:
+                                SelectionService.promote_from_waiting_list(
+                                    benefit_plan_id=str(gb.benefit_plan_id),
+                                    colline_id=str(group.location_id),
+                                    count=1,
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                "Waiting list promotion failed for group %s: %s",
+                                group.id, e,
+                            )
+
+            except Group.DoesNotExist:
+                errors.append({
+                    "table": "households",
+                    "id": record.get("server_id"),
+                    "error": "not found",
+                })
+            except Exception as e:
+                logger.exception(
+                    "sync push: error updating household %s", record.get("server_id")
+                )
+                errors.append({
+                    "table": "households",
+                    "id": record.get("server_id"),
+                    "error": str(e),
+                })
+
+        # --- Beneficiaries updated offline (contact info / json_ext) ---
+        for record in changes.get("beneficiaries", {}).get("updated", []):
+            try:
+                gb = GroupBeneficiary.objects.get(id=record["server_id"])
+                json_ext = gb.json_ext or {}
+                if "json_ext" in record:
+                    import json as json_module
+                    mobile_ext = record["json_ext"]
+                    if isinstance(mobile_ext, str):
+                        mobile_ext = json_module.loads(mobile_ext)
+                    json_ext.update(mobile_ext)
+                    gb.json_ext = json_ext
+                    gb.save()
+            except GroupBeneficiary.DoesNotExist:
+                errors.append({
+                    "table": "beneficiaries",
+                    "id": record.get("server_id"),
+                    "error": "not found",
+                })
+            except Exception as e:
+                logger.exception(
+                    "sync push: error updating beneficiary %s", record.get("server_id")
+                )
+                errors.append({
+                    "table": "beneficiaries",
+                    "id": record.get("server_id"),
+                    "error": str(e),
+                })
+
+        # --- Activities updated offline (validation status) ---
+        for record in changes.get("activities", {}).get("updated", []):
+            try:
+                server_id = record["server_id"]
+                new_status = record.get("validation_status")
+                if not new_status:
+                    continue
+
+                updated = False
+                for Model in [SensitizationTraining, MicroProject, BehaviorChangePromotion]:
+                    try:
+                        obj = Model.objects.get(id=server_id)
+                        obj.validation_status = new_status
+                        obj.save()
+                        updated = True
+                        break
+                    except Model.DoesNotExist:
+                        continue
+
+                if not updated:
+                    errors.append({
+                        "table": "activities",
+                        "id": server_id,
+                        "error": "not found in any activity model",
+                    })
+            except Exception as e:
+                logger.exception(
+                    "sync push: error updating activity %s", record.get("server_id")
+                )
+                errors.append({
+                    "table": "activities",
+                    "id": record.get("server_id"),
+                    "error": str(e),
+                })
 
         return {"success": len(errors) == 0, "errors": errors}
