@@ -81,7 +81,7 @@ class WorkflowService:
         workflow = GrievanceWorkflow.objects.create(
             ticket=ticket,
             template=template,
-            status=GrievanceWorkflow.Status.PENDING,
+            status=GrievanceWorkflow.STATUS_PENDING,
         )
 
         steps = template.steps.order_by('order')
@@ -89,13 +89,13 @@ class WorkflowService:
 
         for step in steps:
             if step.condition and not cls._evaluate_condition(step.condition, ticket):
-                status = GrievanceTask.Status.SKIPPED
+                status = GrievanceTask.STATUS_SKIPPED
                 blocked_by = None
-            elif prev_task and prev_task.status != GrievanceTask.Status.SKIPPED:
-                status = GrievanceTask.Status.BLOCKED
+            elif prev_task and prev_task.status != GrievanceTask.STATUS_SKIPPED:
+                status = GrievanceTask.STATUS_BLOCKED
                 blocked_by = prev_task
             else:
-                status = GrievanceTask.Status.PENDING
+                status = GrievanceTask.STATUS_PENDING
                 blocked_by = None
 
             task = GrievanceTask.objects.create(
@@ -115,7 +115,7 @@ class WorkflowService:
     @classmethod
     @transaction.atomic
     def complete_task(cls, task, user, result=None):
-        task.status = GrievanceTask.Status.COMPLETED
+        task.status = GrievanceTask.STATUS_COMPLETED
         task.completed_at = datetime.now()
         task.result = result or {}
         task.save()
@@ -127,7 +127,7 @@ class WorkflowService:
     def skip_task(cls, task, user, reason=None):
         if task.step_template.is_required:
             raise ValueError(f"Task {task.id} is required and cannot be skipped")
-        task.status = GrievanceTask.Status.SKIPPED
+        task.status = GrievanceTask.STATUS_SKIPPED
         task.completed_at = datetime.now()
         task.result = {"skipped_reason": reason}
         task.save()
@@ -146,33 +146,33 @@ class WorkflowService:
         all_done = True
 
         for task in tasks:
-            if task.status in (GrievanceTask.Status.COMPLETED, GrievanceTask.Status.SKIPPED):
+            if task.status in (GrievanceTask.STATUS_COMPLETED, GrievanceTask.STATUS_SKIPPED):
                 continue
 
             all_done = False
 
-            if task.status == GrievanceTask.Status.BLOCKED:
+            if task.status == GrievanceTask.STATUS_BLOCKED:
                 if task.blocked_by and task.blocked_by.status in (
-                    GrievanceTask.Status.COMPLETED, GrievanceTask.Status.SKIPPED
+                    GrievanceTask.STATUS_COMPLETED, GrievanceTask.STATUS_SKIPPED
                 ):
-                    task.status = GrievanceTask.Status.PENDING
+                    task.status = GrievanceTask.STATUS_PENDING
                     task.blocked_by = None
                     task.save()
 
-            if task.status == GrievanceTask.Status.PENDING:
+            if task.status == GrievanceTask.STATUS_PENDING:
                 cls._assign_user(task)
-                task.status = GrievanceTask.Status.IN_PROGRESS
+                task.status = GrievanceTask.STATUS_IN_PROGRESS
                 task.started_at = datetime.now()
                 task.save()
                 break
 
         if all_done:
-            workflow.status = GrievanceWorkflow.Status.COMPLETED
+            workflow.status = GrievanceWorkflow.STATUS_COMPLETED
             workflow.completed_at = datetime.now()
             workflow.save()
             cls._check_ticket_completion(workflow.ticket)
-        elif workflow.status == GrievanceWorkflow.Status.PENDING:
-            workflow.status = GrievanceWorkflow.Status.IN_PROGRESS
+        elif workflow.status == GrievanceWorkflow.STATUS_PENDING:
+            workflow.status = GrievanceWorkflow.STATUS_IN_PROGRESS
             workflow.save()
 
     @classmethod
@@ -210,7 +210,7 @@ class WorkflowService:
             .annotate(
                 active_tasks=Count(
                     'user__grievance_tasks',
-                    filter=Q(user__grievance_tasks__status=GrievanceTask.Status.IN_PROGRESS),
+                    filter=Q(user__grievance_tasks__status=GrievanceTask.STATUS_IN_PROGRESS),
                 )
             )
             .order_by('active_tasks')
@@ -222,7 +222,7 @@ class WorkflowService:
     @classmethod
     def _check_ticket_completion(cls, ticket):
         active_workflows = ticket.workflows.exclude(
-            status__in=[GrievanceWorkflow.Status.COMPLETED, GrievanceWorkflow.Status.CANCELLED]
+            status__in=[GrievanceWorkflow.STATUS_COMPLETED, GrievanceWorkflow.STATUS_CANCELLED]
         ).count()
         if active_workflows == 0:
             ticket.status = 'CLOSED'

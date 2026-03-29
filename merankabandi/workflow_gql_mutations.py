@@ -32,7 +32,7 @@ class CompleteGrievanceTaskMutation(BaseMutation):
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
         task = GrievanceTask.objects.get(id=data.get('task_id'))
-        if task.status != GrievanceTask.Status.IN_PROGRESS:
+        if task.status != GrievanceTask.STATUS_IN_PROGRESS:
             raise ValidationError(f"Task is not IN_PROGRESS (current: {task.status})")
         WorkflowService.complete_task(task, user, data.get('result'))
 
@@ -110,7 +110,7 @@ class ApproveReplacementRequestMutation(BaseMutation):
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
         rr = ReplacementRequest.objects.get(id=data['request_id'])
-        rr.status = ReplacementRequest.Status.APPROVED
+        rr.status = ReplacementRequest.STATUS_APPROVED
         rr.save()
 
     class Input(ApproveReplacementRequestInputType):
@@ -136,7 +136,7 @@ class RejectReplacementRequestMutation(BaseMutation):
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
         rr = ReplacementRequest.objects.get(id=data['request_id'])
-        rr.status = ReplacementRequest.Status.REJECTED
+        rr.status = ReplacementRequest.STATUS_REJECTED
         rr.json_ext = rr.json_ext or {}
         rr.json_ext['rejection_reason'] = data.get('reason')
         rr.save()

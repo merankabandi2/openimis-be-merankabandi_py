@@ -36,7 +36,7 @@ class BeneficiaryReplaceHandler(BaseActionHandler):
     def execute(self, task, ticket, user, data=None):
         from merankabandi.workflow_models import ReplacementRequest
         replacement = ReplacementRequest.objects.filter(
-            ticket=ticket, status=ReplacementRequest.Status.APPROVED,
+            ticket=ticket, status=ReplacementRequest.STATUS_APPROVED,
         ).first()
         if not replacement:
             return {'error': 'No approved replacement request found'}
