@@ -820,3 +820,10 @@ class IndicatorCalculationRule(models.Model):
 
     def __str__(self):
         return f"{self.indicator.name} - {self.calculation_type}"
+
+
+# Import workflow models so Django discovers them for migrations
+from merankabandi.workflow_models import (  # noqa: E402, F401
+    WorkflowTemplate, WorkflowStepTemplate, GrievanceWorkflow,
+    GrievanceTask, ReplacementRequest, RoleAssignment,
+)
