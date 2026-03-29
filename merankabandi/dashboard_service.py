@@ -559,7 +559,7 @@ class DashboardService:
 
             # Status distribution from detail view
             cursor.execute("""
-                SELECT status, COUNT(DISTINCT id) AS count
+                SELECT status AS category, COUNT(DISTINCT id) AS count
                 FROM dashboard_grievance_details
                 GROUP BY status ORDER BY count DESC
             """)
@@ -575,7 +575,7 @@ class DashboardService:
 
             # Channel distribution
             cursor.execute("""
-                SELECT channel, COUNT(DISTINCT id) AS count
+                SELECT channel AS category, COUNT(DISTINCT id) AS count
                 FROM dashboard_grievance_details
                 WHERE channel IS NOT NULL
                 GROUP BY channel ORDER BY count DESC
@@ -584,7 +584,7 @@ class DashboardService:
 
             # Priority distribution
             cursor.execute("""
-                SELECT priority, COUNT(DISTINCT id) AS count
+                SELECT priority AS category, COUNT(DISTINCT id) AS count
                 FROM dashboard_grievance_details
                 WHERE priority IS NOT NULL
                 GROUP BY priority ORDER BY count DESC

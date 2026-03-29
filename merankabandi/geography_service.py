@@ -179,7 +179,7 @@ class GeographyService:
             SELECT
                 COUNT(DISTINCT g."UUID") AS total_households,
                 COUNT(DISTINCT gi.individual_id) AS total_individuals,
-                COUNT(DISTINCT gb.id) AS total_beneficiaries
+                COUNT(DISTINCT gb."UUID") AS total_beneficiaries
             FROM individual_group g
             LEFT JOIN individual_groupindividual gi
                 ON gi.group_id = g."UUID" AND gi."isDeleted" = false
@@ -300,7 +300,7 @@ class GeographyService:
                 child."LocationName" AS name,
                 child."LocationType" AS type,
                 COUNT(DISTINCT g."UUID") AS total_households,
-                COUNT(DISTINCT gb.id) AS total_beneficiaries,
+                COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
                 {child_count_subquery}
             FROM "tblLocations" child
             {child_group_join}
@@ -418,9 +418,8 @@ class GeographyService:
                 bp."UUID" AS id,
                 bp.name,
                 bp.code,
-                COUNT(DISTINCT gb.id) AS beneficiary_count,
-                COUNT(DISTINCT g."UUID") AS household_count,
-                bp.status
+                COUNT(DISTINCT gb."UUID") AS beneficiary_count,
+                COUNT(DISTINCT g."UUID") AS household_count
             FROM social_protection_groupbeneficiary gb
             INNER JOIN individual_group g
                 ON g."UUID" = gb.group_id AND g."isDeleted" = false
@@ -429,7 +428,7 @@ class GeographyService:
             WHERE {loc_filter}
               AND gb."isDeleted" = false
               {bp_cond}
-            GROUP BY bp."UUID", bp.name, bp.code, bp.status
+            GROUP BY bp."UUID", bp.name, bp.code
             ORDER BY bp.name
         """
 
@@ -604,15 +603,10 @@ class GeographyService:
         pp_query = """
             SELECT
                 mpp.id,
-                pp.name AS payment_point_name,
-                bp.name AS benefit_plan_name
+                pp.name AS payment_point_name
             FROM merankabandi_province_payment_point mpp
             INNER JOIN payroll_paymentpoint pp
                 ON pp."UUID" = mpp.payment_point_id
-            LEFT JOIN payroll_paymentplan pplan
-                ON pplan.id = mpp.payment_plan_id
-            LEFT JOIN social_protection_benefitplan bp
-                ON bp."UUID" = pplan.benefit_plan_id AND bp."isDeleted" = false
             WHERE mpp.province_id = %s
               AND mpp.is_active = true
             ORDER BY pp.name
@@ -809,7 +803,7 @@ class GeographyService:
                 prov."LocationName" AS name,
                 COUNT(DISTINCT g."UUID") AS total_households,
                 COUNT(DISTINCT gi.individual_id) AS total_individuals,
-                COUNT(DISTINCT gb.id) AS total_beneficiaries
+                COUNT(DISTINCT gb."UUID") AS total_beneficiaries
             FROM "tblLocations" prov
             LEFT JOIN "tblLocations" com
                 ON com."ParentLocationId" = prov."LocationId"

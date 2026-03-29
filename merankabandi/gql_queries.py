@@ -357,6 +357,7 @@ class PreCollecteGQLType(DjangoObjectType):
 
 
 class BenefitPlanLocationGQLType(LocationGQLType):
+    uuid = graphene.String(source='uuid')
     count_selected = graphene.Int()
     count_active = graphene.Int()
     count_suspended = graphene.Int()

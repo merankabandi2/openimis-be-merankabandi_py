@@ -349,6 +349,7 @@ class OptimizedMonetaryTransferBeneficiaryDataType(graphene.ObjectType):
 class LocationByBenefitPlanType(graphene.ObjectType):
     """Location data for map display with beneficiary counts by status"""
     id = graphene.String()
+    uuid = graphene.String()
     code = graphene.String()
     name = graphene.String()
     count_selected = graphene.Int()  # For backward compatibility, maps to VALIDATED
@@ -1074,9 +1075,10 @@ class OptimizedDashboardQuery(graphene.ObjectType):
                     data = dict(zip(columns, row))
                     result.append(LocationByBenefitPlanType(
                         id=data['id'],
+                        uuid=data['id'],
                         code=data['code'],
                         name=data['name'],
-                        count_selected=data['count_selected'] or 0,  # Backward compatibility
+                        count_selected=data['count_selected'] or 0,
                         count_suspended=data['count_suspended'] or 0,
                         count_active=data['count_active'] or 0,
                         count_potential=data['count_potential'] or 0,

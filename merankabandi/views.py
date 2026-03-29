@@ -1,10 +1,14 @@
 import base64
+import json
 import logging
 import os
 import subprocess
 import threading
 from datetime import date
+from io import BytesIO
 from pathlib import Path
+
+import qrcode
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -95,6 +99,16 @@ class BeneficiaryCardGenerator:
                 object-fit: contain;
             }
 
+            .qr-section {
+                text-align: center;
+                margin-bottom: 0.3cm;
+            }
+
+            .qr-section img {
+                height: 3cm;
+                width: 3cm;
+            }
+
             .social-id-container {
                 width: auto;
                 text-align: center;
@@ -179,6 +193,22 @@ class BeneficiaryCardGenerator:
 
         return f'data:{mime_type};base64,{image_data}'
 
+    def _generate_qr_data_url(self, social_id, full_name, phone):
+        """Generate a QR code as a base64 data URL with JSON payload."""
+        payload = json.dumps({
+            "social_id": social_id or "",
+            "name": full_name or "",
+            "phone": phone or "",
+        }, ensure_ascii=False)
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=2)
+        qr.add_data(payload)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        with BytesIO() as buf:
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+
     def _get_image_url(self, request, image_path):
         """Get image URL - in this case returning the direct URL"""
         current_site = request.build_absolute_uri('/').rstrip('/')
@@ -205,13 +235,17 @@ class BeneficiaryCardGenerator:
         logo_path = os.path.join(settings.STATIC_ROOT, 'merankabandi/logo.png')
         # Get current date for fallback
         current_date = date.today().strftime('%Y-%m-%d')
+        telephone = moyen_telecom.get('msisdn', '') if moyen_telecom else ''
+        full_name = f"{individual.first_name} {individual.last_name}"
+        social_id = beneficiary.group.code
 
         context = {
             'logo_url': self._get_image_data_url(logo_path),
             'photo_url': self._get_image_data_url(photo_path),
-            'social_id': beneficiary.group.code,
+            'qr_url': self._generate_qr_data_url(social_id, full_name, telephone),
+            'social_id': social_id,
             'individual': individual,
-            'telephone': moyen_telecom.get('msisdn', '') if moyen_telecom else '',
+            'telephone': telephone,
             'date_enregistrement': moyen_telecom.get('responseDate', current_date) if moyen_telecom else current_date,
             'province': colline.parent.parent.name,
             'commune': colline.parent.name,
