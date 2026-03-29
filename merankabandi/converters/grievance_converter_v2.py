@@ -5,6 +5,7 @@ Maps the restructured form (3 case types: réclamation, remplacement, suppressio
 to Ticket model + json_ext structure.
 """
 import logging
+import os
 from datetime import datetime
 
 from django.conf import settings
@@ -20,19 +21,35 @@ FORM_ID = 'atpoVbHXZCdLD9ETHTv6z4'
 
 
 def _get_import_user():
-    """Get the system user for KoBo imports. Configurable via KOBO_IMPORT_USER_ID setting."""
-    user_id = getattr(settings, 'KOBO_IMPORT_USER_ID', None)
+    """Get the system user for KoBo imports.
+
+    Configurable via env var KOBO_IMPORT_USER_ID or KOBO_IMPORT_USERNAME.
+    """
+    user_id = os.environ.get('KOBO_IMPORT_USER_ID') or getattr(settings, 'KOBO_IMPORT_USER_ID', None)
     if user_id:
         return User.objects.get(id=user_id)
-    # Fallback: use the first admin user
-    user = User.objects.filter(is_superuser=True, is_deleted=False).first()
+    username = os.environ.get('KOBO_IMPORT_USERNAME') or getattr(settings, 'KOBO_IMPORT_USERNAME', None)
+    if username:
+        return User.objects.get(username=username)
+    # Fallback: use the first available user
+    user = User.objects.first()
     if user:
         return user
-    raise ValueError("No KOBO_IMPORT_USER_ID configured and no admin user found")
+    raise ValueError("No KOBO_IMPORT_USER_ID/KOBO_IMPORT_USERNAME configured and no users found")
 
 
 def _get(data, path, default=None):
-    """Navigate nested KoBo data with slash-separated paths."""
+    """Get a value from KoBo data by slash-separated path.
+
+    KoBo API may return flat keys ('group/field') or nested dicts.
+    Tries flat key first, then navigates nested structure.
+    """
+    # Try flat key first (most common KoBo API format)
+    if path in data:
+        value = data[path]
+        return value if value is not None else default
+
+    # Fallback: navigate nested dicts
     parts = path.split('/')
     value = data
     for part in parts:
@@ -214,7 +231,8 @@ class GrievanceConverterV2:
     def import_and_create_workflow(cls, kobo_data):
         """Import ticket and auto-create workflow."""
         ticket = cls.to_ticket(kobo_data)
-        ticket.save(username='kobo_import')
+        user = _get_import_user()
+        ticket.save(username=user.username)
 
         # Create ReplacementRequest if applicable
         json_ext = ticket.json_ext or {}
