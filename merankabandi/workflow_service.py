@@ -1,10 +1,11 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from merankabandi.workflow_models import (
-    WorkflowTemplate, WorkflowStepTemplate,
+    WorkflowTemplate,
     GrievanceWorkflow, GrievanceTask, RoleAssignment,
 )
 
@@ -82,6 +83,7 @@ class WorkflowService:
             ticket=ticket,
             template=template,
             status=GrievanceWorkflow.STATUS_PENDING,
+            started_at=timezone.now(),
         )
 
         steps = template.steps.order_by('order')
@@ -116,7 +118,7 @@ class WorkflowService:
     @transaction.atomic
     def complete_task(cls, task, user, result=None):
         task.status = GrievanceTask.STATUS_COMPLETED
-        task.completed_at = datetime.now()
+        task.completed_at = timezone.now()
         task.result = result or {}
         task.save()
         cls._progress_workflow(task.workflow)
@@ -128,7 +130,7 @@ class WorkflowService:
         if task.step_template.is_required:
             raise ValueError(f"Task {task.id} is required and cannot be skipped")
         task.status = GrievanceTask.STATUS_SKIPPED
-        task.completed_at = datetime.now()
+        task.completed_at = timezone.now()
         task.result = {"skipped_reason": reason}
         task.save()
         cls._progress_workflow(task.workflow)
@@ -162,13 +164,13 @@ class WorkflowService:
             if task.status == GrievanceTask.STATUS_PENDING:
                 cls._assign_user(task)
                 task.status = GrievanceTask.STATUS_IN_PROGRESS
-                task.started_at = datetime.now()
+                task.started_at = timezone.now()
                 task.save()
                 break
 
         if all_done:
             workflow.status = GrievanceWorkflow.STATUS_COMPLETED
-            workflow.completed_at = datetime.now()
+            workflow.completed_at = timezone.now()
             workflow.save()
             cls._check_ticket_completion(workflow.ticket)
         elif workflow.status == GrievanceWorkflow.STATUS_PENDING:
@@ -262,6 +264,6 @@ class WorkflowService:
     def _calculate_due_date(cls, step_template):
         sla = (step_template.json_ext or {}).get('sla_days')
         if sla:
-            return (datetime.now() + timedelta(days=sla)).date()
+            return (timezone.now() + timedelta(days=sla)).date()
         sla = (step_template.workflow_template.json_ext or {}).get('default_sla_days', 7)
-        return (datetime.now() + timedelta(days=sla)).date()
+        return (timezone.now() + timedelta(days=sla)).date()

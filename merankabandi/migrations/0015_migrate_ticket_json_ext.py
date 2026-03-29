@@ -118,8 +118,8 @@ def migrate_ticket_fields_to_json_ext(apps, schema_editor):
                 },
             }
 
-            # Merge: existing keys win over new keys (preserve any data already there)
-            merged = {**new_json_ext, **existing_json_ext}
+            # Merge: new migrated data wins over any stale existing keys
+            merged = {**existing_json_ext, **new_json_ext}
 
             cursor.execute(
                 'UPDATE grievance_social_protection_ticket SET "Json_ext" = %s WHERE "UUID" = %s',

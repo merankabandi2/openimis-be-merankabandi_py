@@ -7,6 +7,7 @@ to Ticket model + json_ext structure.
 import logging
 from datetime import datetime
 
+from django.conf import settings
 from core.models import User
 from grievance_social_protection.models import Ticket
 from merankabandi.workflow_models import ReplacementRequest
@@ -17,8 +18,17 @@ logger = logging.getLogger('openIMIS')
 # Form ID for the new 2025 form
 FORM_ID = 'atpoVbHXZCdLD9ETHTv6z4'
 
-# Default system user for imports (should be configured)
-DEFAULT_USER_ID = '17bf084f-9aa9-4eb3-a1f1-b2a6dcc3ec03'
+
+def _get_import_user():
+    """Get the system user for KoBo imports. Configurable via KOBO_IMPORT_USER_ID setting."""
+    user_id = getattr(settings, 'KOBO_IMPORT_USER_ID', None)
+    if user_id:
+        return User.objects.get(id=user_id)
+    # Fallback: use the first admin user
+    user = User.objects.filter(is_superuser=True, is_deleted=False).first()
+    if user:
+        return user
+    raise ValueError("No KOBO_IMPORT_USER_ID configured and no admin user found")
 
 
 def _get(data, path, default=None):
@@ -176,7 +186,7 @@ class GrievanceConverterV2:
     @classmethod
     def to_ticket(cls, kobo_data):
         """Convert a single KoBo submission to a Ticket."""
-        user = User.objects.get(id=DEFAULT_USER_ID)
+        user = _get_import_user()
 
         colline_code = _get(kobo_data, 'group_mg1dn99/Colline', '')
         collection_date = _get(kobo_data, 'Date_de_collecte', '')

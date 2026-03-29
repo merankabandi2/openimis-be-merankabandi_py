@@ -7,7 +7,7 @@ from core.gql.gql_mutations.base_mutation import BaseMutation
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
 from merankabandi.workflow_models import (
-    GrievanceTask, GrievanceWorkflow, ReplacementRequest,
+    GrievanceTask, ReplacementRequest,
     WorkflowTemplate, WorkflowStepTemplate, RoleAssignment,
 )
 from merankabandi.workflow_service import WorkflowService
@@ -220,6 +220,90 @@ class DeleteWorkflowTemplateMutation(BaseMutation):
         pass
 
 
+# --- Admin CRUD: WorkflowStepTemplate ---
+
+class CreateWorkflowStepTemplateInputType(OpenIMISMutation.Input):
+    workflow_template_id = graphene.UUID(required=True)
+    name = graphene.String(required=True)
+    label = graphene.String(required=True)
+    order = graphene.Int(required=True)
+    role = graphene.String(required=True)
+    action_type = graphene.String(required=True)
+    is_required = graphene.Boolean(required=False)
+    condition = graphene.JSONString(required=False)
+    json_ext = graphene.JSONString(required=False)
+
+
+class CreateWorkflowStepTemplateMutation(BaseMutation):
+    _mutation_class = "CreateWorkflowStepTemplateMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        tpl_id = data.pop('workflow_template_id')
+        tpl = WorkflowTemplate.objects.get(id=tpl_id)
+        WorkflowStepTemplate.objects.create(workflow_template=tpl, **data)
+
+    class Input(CreateWorkflowStepTemplateInputType):
+        pass
+
+
+class UpdateWorkflowStepTemplateInputType(CreateWorkflowStepTemplateInputType):
+    id = graphene.UUID(required=True)
+    workflow_template_id = graphene.UUID(required=False)
+
+
+class UpdateWorkflowStepTemplateMutation(BaseMutation):
+    _mutation_class = "UpdateWorkflowStepTemplateMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        step_id = data.pop('id')
+        data.pop('workflow_template_id', None)
+        WorkflowStepTemplate.objects.filter(id=step_id).update(**data)
+
+    class Input(UpdateWorkflowStepTemplateInputType):
+        pass
+
+
+class DeleteWorkflowStepTemplateInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class DeleteWorkflowStepTemplateMutation(BaseMutation):
+    _mutation_class = "DeleteWorkflowStepTemplateMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        WorkflowStepTemplate.objects.filter(id__in=data.get('ids', [])).delete()
+
+    class Input(DeleteWorkflowStepTemplateInputType):
+        pass
+
+
 class CreateRoleAssignmentInputType(OpenIMISMutation.Input):
     role = graphene.String(required=True)
     user_id = graphene.UUID(required=True)
@@ -270,7 +354,18 @@ class UpdateRoleAssignmentMutation(BaseMutation):
         data.pop('client_mutation_id', None)
         data.pop('client_mutation_label', None)
         ra_id = data.pop('id')
-        RoleAssignment.objects.filter(id=ra_id).update(**data)
+        ra = RoleAssignment.objects.get(id=ra_id)
+        user_id = data.pop('user_id', None)
+        location_id = data.pop('location_id', None)
+        if user_id:
+            from core.models import User as CoreUser
+            ra.user = CoreUser.objects.get(id=user_id)
+        if location_id is not None:
+            from location.models import Location
+            ra.location = Location.objects.get(id=location_id) if location_id else None
+        for k, v in data.items():
+            setattr(ra, k, v)
+        ra.save()
 
     class Input(UpdateRoleAssignmentInputType):
         pass

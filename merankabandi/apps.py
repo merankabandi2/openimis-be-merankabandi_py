@@ -9,7 +9,8 @@ from .gql_config import (
     GQL_INDICATOR_SEARCH_PERMS, GQL_INDICATOR_CREATE_PERMS,
     GQL_INDICATOR_UPDATE_PERMS, GQL_INDICATOR_DELETE_PERMS,
     GQL_INDICATOR_ACHIEVEMENT_SEARCH_PERMS, GQL_INDICATOR_ACHIEVEMENT_CREATE_PERMS,
-    GQL_INDICATOR_ACHIEVEMENT_UPDATE_PERMS, GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS
+    GQL_INDICATOR_ACHIEVEMENT_UPDATE_PERMS, GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS,
+    GQL_GRIEVANCE_TASK_VIEW_PERMS, GQL_GRIEVANCE_WORKFLOW_ADMIN_PERMS
 )
 
 MODULE_NAME = 'merankabandi'
@@ -29,7 +30,10 @@ DEFAULT_CONFIG = {
     "gql_indicator_achievement_search_perms": GQL_INDICATOR_ACHIEVEMENT_SEARCH_PERMS,
     "gql_indicator_achievement_create_perms": GQL_INDICATOR_ACHIEVEMENT_CREATE_PERMS,
     "gql_indicator_achievement_update_perms": GQL_INDICATOR_ACHIEVEMENT_UPDATE_PERMS,
-    "gql_indicator_achievement_delete_perms": GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS
+    "gql_indicator_achievement_delete_perms": GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS,
+    # Grievance workflow permissions
+    "gql_grievance_task_view_perms": GQL_GRIEVANCE_TASK_VIEW_PERMS,
+    "gql_grievance_workflow_admin_perms": GQL_GRIEVANCE_WORKFLOW_ADMIN_PERMS,
 }
 
 
@@ -61,6 +65,16 @@ class MerankabandiConfig(AppConfig):
         self.__register_workflows()
         self.__load_config()
         self.__setup_dashboard_optimization()
+        self.__patch_calculation_gql_type()
+
+    @staticmethod
+    def __patch_calculation_gql_type():
+        """Add missing supportsAdvancedCriteria field to upstream CalculationRulesGQLType."""
+        import graphene
+        from calculation.schema import CalculationRulesGQLType
+        if not hasattr(CalculationRulesGQLType, 'supports_advanced_criteria'):
+            CalculationRulesGQLType.supports_advanced_criteria = graphene.Boolean()
+            CalculationRulesGQLType._meta.fields['supports_advanced_criteria'] = graphene.Field(graphene.Boolean)
 
     @staticmethod
     def __register_calculation_rules():

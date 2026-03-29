@@ -76,6 +76,9 @@ from merankabandi.workflow_gql_mutations import (
     CreateRoleAssignmentMutation,
     UpdateRoleAssignmentMutation,
     DeleteRoleAssignmentMutation,
+    CreateWorkflowStepTemplateMutation,
+    UpdateWorkflowStepTemplateMutation,
+    DeleteWorkflowStepTemplateMutation,
 )
 from location.apps import LocationConfig
 from individual.apps import IndividualConfig
@@ -1347,3 +1350,6 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_role_assignment = CreateRoleAssignmentMutation.Field()
     update_role_assignment = UpdateRoleAssignmentMutation.Field()
     delete_role_assignment = DeleteRoleAssignmentMutation.Field()
+    create_workflow_step_template = CreateWorkflowStepTemplateMutation.Field()
+    update_workflow_step_template = UpdateWorkflowStepTemplateMutation.Field()
+    delete_workflow_step_template = DeleteWorkflowStepTemplateMutation.Field()

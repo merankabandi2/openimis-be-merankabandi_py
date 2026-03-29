@@ -23,6 +23,10 @@ GQL_INDICATOR_ACHIEVEMENT_CREATE_PERMS = ["160014"]  # Right to create new achie
 GQL_INDICATOR_ACHIEVEMENT_UPDATE_PERMS = ["160015"]  # Right to update existing achievements
 GQL_INDICATOR_ACHIEVEMENT_DELETE_PERMS = ["160016"]  # Right to delete achievements
 
+# Grievance Workflow Permissions (160017-160018)
+GQL_GRIEVANCE_TASK_VIEW_PERMS = ["160017"]  # Right to view/manage grievance tasks
+GQL_GRIEVANCE_WORKFLOW_ADMIN_PERMS = ["160018"]  # Right to admin workflow templates and roles
+
 # Permission Descriptions for Documentation
 PERMISSION_DESCRIPTIONS = {
     "160005": "Search and view sections in results framework",
@@ -37,4 +41,6 @@ PERMISSION_DESCRIPTIONS = {
     "160014": "Create new indicator achievements",
     "160015": "Update existing indicator achievements",
     "160016": "Delete indicator achievements",
+    "160017": "View and manage grievance workflow tasks",
+    "160018": "Administer workflow templates and role assignments",
 }

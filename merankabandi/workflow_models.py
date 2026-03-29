@@ -9,7 +9,7 @@ class WorkflowTemplate(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     label = models.CharField(max_length=255)
-    case_type = models.CharField(max_length=100, null=True, blank=True)
+    case_type = models.CharField(max_length=255, default='', db_index=True)
     description = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     json_ext = models.JSONField(null=True, blank=True)
@@ -44,6 +44,7 @@ class WorkflowStepTemplate(models.Model):
     class Meta:
         db_table = 'merankabandi_workflow_step_template'
         ordering = ['order']
+        unique_together = [('workflow_template', 'order')]
 
     def __str__(self):
         return f"{self.workflow_template.name} - {self.label}"
