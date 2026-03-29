@@ -57,6 +57,26 @@ from payroll.gql_queries import BenefitsSummaryGQLType
 from social_protection.gql_queries import GroupBeneficiaryGQLType
 from social_protection.apps import SocialProtectionConfig
 from grievance_social_protection.models import Ticket
+
+# Workflow engine imports
+from merankabandi.workflow_gql_queries import (
+    WorkflowTemplateGQLType, WorkflowStepTemplateGQLType,
+    GrievanceWorkflowGQLType, GrievanceTaskGQLType,
+    ReplacementRequestGQLType, RoleAssignmentGQLType,
+)
+from merankabandi.workflow_gql_mutations import (
+    CompleteGrievanceTaskMutation,
+    SkipGrievanceTaskMutation,
+    ReassignGrievanceTaskMutation,
+    ApproveReplacementRequestMutation,
+    RejectReplacementRequestMutation,
+    CreateWorkflowTemplateMutation,
+    UpdateWorkflowTemplateMutation,
+    DeleteWorkflowTemplateMutation,
+    CreateRoleAssignmentMutation,
+    UpdateRoleAssignmentMutation,
+    DeleteRoleAssignmentMutation,
+)
 from location.apps import LocationConfig
 from individual.apps import IndividualConfig
 from individual.gql_queries import IndividualGQLType, GroupGQLType
@@ -314,6 +334,32 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     def resolve_pre_collecte(self, info, **kwargs):
         Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
         return gql_optimizer.query(PreCollecte.objects.all(), info)
+
+    # Workflow engine queries
+    workflow_templates = OrderedDjangoFilterConnectionField(
+        WorkflowTemplateGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    workflow_step_templates = OrderedDjangoFilterConnectionField(
+        WorkflowStepTemplateGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    grievance_workflows = OrderedDjangoFilterConnectionField(
+        GrievanceWorkflowGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    grievance_tasks = OrderedDjangoFilterConnectionField(
+        GrievanceTaskGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    replacement_requests = OrderedDjangoFilterConnectionField(
+        ReplacementRequestGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+    role_assignments = OrderedDjangoFilterConnectionField(
+        RoleAssignmentGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
 
     def resolve_payment_cycle_filtered(self, info, year=None, **kwargs):
         filters = append_validity_filter(**kwargs)
@@ -1288,3 +1334,16 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     select_all = SelectAllMutation.Field()
     promote_to_beneficiary = PromoteToBeneficiaryMutation.Field()
     promote_from_waiting_list = PromoteFromWaitingListMutation.Field()
+
+    # Workflow engine mutations
+    complete_grievance_task = CompleteGrievanceTaskMutation.Field()
+    skip_grievance_task = SkipGrievanceTaskMutation.Field()
+    reassign_grievance_task = ReassignGrievanceTaskMutation.Field()
+    approve_replacement_request = ApproveReplacementRequestMutation.Field()
+    reject_replacement_request = RejectReplacementRequestMutation.Field()
+    create_workflow_template = CreateWorkflowTemplateMutation.Field()
+    update_workflow_template = UpdateWorkflowTemplateMutation.Field()
+    delete_workflow_template = DeleteWorkflowTemplateMutation.Field()
+    create_role_assignment = CreateRoleAssignmentMutation.Field()
+    update_role_assignment = UpdateRoleAssignmentMutation.Field()
+    delete_role_assignment = DeleteRoleAssignmentMutation.Field()
