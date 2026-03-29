@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime
 
+import requests
 from django.conf import settings
 from core.models import User
 from grievance_social_protection.models import Ticket
@@ -36,6 +37,59 @@ def _get_import_user():
     if user:
         return user
     raise ValueError("No KOBO_IMPORT_USER_ID/KOBO_IMPORT_USERNAME configured and no users found")
+
+
+def _download_attachments(kobo_data):
+    """Download KoBo attachments and save to MEDIA_ROOT/grievance_attachments/.
+
+    Returns a dict mapping original filename → local relative path.
+    KoBo sends _attachments as:
+        [{"filename": "user/attachments/.../photo.jpg",
+          "download_url": "https://...",
+          "mimetype": "image/jpeg"}, ...]
+    """
+    attachments = kobo_data.get('_attachments', [])
+    if not attachments:
+        return {}
+
+    submission_uuid = kobo_data.get('_uuid', 'unknown')
+    dest_dir = os.path.join(
+        getattr(settings, 'MEDIA_ROOT', 'file_storage'),
+        'grievance_attachments',
+        submission_uuid,
+    )
+    os.makedirs(dest_dir, exist_ok=True)
+
+    # Get KoBo auth for this form
+    from kobo_etl.strategy.kobo_client import _get_form_config
+    token, _ = _get_form_config(FORM_ID)
+    headers = {'Authorization': f'Token {token}'}
+
+    downloaded = {}
+    for att in attachments:
+        download_url = att.get('download_url')
+        original_filename = os.path.basename(att.get('filename', ''))
+        if not download_url or not original_filename:
+            continue
+
+        local_path = os.path.join(dest_dir, original_filename)
+        relative_path = os.path.join('grievance_attachments', submission_uuid, original_filename)
+
+        if os.path.exists(local_path):
+            downloaded[original_filename] = relative_path
+            continue
+
+        try:
+            resp = requests.get(download_url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            with open(local_path, 'wb') as f:
+                f.write(resp.content)
+            downloaded[original_filename] = relative_path
+            logger.info(f"Downloaded attachment {original_filename} for {submission_uuid}")
+        except Exception as e:
+            logger.warning(f"Failed to download {original_filename} for {submission_uuid}: {e}")
+
+    return downloaded
 
 
 def _get(data, path, default=None):
@@ -154,6 +208,16 @@ def _build_json_ext(data):
         },
     }
 
+    # Download attachments (images, documents)
+    downloaded = _download_attachments(data)
+
+    def _resolve_attachment(field_path):
+        """Map a KoBo image field (filename) to the downloaded local path."""
+        filename = _get(data, field_path)
+        if not filename:
+            return None
+        return downloaded.get(filename, filename)
+
     # Add replacement section if applicable
     if case_type == 'cas_de_remplacement':
         json_ext['replacement'] = {
@@ -170,11 +234,11 @@ def _build_json_ext(data):
                 'cni': _get(data, 'group_qj06k38/Num_ro_CNI_du_nouveau_percepteur_'),
             },
             'attachments': {
-                'cni_recto': _get(data, 'group_qj06k38/Prendre_une_photo_de_au_percepteur_Retro'),
-                'cni_verso': _get(data, 'group_qj06k38/Prendre_une_photo_de_percepteur_Verso_'),
-                'photo_passeport': _get(data, 'group_qj06k38/Prendre_une_photo_de_nouveau_percepteur_'),
-                'certificat_deces': _get(data, 'group_qj06k38/Si_d_c_s_Prendre_un_Certificat_de_d_c_s_'),
-                'pv_familial': _get(data, 'group_qj06k38/Prendre_une_photo_du_le_comit_collinaire'),
+                'cni_recto': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_au_percepteur_Retro'),
+                'cni_verso': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_percepteur_Verso_'),
+                'photo_passeport': _resolve_attachment('group_qj06k38/Prendre_une_photo_de_nouveau_percepteur_'),
+                'certificat_deces': _resolve_attachment('group_qj06k38/Si_d_c_s_Prendre_un_Certificat_de_d_c_s_'),
+                'pv_familial': _resolve_attachment('group_qj06k38/Prendre_une_photo_du_le_comit_collinaire'),
             },
         }
 
