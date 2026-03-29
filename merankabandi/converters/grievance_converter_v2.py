@@ -292,48 +292,90 @@ class GrievanceConverterV2:
         return ticket
 
     @classmethod
-    def import_and_create_workflow(cls, kobo_data):
-        """Import ticket and auto-create workflow."""
-        ticket = cls.to_ticket(kobo_data)
-        user = _get_import_user()
-        ticket.save(username=user.username)
+    def to_data_element_obj(cls, kobo_data, **kwargs):
+        """Convert a single KoBo submission to a Ticket instance (not yet saved).
 
-        # Create ReplacementRequest if applicable
-        json_ext = ticket.json_ext or {}
-        if json_ext.get('case_type') == 'cas_de_remplacement':
-            replacement_data = json_ext.get('replacement', {})
-            new_recipient = replacement_data.get('new_recipient', {})
-            if replacement_data.get('replaced_social_id'):
-                ReplacementRequest.objects.create(
-                    ticket=ticket,
-                    replaced_social_id=replacement_data.get('replaced_social_id', ''),
-                    motif=replacement_data.get('motif', ''),
-                    relationship=replacement_data.get('relationship', ''),
-                    new_nom=new_recipient.get('nom', ''),
-                    new_prenom=new_recipient.get('prenom', ''),
-                    new_date_naissance=new_recipient.get('date_naissance'),
-                    new_sexe=new_recipient.get('sexe', ''),
-                    new_telephone=new_recipient.get('telephone'),
-                    new_cni=new_recipient.get('cni', ''),
-                    json_ext={'attachments': replacement_data.get('attachments')},
-                )
+        Compatible with bulk_upsert pattern used by v1 converter.
+        """
+        return cls.to_ticket(kobo_data)
 
-        # Auto-create workflow
-        workflows = WorkflowService.auto_create_workflow(ticket)
-        logger.info(
-            f"Imported ticket {ticket.code} with {len(workflows)} workflow(s)"
-        )
-        return ticket, workflows
+    @classmethod
+    def to_data_set_obj(cls, kobo_data_list, **kwargs):
+        """Convert a list of KoBo submissions to Ticket instances.
+
+        Compatible with bulk_upsert pattern used by v1 converter.
+        """
+        items = []
+        for kobo_data in kobo_data_list:
+            try:
+                ticket = cls.to_data_element_obj(kobo_data, **kwargs)
+                if ticket is not None:
+                    items.append(ticket)
+            except Exception as e:
+                logger.error(f"Failed to convert grievance {kobo_data.get('_uuid')}: {e}")
+        return items
+
+    @classmethod
+    def post_import(cls, tickets):
+        """Create ReplacementRequests and workflows after bulk_upsert.
+
+        Call this after bulk_upsert has saved all tickets to DB.
+        """
+        created_workflows = 0
+        created_replacements = 0
+        for ticket in tickets:
+            json_ext = ticket.json_ext or {}
+
+            # Create ReplacementRequest if applicable
+            if json_ext.get('case_type') == 'cas_de_remplacement':
+                replacement_data = json_ext.get('replacement') or {}
+                new_recipient = replacement_data.get('new_recipient') or {}
+                if replacement_data.get('replaced_social_id'):
+                    if not ReplacementRequest.objects.filter(ticket=ticket).exists():
+                        ReplacementRequest.objects.create(
+                            ticket=ticket,
+                            replaced_social_id=replacement_data.get('replaced_social_id', ''),
+                            motif=replacement_data.get('motif', ''),
+                            relationship=replacement_data.get('relationship', ''),
+                            new_nom=new_recipient.get('nom', ''),
+                            new_prenom=new_recipient.get('prenom', ''),
+                            new_date_naissance=new_recipient.get('date_naissance'),
+                            new_sexe=new_recipient.get('sexe', ''),
+                            new_telephone=new_recipient.get('telephone'),
+                            new_cni=new_recipient.get('cni', ''),
+                            json_ext={'attachments': replacement_data.get('attachments')},
+                        )
+                        created_replacements += 1
+
+            # Auto-create workflow if none exists
+            from merankabandi.workflow_models import GrievanceWorkflow
+            if not GrievanceWorkflow.objects.filter(ticket=ticket).exists():
+                workflows = WorkflowService.auto_create_workflow(ticket)
+                if workflows:
+                    created_workflows += 1
+
+        logger.info(f"post_import: {created_workflows} workflows, {created_replacements} replacements")
+        return created_workflows, created_replacements
 
     @classmethod
     def import_batch(cls, kobo_data_list):
-        """Import a batch of KoBo submissions."""
-        results = []
-        for kobo_data in kobo_data_list:
-            try:
-                ticket, workflows = cls.import_and_create_workflow(kobo_data)
-                results.append((ticket, workflows, None))
-            except Exception as e:
-                logger.error(f"Failed to import grievance {kobo_data.get('_uuid')}: {e}")
-                results.append((None, None, str(e)))
-        return results
+        """Import a batch using bulk_upsert (same pattern as v1), then create workflows.
+
+        Returns (created_count, updated_count, workflow_count).
+        """
+        from kobo_etl.services.KoboServices import bulk_upsert
+
+        items = cls.to_data_set_obj(kobo_data_list)
+        if not items:
+            return 0, 0, 0
+
+        created, updated = bulk_upsert(model_class=Ticket, data_list=items)
+        logger.info(f"bulk_upsert: {created} created, {updated} updated")
+
+        # Refetch from DB to get saved instances with PKs
+        import uuid as uuid_mod
+        ticket_ids = [t.id for t in items if t.id]
+        saved_tickets = list(Ticket.objects.filter(id__in=ticket_ids))
+
+        wf_count, rr_count = cls.post_import(saved_tickets)
+        return created, updated, wf_count
