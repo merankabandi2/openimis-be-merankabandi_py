@@ -191,8 +191,12 @@ def refresh_dashboard_views(request):
             MaterializedViewsManager.refresh_all_views(category=None, concurrent=concurrent)
             message = "Refreshed all dashboard views"
 
-        # Clear cache after refresh
-        OptimizedDashboardService.clear_cache()
+        # Clear cache after refresh if available
+        if hasattr(OptimizedDashboardService, 'clear_cache'):
+            OptimizedDashboardService.clear_cache()
+        else:
+            # Fallback: clear dashboard-related cache keys
+            cache.delete_pattern('dashboard_*') if hasattr(cache, 'delete_pattern') else None
 
         return Response({
             'success': True,
@@ -218,12 +222,14 @@ def dashboard_view_stats(request):
         stats = MaterializedViewsManager.get_view_stats()
 
         formatted_stats = []
-        for view_name, row_count, size_mb, last_refresh in stats:
+        for view_name, view_info in stats.items():
+            row_count = view_info.get('row_count', 0) or 0
             formatted_stats.append({
                 'view_name': view_name,
                 'row_count': row_count,
-                'size_mb': float(size_mb) if size_mb else 0,
-                'last_refresh': last_refresh.isoformat() if last_refresh else None
+                'exists': view_info.get('exists', False),
+                'size': view_info.get('size', '0 bytes'),
+                'error': view_info.get('error'),
             })
 
         return Response({
@@ -231,7 +237,6 @@ def dashboard_view_stats(request):
             'data': {
                 'views': formatted_stats,
                 'total_views': len(formatted_stats),
-                'total_size_mb': sum(s['size_mb'] for s in formatted_stats),
                 'total_rows': sum(s['row_count'] for s in formatted_stats if s['row_count'])
             }
         }, status=status.HTTP_200_OK)
@@ -288,14 +293,27 @@ class OptimizedDashboardHealthView(View):
 
             if not stats:
                 return {
-                    'status': 'unhealthy',
-                    'message': 'No materialized views found'
+                    'status': 'degraded',
+                    'message': 'No materialized views configured'
                 }
 
-            views_with_data = sum(1 for _, row_count, _, _ in stats if row_count and row_count > 0)
             total_views = len(stats)
+            views_existing = sum(
+                1 for info in stats.values()
+                if info.get('exists', False)
+            )
+            views_with_data = sum(
+                1 for info in stats.values()
+                if info.get('exists', False) and (info.get('row_count') or 0) > 0
+            )
 
-            if views_with_data == total_views:
+            if views_existing == 0:
+                return {
+                    'status': 'degraded',
+                    'message': f'No materialized views created yet (0/{total_views}). Run manage_views --action=create to initialize.',
+                    'views_count': total_views
+                }
+            elif views_with_data == total_views:
                 return {
                     'status': 'healthy',
                     'message': f'All {total_views} views have data',
@@ -304,7 +322,7 @@ class OptimizedDashboardHealthView(View):
             else:
                 return {
                     'status': 'degraded',
-                    'message': f'Only {views_with_data}/{total_views} views have data',
+                    'message': f'{views_with_data}/{total_views} views have data ({views_existing} exist)',
                     'views_count': total_views
                 }
 

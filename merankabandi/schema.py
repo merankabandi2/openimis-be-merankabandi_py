@@ -322,7 +322,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     )
 
     def resolve_pmt_formula(self, info, **kwargs):
-        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_benefit_plan_search_perms)
         return gql_optimizer.query(PmtFormula.objects.all(), info)
 
     pre_collecte = OrderedDjangoFilterConnectionField(
@@ -331,11 +331,11 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     )
 
     def resolve_selection_quota(self, info, **kwargs):
-        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_benefit_plan_search_perms)
         return gql_optimizer.query(SelectionQuota.objects.all(), info)
 
     def resolve_pre_collecte(self, info, **kwargs):
-        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_benefitplan_perms)
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_benefit_plan_search_perms)
         return gql_optimizer.query(PreCollecte.objects.all(), info)
 
     # Workflow engine queries
