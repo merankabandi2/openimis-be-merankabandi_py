@@ -1,6 +1,7 @@
 import logging
 from merankabandi.models import (
-    MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint
+    MonetaryTransfer, Section, Indicator, IndicatorAchievement,
+    ProvincePaymentPoint, PaymentAgency, ProvincePaymentAgency
 )
 from merankabandi.validation import (
     MonetaryTransferValidation, SectionValidation, IndicatorValidation,
@@ -69,17 +70,31 @@ class PayrollGenerationService:
             benefit_plan_id = payment_plan.benefit_plan_id
             benefit_plan = payment_plan.benefit_plan
 
-            # Get the payment point associated with this province and payment plan
-            province_payment_point = ProvincePaymentPoint.objects.filter(
+            # Get the payment agency associated with this province and benefit plan
+            province_agency = ProvincePaymentAgency.objects.filter(
                 province_id=province_id,
-                payment_plan_id=payment_plan_id
-            ).first()
+                benefit_plan_id=benefit_plan_id,
+                is_active=True,
+            ).select_related('payment_agency').first()
 
-            payment_point = province_payment_point.payment_point if province_payment_point else None
+            # Fallback to legacy ProvincePaymentPoint if no ProvincePaymentAgency yet
+            if not province_agency:
+                province_payment_point = ProvincePaymentPoint.objects.filter(
+                    province_id=province_id,
+                    payment_plan_id=payment_plan_id
+                ).first()
+                payment_point = province_payment_point.payment_point if province_payment_point else None
+            else:
+                # Find the matching PaymentPoint by agency name (for upstream compatibility)
+                from payroll.models import PaymentPoint
+                payment_point = PaymentPoint.objects.filter(
+                    name=province_agency.payment_agency.name
+                ).first()
+
             if not payment_point:
                 return {
                     'success': False,
-                    'error': 'No payment point found or invalid',
+                    'error': 'No payment agency found for this province and programme',
                     'generated_payrolls': []
                 }
 
@@ -140,6 +155,17 @@ class PayrollGenerationService:
                 # Prepare payroll data
                 # Import relativedelta for date calculations
 
+                json_ext = {
+                    'commune_id': str(commune.id),
+                    'commune_name': commune.name,
+                    'province_id': str(province.id),
+                    'province_name': province.name,
+                }
+                if province_agency:
+                    json_ext['payment_agency_id'] = str(province_agency.payment_agency.id)
+                    json_ext['payment_agency_name'] = province_agency.payment_agency.name
+                    json_ext['payment_gateway'] = province_agency.payment_agency.payment_gateway or ''
+
                 payroll_data = {
                     'name': f"Demande de paiement du {payment_date.strftime('%d/%m/%Y')} pour la commune de {commune.name}",
                     'payment_cycle_id': payment_cycle.id,
@@ -147,7 +173,8 @@ class PayrollGenerationService:
                     'payment_point_id': payment_point.id,
                     'location_id': commune.id,
                     'date_valid_from': payment_date,
-                    'date_valid_to': payment_date + relativedelta(months=1)
+                    'date_valid_to': payment_date + relativedelta(months=1),
+                    'json_ext': json_ext,
                 }
 
                 # Create the payroll

@@ -26,6 +26,8 @@ from merankabandi.gql_mutations import (
     CreateIndicatorAchievementMutation, UpdateIndicatorAchievementMutation, DeleteIndicatorAchievementMutation,
     GenerateProvincePayrollMutation, AddProvincePaymentPointMutation,
     CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
+    CreatePaymentAgencyMutation, UpdatePaymentAgencyMutation, DeletePaymentAgencyMutation,
+    CreateProvincePaymentAgencyMutation, UpdateProvincePaymentAgencyMutation, DeleteProvincePaymentAgencyMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
     ImportSurveyDataMutation, TriggerPMTCalculationMutation,
     BulkUpdateGroupBeneficiaryStatusMutation,
@@ -40,11 +42,20 @@ from merankabandi.gql_queries import (
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType,
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType, BenefitPlanLocationGQLType,
     SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType,
+    PaymentAgencyGQLType, ProvincePaymentAgencyGQLType,
     PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
 )
+from merankabandi.payment_schedule_gql import (
+    PaymentScheduleQuery,
+    CreateCommunePaymentRoundMutation,
+    CreateRetryPaymentRoundMutation,
+    SyncPaymentScheduleMutation,
+)
+
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer,
     SensitizationTraining, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
+    PaymentAgency, ProvincePaymentAgency,
     PmtFormula, SelectionQuota, PreCollecte,
 )
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
@@ -92,7 +103,8 @@ from individual.models import GroupIndividual
 
 
 class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery,
-            VulnerableGroupsQuery, GeographyQuery, graphene.ObjectType):
+            VulnerableGroupsQuery, GeographyQuery, PaymentScheduleQuery,
+            graphene.ObjectType):
 
     exportable_fields = ['sensitization_training', 'behavior_change_promotion', 'micro_project', 'monetary_transfer',
                          'section', 'indicator', 'indicator_achievement', 'province_payment_point']
@@ -314,6 +326,26 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         payment_point_id=graphene.String(description="Filter by payment point ID"),
         payment_plan_id=graphene.String(description="Filter by payment plan ID"),
         is_active=graphene.Boolean(description="Filter by active status"),
+    )
+
+    payment_agency = OrderedDjangoFilterConnectionField(
+        PaymentAgencyGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    payment_gateway_connectors = graphene.List(
+        graphene.ObjectType.create_type(
+            'PaymentGatewayConnectorType',
+            key=graphene.String(),
+            label=graphene.String(),
+            class_path=graphene.String(),
+        ),
+        description="List of available payment gateway connectors",
+    )
+
+    province_payment_agency = OrderedDjangoFilterConnectionField(
+        ProvincePaymentAgencyGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
     )
 
     pmt_formula = OrderedDjangoFilterConnectionField(
@@ -1129,6 +1161,16 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
 
         return gql_optimizer.query(query, info)
 
+    def resolve_payment_agency(self, info, **kwargs):
+        return gql_optimizer.query(PaymentAgency.objects.all(), info)
+
+    def resolve_payment_gateway_connectors(self, info, **kwargs):
+        from merankabandi.payment_gateway import PaymentGatewayRegistry
+        return [type('Obj', (), item) for item in PaymentGatewayRegistry.get_all()]
+
+    def resolve_province_payment_agency(self, info, **kwargs):
+        return gql_optimizer.query(ProvincePaymentAgency.objects.all(), info)
+
     def resolve_location_by_benefit_plan(self, info, **kwargs):
         def _build_filters(info, **kwargs):
             filters = append_validity_filter(**kwargs)
@@ -1307,10 +1349,20 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     # Add province payment point mutation (existing one)
     add_province_payment_point = AddProvincePaymentPointMutation.Field()
 
-    # Add CRUD mutations for province payment points
+    # Add CRUD mutations for province payment points (deprecated)
     create_province_payment_point = CreateProvincePaymentPointMutation.Field()
     update_province_payment_point = UpdateProvincePaymentPointMutation.Field()
     delete_province_payment_point = DeleteProvincePaymentPointMutation.Field()
+
+    # PaymentAgency CRUD
+    create_payment_agency = CreatePaymentAgencyMutation.Field()
+    update_payment_agency = UpdatePaymentAgencyMutation.Field()
+    delete_payment_agency = DeletePaymentAgencyMutation.Field()
+
+    # ProvincePaymentAgency CRUD
+    create_province_payment_agency = CreateProvincePaymentAgencyMutation.Field()
+    update_province_payment_agency = UpdateProvincePaymentAgencyMutation.Field()
+    delete_province_payment_agency = DeleteProvincePaymentAgencyMutation.Field()
 
     # Add validation mutations for KoboToolbox data
     validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()
@@ -1363,3 +1415,8 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_result_framework_snapshot = CreateResultFrameworkSnapshotMutation.Field()
     finalize_snapshot = FinalizeSnapshotMutation.Field()
     generate_result_framework_document = GenerateResultFrameworkDocumentMutation.Field()
+
+    # Payment schedule mutations
+    create_commune_payment_round = CreateCommunePaymentRoundMutation.Field()
+    create_retry_payment_round = CreateRetryPaymentRoundMutation.Field()
+    sync_payment_schedule = SyncPaymentScheduleMutation.Field()

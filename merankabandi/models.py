@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core.models import User, UUIDModel
 from location.models import Location
-from payroll.models import PaymentPoint
+from payroll.models import PaymentPoint, Payroll, PayrollStatus
 from social_protection.models import BenefitPlan
 from contribution_plan.models import PaymentPlan
 
@@ -426,13 +426,48 @@ class MicroProject(models.Model):
         return micro_project
 
 
+class PaymentAgency(models.Model):
+    """
+    First-class model for payment service providers (Lumicash, IBB, FINBANK, BANCOBU).
+    Replaces upstream PaymentPoint for Merankabandi payment agency management.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    payment_gateway = models.CharField(
+        max_length=50, blank=True, null=True,
+        help_text="Maps to PAYMENT_GATEWAYS env config (e.g. LUMICASH, INTERBANK)"
+    )
+    gateway_config = models.TextField(
+        blank=True, default='',
+        help_text="JSON configuration for the payment gateway connector (e.g. class path, credentials key)"
+    )
+    contact_name = models.CharField(max_length=255, blank=True, default='')
+    contact_phone = models.CharField(max_length=50, blank=True, default='')
+    contact_email = models.CharField(max_length=255, blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'merankabandi_payment_agency'
+        ordering = ['name']
+
+    def update(self, data):
+        [setattr(self, k, v) for k, v in data.items()]
+        self.save()
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class MonetaryTransfer(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     transfer_date = models.DateField(verbose_name="Date des transferts")
 
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT)
     programme = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT)
-    payment_agency = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT)
+    payment_agency = models.ForeignKey(PaymentAgency, on_delete=models.PROTECT)
 
     # Planned beneficiaries
     planned_women = models.PositiveIntegerField(
@@ -542,7 +577,7 @@ class MonetaryTransfer(models.Model):
             location=Location.objects.filter(code=locationcode).first(),
 
             # Payment details
-            payment_agency=PaymentPoint.objects.filter(name=payment_agency_name).first(),
+            payment_agency=PaymentAgency.objects.filter(name=payment_agency_name).first(),
             programme=BenefitPlan.objects.filter(code=programme_code).first(),
 
             # Planned beneficiaries
@@ -622,7 +657,8 @@ class IndicatorAchievement(models.Model):
 
 class ProvincePaymentPoint(UUIDModel):
     """
-    Model for associating payment points with provinces and benefit plans
+    DEPRECATED — kept for backward compatibility during migration.
+    Use ProvincePaymentAgency instead.
     """
     province = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='province_payment_points')
     payment_point = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT, related_name='province_associations')
@@ -650,6 +686,31 @@ class ProvincePaymentPoint(UUIDModel):
     def __str__(self):
         benefit_plan_name = self.payment_plan.benefit_plan.name if self.payment_plan else "All plans"
         return f"{self.province.name} - {self.payment_point.name} - {benefit_plan_name}"
+
+
+class ProvincePaymentAgency(models.Model):
+    """
+    Association between Province (Location) + BenefitPlan + PaymentAgency.
+    Defines which payment agency serves which province for which programme.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    province = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='province_payment_agencies')
+    benefit_plan = models.ForeignKey(BenefitPlan, on_delete=models.PROTECT, related_name='province_payment_agencies')
+    payment_agency = models.ForeignKey(PaymentAgency, on_delete=models.PROTECT, related_name='province_assignments')
+    is_active = models.BooleanField(default=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'merankabandi_province_payment_agency'
+        unique_together = ('province', 'benefit_plan', 'payment_agency')
+
+    def update(self, data):
+        [setattr(self, k, v) for k, v in data.items()]
+        self.save()
+
+    def __str__(self):
+        return f"{self.province.name} -> {self.payment_agency.name} ({self.benefit_plan.name})"
 
 
 class ResultFrameworkSnapshot(models.Model):
@@ -820,6 +881,119 @@ class IndicatorCalculationRule(models.Model):
 
     def __str__(self):
         return f"{self.indicator.name} - {self.calculation_type}"
+
+
+class CommunePaymentScheduleStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    GENERATING = "GENERATING", "Generating"
+    APPROVED = "APPROVED", "Approved"
+    IN_PAYMENT = "IN_PAYMENT", "In Payment"
+    RECONCILED = "RECONCILED", "Reconciled"
+    FAILED = "FAILED", "Failed"
+    REJECTED = "REJECTED", "Rejected"
+
+
+# Maximum number of regular payment rounds per commune per programme
+MAX_PAYMENT_ROUNDS = 12
+# Standard bimonthly transfer amount in BIF (36,000 FBU/month × 2 months)
+STANDARD_TRANSFER_AMOUNT = 72000
+
+
+class CommunePaymentSchedule(models.Model):
+    """
+    Tracks payment rounds per commune per benefit plan (programme).
+
+    Enforces:
+    - Sequential closure: round N must be RECONCILED before round N+1 can start
+    - Cap: max 12 regular rounds per commune per programme
+    - Retry payrolls (from failed payments) are tracked but not counted toward the cap
+    - Late-enrolled beneficiaries receive cumulative back-pay
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    benefit_plan = models.ForeignKey(
+        BenefitPlan, on_delete=models.PROTECT,
+        related_name='payment_schedules',
+        help_text="Programme (e.g. 1.2 Transfert Monétaire Régulier)"
+    )
+    commune = models.ForeignKey(
+        Location, on_delete=models.PROTECT,
+        related_name='payment_schedules',
+        help_text="Commune (location type W)"
+    )
+    round_number = models.PositiveIntegerField(
+        help_text="Payment round (1-12 for regular, 0 for retry)"
+    )
+    payroll = models.ForeignKey(
+        Payroll, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payment_schedules',
+        help_text="Linked payroll (set when payroll is created)"
+    )
+    is_retry = models.BooleanField(
+        default=False,
+        help_text="True if this is a retry payroll for failed payments (does not count toward 12-round cap)"
+    )
+    retry_source = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retries',
+        help_text="Original schedule entry this retry relates to"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=CommunePaymentScheduleStatus.choices,
+        default=CommunePaymentScheduleStatus.PENDING
+    )
+    amount_per_beneficiary = models.DecimalField(
+        max_digits=12, decimal_places=2, default=STANDARD_TRANSFER_AMOUNT,
+        help_text="Amount per beneficiary for this round (BIF)"
+    )
+    total_beneficiaries = models.PositiveIntegerField(
+        default=0, help_text="Number of beneficiaries in this payment round"
+    )
+    total_amount = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="Total amount for this round (BIF)"
+    )
+    reconciled_count = models.PositiveIntegerField(
+        default=0, help_text="Number of beneficiaries successfully paid"
+    )
+    failed_count = models.PositiveIntegerField(
+        default=0, help_text="Number of failed payments"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Calendrier de Paiement Commune"
+        verbose_name_plural = "Calendriers de Paiement Communes"
+        ordering = ['benefit_plan', 'commune', 'round_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['benefit_plan', 'commune', 'round_number'],
+                condition=models.Q(is_retry=False),
+                name='unique_regular_round_per_commune'
+            ),
+        ]
+
+    def __str__(self):
+        retry_label = " (retry)" if self.is_retry else ""
+        return f"{self.commune.name} - Round {self.round_number}{retry_label} - {self.status}"
+
+    def sync_from_payroll(self):
+        """Update status from linked payroll."""
+        if not self.payroll:
+            return
+        status_map = {
+            PayrollStatus.GENERATING: CommunePaymentScheduleStatus.GENERATING,
+            PayrollStatus.PENDING_APPROVAL: CommunePaymentScheduleStatus.PENDING,
+            PayrollStatus.APPROVE_FOR_PAYMENT: CommunePaymentScheduleStatus.APPROVED,
+            PayrollStatus.RECONCILED: CommunePaymentScheduleStatus.RECONCILED,
+            PayrollStatus.FAILED: CommunePaymentScheduleStatus.FAILED,
+            PayrollStatus.REJECTED: CommunePaymentScheduleStatus.REJECTED,
+        }
+        new_status = status_map.get(self.payroll.status)
+        if new_status and new_status != self.status:
+            self.status = new_status
+            self.save()
 
 
 # Import workflow models so Django discovers them for migrations

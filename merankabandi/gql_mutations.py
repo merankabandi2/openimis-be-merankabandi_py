@@ -10,7 +10,7 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
-from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PaymentAgency, ProvincePaymentAgency, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
 from location.models import UserDistrict
 from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService,
@@ -644,6 +644,164 @@ class DeleteProvincePaymentPointMutation(BaseHistoryModelDeleteMutationMixin, Ba
                     service.delete({'id': id})
 
     class Input(DeleteProvincePaymentPointInputType):
+        pass
+
+
+# PaymentAgency CRUD mutations
+
+class CreatePaymentAgencyInputType(OpenIMISMutation.Input):
+    code = graphene.String(required=True)
+    name = graphene.String(required=True)
+    payment_gateway = graphene.String(required=False)
+    gateway_config = graphene.String(required=False)
+    contact_name = graphene.String(required=False)
+    contact_phone = graphene.String(required=False)
+    contact_email = graphene.String(required=False)
+    is_active = graphene.Boolean(required=False)
+
+
+class UpdatePaymentAgencyInputType(CreatePaymentAgencyInputType):
+    id = graphene.String(required=True)
+
+
+class DeletePaymentAgencyInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.String, required=True)
+
+
+class CreatePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "CreatePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        PaymentAgency.objects.create(**data)
+
+    class Input(CreatePaymentAgencyInputType):
+        pass
+
+
+class UpdatePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "UpdatePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        agency_id = data.pop('id')
+        agency = PaymentAgency.objects.get(id=agency_id)
+        agency.update(data)
+
+    class Input(UpdatePaymentAgencyInputType):
+        pass
+
+
+class DeletePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "DeletePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids', [])
+        PaymentAgency.objects.filter(id__in=ids).delete()
+
+    class Input(DeletePaymentAgencyInputType):
+        pass
+
+
+# ProvincePaymentAgency CRUD mutations
+
+class CreateProvincePaymentAgencyInputType(OpenIMISMutation.Input):
+    province_id = graphene.String(required=True)
+    benefit_plan_id = graphene.String(required=True)
+    payment_agency_id = graphene.String(required=True)
+    is_active = graphene.Boolean(required=False)
+
+
+class UpdateProvincePaymentAgencyInputType(CreateProvincePaymentAgencyInputType):
+    id = graphene.String(required=True)
+
+
+class DeleteProvincePaymentAgencyInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.String, required=True)
+
+
+class CreateProvincePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "CreateProvincePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ProvincePaymentAgency.objects.create(**data)
+
+    class Input(CreateProvincePaymentAgencyInputType):
+        pass
+
+
+class UpdateProvincePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "UpdateProvincePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        obj_id = data.pop('id')
+        obj = ProvincePaymentAgency.objects.get(id=obj_id)
+        obj.update(data)
+
+    class Input(UpdateProvincePaymentAgencyInputType):
+        pass
+
+
+class DeleteProvincePaymentAgencyMutation(BaseMutation):
+    _mutation_class = "DeleteProvincePaymentAgencyMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids', [])
+        ProvincePaymentAgency.objects.filter(id__in=ids).delete()
+
+    class Input(DeleteProvincePaymentAgencyInputType):
         pass
 
 

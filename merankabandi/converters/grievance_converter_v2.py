@@ -12,6 +12,7 @@ import requests
 from django.conf import settings
 from core.models import User
 from grievance_social_protection.models import Ticket
+from location.models import Location
 from merankabandi.workflow_models import ReplacementRequest
 from merankabandi.workflow_service import WorkflowService
 
@@ -156,9 +157,50 @@ def _derive_flags(data):
     return None
 
 
-def _build_json_ext(data):
+def _kobo_to_openimis_code(kobo_code):
+    """Convert KoBo hierarchical location code to openIMIS code.
+
+    KoBo uses 5-7 digit codes: Province(1-2) + Commune(3) + Zone(1) + Colline(2)
+    openIMIS uses 6 digit codes: Province(2) + Commune(2) + Colline(2) — no zone level.
+    Conversion: zfill to 7 digits, take [:4] + [5:] (strip zone digit at position 4).
+    """
+    if not kobo_code:
+        return None
+    padded = str(kobo_code).strip().zfill(7)
+    return padded[:4] + padded[5:]
+
+
+def _resolve_location(kobo_data):
+    """Resolve KoBo location codes to openIMIS colline Location.
+
+    Returns dict with colline_code, location_id, colline_name (for title),
+    plus milieu_residence and gps.
+    """
+    kobo_colline = _get(kobo_data, 'group_mg1dn99/Colline', '')
+
+    result = {
+        'colline_code': '',
+        'colline_name': '',
+        'location_id': None,
+        'milieu_residence': _get(kobo_data, 'group_mg1dn99/Milieu_de_r_sidence'),
+        'gps': _get(kobo_data, 'group_mg1dn99/Coordonn_es_GPRS_'),
+    }
+
+    if kobo_colline:
+        colline_code = _kobo_to_openimis_code(kobo_colline)
+        colline = Location.objects.filter(code=colline_code, type='V').first()
+        if colline:
+            result['colline_code'] = colline.code
+            result['colline_name'] = colline.name
+            result['location_id'] = str(colline.id)
+
+    return result
+
+
+def _build_json_ext(data, resolved_location=None):
     """Build the full json_ext structure from KoBo data."""
     case_type = _get(data, 'group_jl6wb36/Quel_est_le_type_de_cas_que_vo')
+    loc = resolved_location or {}
 
     json_ext = {
         'form_version': '2025_v2',
@@ -178,12 +220,10 @@ def _build_json_ext(data):
         },
 
         'location': {
-            'province': _get(data, 'group_mg1dn99/Province'),
-            'commune': _get(data, 'group_mg1dn99/Commune'),
-            'zone': _get(data, 'group_mg1dn99/Zone'),
-            'colline': _get(data, 'group_mg1dn99/Colline'),
-            'milieu_residence': _get(data, 'group_mg1dn99/Milieu_de_r_sidence'),
-            'gps': _get(data, 'group_mg1dn99/Coordonn_es_GPRS_'),
+            'colline_code': loc.get('colline_code', ''),
+            'location_id': loc.get('location_id'),
+            'milieu_residence': loc.get('milieu_residence') or _get(data, 'group_mg1dn99/Milieu_de_r_sidence'),
+            'gps': loc.get('gps') or _get(data, 'group_mg1dn99/Coordonn_es_GPRS_'),
         },
 
         'categorization': {
@@ -269,11 +309,13 @@ class GrievanceConverterV2:
         """Convert a single KoBo submission to a Ticket."""
         user = _get_import_user()
 
-        colline_code = _get(kobo_data, 'group_mg1dn99/Colline', '')
+        # Resolve location: KoBo codes → openIMIS Location objects + names
+        resolved_loc = _resolve_location(kobo_data)
+        colline_name = resolved_loc.get('colline_name') or _get(kobo_data, 'group_mg1dn99/Colline', '')
         collection_date = _get(kobo_data, 'Date_de_collecte', '')
-        title = f"{colline_code}-{collection_date}"
+        title = f"{colline_name}-{collection_date}"
 
-        json_ext = _build_json_ext(kobo_data)
+        json_ext = _build_json_ext(kobo_data, resolved_location=resolved_loc)
         channels = ' '.join(json_ext.get('submission', {}).get('channels', []))
 
         ticket = Ticket(

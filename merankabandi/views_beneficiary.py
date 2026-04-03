@@ -151,6 +151,8 @@ demo_per_plan AS (
 -- DEMOGRAPHICS: All-plans with location ROLLUP
 -- Computed separately because COUNT(DISTINCT individual_id) across plans
 -- cannot be derived from per-plan counts (individuals may appear in multiple plans)
+-- NOTE: Only groups that have at least one beneficiary record are included,
+-- so total_individuals counts members of beneficiary households only.
 demo_all_plans AS (
     SELECT
         bg.province_id, bg.province,
@@ -176,7 +178,7 @@ demo_all_plans AS (
     FROM base_groups bg
     CROSS JOIN constants c
     LEFT JOIN individuals_data id ON id.group_id = bg.group_id
-    LEFT JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
+    INNER JOIN group_beneficiaries gb ON gb.group_id = bg.group_id
     GROUP BY ROLLUP(
         (bg.province_id, bg.province),
         (bg.commune_id, bg.commune),

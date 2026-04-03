@@ -6,12 +6,53 @@ Single service layer for all dashboard queries against materialized views.
 """
 
 import json as _json
+from collections import Counter
 
 from django.db import connection
 from django.core.cache import cache
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 from decimal import Decimal
+
+
+# ─── Grievance normalization maps ────────────────────────────────
+
+CHANNEL_NORMALIZE = {
+    't_l_phone': 'telephone',
+    'courrier__lectronique': 'courrier_electronique',
+    'bo_te___suggestion': 'boite_suggestion',
+}
+
+CHANNEL_LABELS = {
+    'en_personne': 'En personne',
+    'telephone': 'Téléphone',
+    'courrier_simple': 'Courrier simple',
+    'courrier_electronique': 'Email',
+    'ligne_verte': 'Ligne verte',
+    'sms': 'SMS',
+    'boite_suggestion': 'Boîte à suggestion',
+    'autre': 'Autre',
+}
+
+CATEGORY_SEPARATOR = ' > '
+
+CATEGORY_LABELS = {
+    'violence_vbg': 'Violence / VBG',
+    'corruption': 'Corruption',
+    'accident_negligence': 'Accident / Négligence',
+    'discrimination_ethnie_religion': 'Discrimination',
+    'erreur_exclusion': "Erreur d'exclusion",
+    'erreur_inclusion': "Erreur d'inclusion",
+    'maladie_mentale': 'Maladie mentale',
+    'paiement': 'Problèmes de paiement',
+    'telephone': 'Problèmes de téléphone',
+    'compte': 'Problèmes de compte',
+    'information': 'Information',
+    'remplacement': 'Remplacement',
+    'suppression': 'Suppression',
+    'autre': 'Autre',
+    'uncategorized': 'Non catégorisé',
+}
 
 
 class DashboardService:
@@ -65,6 +106,96 @@ class DashboardService:
         columns = [col[0] for col in cursor.description]
         row = cursor.fetchone()
         return dict(zip(columns, row)) if row else {}
+
+    # ─── Grievance aggregation helpers ────────────────────────────
+
+    @classmethod
+    def _aggregate_channels(cls, rows: List[Dict]) -> List[Dict]:
+        """
+        Split space-separated multi-select channel values, normalize
+        KoBo transliterations, count each individual channel, and
+        return labelled distribution rows sorted by count descending.
+        """
+        counter: Counter = Counter()
+        for row in rows:
+            raw = (row.get('channel') or '').strip()
+            if not raw:
+                continue
+            for token in raw.split():
+                token = token.strip()
+                if not token:
+                    continue
+                normalized = CHANNEL_NORMALIZE.get(token, token)
+                counter[normalized] += 1
+
+        result = []
+        for key, count in counter.most_common():
+            result.append({
+                'category': CHANNEL_LABELS.get(key, key),
+                'count': count,
+            })
+        return result
+
+    @classmethod
+    def _aggregate_categories(cls, rows: List[Dict]) -> List[Dict]:
+        """
+        Parse category values which may be JSON arrays or bare strings,
+        extract the top-level category (before ' > '), normalize, and
+        return labelled distribution rows sorted by count descending.
+        """
+        counter: Counter = Counter()
+        for row in rows:
+            raw = (row.get('individual_category') or '').strip()
+            categories = cls._parse_category_value(raw)
+            if not categories:
+                counter['uncategorized'] += 1
+                continue
+            for cat in categories:
+                counter[cat] += 1
+
+        result = []
+        for key, count in counter.most_common():
+            result.append({
+                'category': CATEGORY_LABELS.get(key, key),
+                'count': count,
+            })
+        return result
+
+    @staticmethod
+    def _parse_category_value(raw: str) -> List[str]:
+        """
+        Parse a single category field value into a list of top-level
+        category keys.
+
+        Handles:
+        - JSON arrays:  '["paiement"]', '["paiement", "corruption"]'
+        - Bare strings:  'remplacement', 'paiement > montant'
+        - Empty/null:    returns []
+        """
+        if not raw:
+            return []
+
+        # Try JSON array parse
+        if raw.startswith('['):
+            try:
+                parsed = _json.loads(raw)
+                if isinstance(parsed, list):
+                    result = []
+                    for item in parsed:
+                        item = str(item).strip()
+                        if CATEGORY_SEPARATOR in item:
+                            item = item.split(CATEGORY_SEPARATOR)[0].strip()
+                        if item:
+                            result.append(item)
+                    return result
+            except (ValueError, TypeError):
+                pass
+
+        # Bare string — take top-level category before separator
+        if CATEGORY_SEPARATOR in raw:
+            raw = raw.split(CATEGORY_SEPARATOR)[0].strip()
+
+        return [raw] if raw else []
 
     # ─── Master Summary ───────────────────────────────────────────
 
@@ -192,15 +323,33 @@ class DashboardService:
 
     @classmethod
     def _breakdown_global(cls) -> Dict[str, Any]:
+        # Use dashboard_individual_summary (ALL plans, global rollup) to get
+        # individual counts scoped to beneficiary households only,
+        # not all individuals in the system.
         query = """
         SELECT total_male, total_female, total_twa, total_individuals,
                male_beneficiaries, female_beneficiaries, twa_beneficiaries,
                total_beneficiaries, total_households
-        FROM dashboard_master_summary LIMIT 1
+        FROM dashboard_individual_summary
+        WHERE benefit_plan_code = 'ALL'
+          AND province_id IS NULL AND commune_id IS NULL AND colline_id IS NULL
+        LIMIT 1
         """
         with connection.cursor() as cursor:
             cursor.execute(query)
             r = cls._dictfetchone(cursor)
+
+        if not r:
+            # Fallback to master summary if individual_summary has no global rollup
+            query_fallback = """
+            SELECT total_male, total_female, total_twa, total_individuals,
+                   male_beneficiaries, female_beneficiaries, twa_beneficiaries,
+                   total_beneficiaries, total_households
+            FROM dashboard_master_summary LIMIT 1
+            """
+            with connection.cursor() as cursor:
+                cursor.execute(query_fallback)
+                r = cls._dictfetchone(cursor)
 
         total = cls._safe_int(r.get('total_individuals'))
         total_ben = cls._safe_int(r.get('total_beneficiaries'))
@@ -577,22 +726,22 @@ class DashboardService:
             """)
             status_dist = cls._dictfetchall(cursor)
 
-            # Category distribution
+            # Category distribution — raw rows, aggregated in Python
             cursor.execute("""
-                SELECT individual_category AS category, COUNT(DISTINCT id) AS count
+                SELECT id, individual_category
                 FROM dashboard_grievance_details
-                GROUP BY individual_category ORDER BY count DESC
             """)
-            category_dist = cls._dictfetchall(cursor)
+            category_raw = cls._dictfetchall(cursor)
+            category_dist = cls._aggregate_categories(category_raw)
 
-            # Channel distribution
+            # Channel distribution — raw rows, aggregated in Python
             cursor.execute("""
-                SELECT channel AS category, COUNT(DISTINCT id) AS count
+                SELECT id, channel
                 FROM dashboard_grievance_details
-                WHERE channel IS NOT NULL
-                GROUP BY channel ORDER BY count DESC
+                WHERE channel IS NOT NULL AND channel != ''
             """)
-            channel_dist = cls._dictfetchall(cursor)
+            channel_raw = cls._dictfetchall(cursor)
+            channel_dist = cls._aggregate_channels(channel_raw)
 
             # Priority distribution
             cursor.execute("""

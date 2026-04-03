@@ -10,9 +10,8 @@ import logging
 
 from django.db.models import Q
 from location.models import Location
-from payroll.models import PaymentPoint
 from social_protection.models import BenefitPlan
-from .models import MonetaryTransfer
+from .models import MonetaryTransfer, PaymentAgency
 
 logger = logging.getLogger(__name__)
 
@@ -145,9 +144,9 @@ class MonetaryTransferImportService:
                         failed += 1
                         continue
 
-                    # Find payment agency (PaymentPoint)
+                    # Find payment agency
                     agency_name = str(row['Agence de paiement']).strip()
-                    payment_agency = PaymentPoint.objects.filter(
+                    payment_agency = PaymentAgency.objects.filter(
                         Q(name__iexact=agency_name) | Q(code__iexact=agency_name)
                     ).first()
 

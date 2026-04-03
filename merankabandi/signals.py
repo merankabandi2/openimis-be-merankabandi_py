@@ -100,3 +100,16 @@ def bind_service_signals():
         on_promotion_completed,
         ServiceSignalBindType.AFTER,
     )
+
+    # Payment schedule sync — auto-update CommunePaymentSchedule when payroll changes
+    from merankabandi.payroll_signals import sync_payment_schedule_on_payroll_change
+    bind_service_signal(
+        'payroll_service.close_payroll',
+        sync_payment_schedule_on_payroll_change,
+        ServiceSignalBindType.AFTER,
+    )
+    bind_service_signal(
+        'payroll_service.reject_approve_payroll',
+        sync_payment_schedule_on_payroll_change,
+        ServiceSignalBindType.AFTER,
+    )

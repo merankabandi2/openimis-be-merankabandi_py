@@ -9,6 +9,7 @@ from location.models import Location
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining,
     Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
+    PaymentAgency, ProvincePaymentAgency,
     ResultFrameworkSnapshot, IndicatorCalculationRule, PmtFormula, SelectionQuota,
     PreCollecte,
 )
@@ -115,7 +116,13 @@ class MonetaryTransferGQLType(DjangoObjectType):
             "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
-            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", {
+                "id": ["exact"],
+                "code": ["exact", "icontains"],
+                "name": ["exact", "icontains"],
+                "payment_gateway": ["exact"],
+                "is_active": ["exact"],
+            }),
             "planned_women": ["exact", "lt", "lte", "gt", "gte"],
             "planned_men": ["exact", "lt", "lte", "gt", "gte"],
             "planned_twa": ["exact", "lt", "lte", "gt", "gte"],
@@ -145,7 +152,13 @@ class MonetaryTransferQuarterlyDataGQLType(graphene.ObjectType):
             "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
-            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", {
+                "id": ["exact"],
+                "code": ["exact", "icontains"],
+                "name": ["exact", "icontains"],
+                "payment_gateway": ["exact"],
+                "is_active": ["exact"],
+            }),
         }
 
 
@@ -164,7 +177,13 @@ class MonetaryTransferBeneficiaryDataGQLType(graphene.ObjectType):
             "transfer_date": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("programme__", BenefitPlanGQLType._meta.filter_fields),
-            **prefix_filterset("payment_agency__", PaymentPointGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", {
+                "id": ["exact"],
+                "code": ["exact", "icontains"],
+                "name": ["exact", "icontains"],
+                "payment_gateway": ["exact"],
+                "is_active": ["exact"],
+            }),
         }
 
 
@@ -272,6 +291,44 @@ class ProvincePaymentPointGQLType(DjangoObjectType):
             "updated_date": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("province__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("payment_point__", PaymentPointGQLType._meta.filter_fields),
+        }
+        connection_class = ExtendedConnection
+
+
+class PaymentAgencyGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = PaymentAgency
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "code": ["exact", "icontains"],
+            "name": ["exact", "icontains", "istartswith"],
+            "payment_gateway": ["exact", "icontains"],
+            "is_active": ["exact"],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+        }
+        connection_class = ExtendedConnection
+
+
+class ProvincePaymentAgencyGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = ProvincePaymentAgency
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "is_active": ["exact"],
+            **prefix_filterset("province__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("payment_agency__", {
+                "id": ["exact"],
+                "code": ["exact", "icontains"],
+                "name": ["exact", "icontains"],
+                "payment_gateway": ["exact"],
+            }),
         }
         connection_class = ExtendedConnection
 
