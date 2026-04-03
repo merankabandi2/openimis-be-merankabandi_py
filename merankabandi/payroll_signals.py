@@ -16,7 +16,7 @@ def validate_commune_reconciliation(**kwargs):
     Skipped when from_failed_invoices_payroll_id is present (rattrapage flow).
     """
     from payroll.models import (
-        Payroll, PayrollStatus, PaymentPoint,
+        Payroll, PayrollStatus,
         BenefitConsumption, BenefitConsumptionStatus,
     )
     from location.models import Location
@@ -28,21 +28,17 @@ def validate_commune_reconciliation(**kwargs):
         return
 
     payment_plan_id = obj_data.get('payment_plan_id')
-    payment_point_id = obj_data.get('payment_point_id')
-    if not payment_plan_id or not payment_point_id:
+    location_id = obj_data.get('location_id')
+    if not payment_plan_id or not location_id:
         return
 
-    # Resolve commune (type W) from payment point location
+    # Resolve commune (type W) from location_id stored in payroll data
     try:
-        payment_point = PaymentPoint.objects.get(id=payment_point_id)
-    except PaymentPoint.DoesNotExist:
+        location = Location.objects.get(LocationId=location_id)
+    except Location.DoesNotExist:
         return
 
-    if not payment_point.location:
-        return
-
-    commune = payment_point.location
-    # Walk up to commune level if payment point is at colline level
+    commune = location
     while commune and commune.type != 'W':
         commune = commune.parent
     if not commune:
@@ -51,15 +47,15 @@ def validate_commune_reconciliation(**kwargs):
     # Find all collines under this commune
     colline_ids = list(
         Location.objects.filter(parent=commune, type='V')
-        .values_list('id', flat=True)
+        .values_list('LocationId', flat=True)
     )
-    # Include commune itself (payment point could be at commune level)
-    location_ids = colline_ids + [commune.id]
+    location_ids = colline_ids + [commune.LocationId]
 
-    # Find existing non-terminal payrolls for same payment_plan + commune locations
+    # Find existing non-terminal payrolls for same payment_plan + commune
+    # Use json_ext to match commune since we no longer use payment_point
     existing_payrolls = Payroll.objects.filter(
         payment_plan_id=payment_plan_id,
-        payment_point__location_id__in=location_ids,
+        json_ext__commune_id__in=[str(lid) for lid in location_ids],
         is_deleted=False,
     ).exclude(
         status__in=[PayrollStatus.RECONCILED, PayrollStatus.REJECTED]
@@ -77,48 +73,3 @@ def validate_commune_reconciliation(**kwargs):
             raise ValueError(
                 _("merankabandi.payroll.commune_not_reconciled")
             )
-
-
-def sync_payment_schedule_on_payroll_change(**kwargs):
-    """
-    Auto-sync CommunePaymentSchedule status when payroll status changes.
-    Connected to payroll close/reject/reconcile signals.
-    """
-    from merankabandi.models import CommunePaymentSchedule
-    from payroll.models import Payroll, BenefitConsumption
-
-    result = kwargs.get('result', {})
-    obj_data = kwargs.get('data', {})
-
-    payroll_id = obj_data.get('id')
-    if not payroll_id:
-        return
-
-    schedules = CommunePaymentSchedule.objects.filter(payroll_id=payroll_id)
-    if not schedules.exists():
-        return
-
-    try:
-        payroll = Payroll.objects.get(id=payroll_id)
-    except Payroll.DoesNotExist:
-        return
-
-    for schedule in schedules:
-        schedule.sync_from_payroll()
-        # Update benefit counts
-        benefits = BenefitConsumption.objects.filter(
-            payrollbenefitconsumption__payroll=payroll,
-            is_deleted=False,
-        )
-        schedule.total_beneficiaries = benefits.count()
-        schedule.reconciled_count = benefits.filter(status='RECONCILED').count()
-        schedule.failed_count = benefits.filter(status='REJECTED').count()
-        if schedule.total_beneficiaries > 0:
-            schedule.total_amount = (
-                schedule.amount_per_beneficiary * schedule.total_beneficiaries
-            )
-        schedule.save()
-        logger.info(
-            f"Payment schedule synced: {schedule.commune.name} round {schedule.round_number} "
-            f"→ {schedule.status} ({schedule.reconciled_count}/{schedule.total_beneficiaries})"
-        )

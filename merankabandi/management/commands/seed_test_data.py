@@ -39,7 +39,7 @@ class Command(BaseCommand):
         from merankabandi.models import MonetaryTransfer
         from social_protection.models import BenefitPlan
         from location.models import Location
-        from payroll.models import PaymentPoint
+        from merankabandi.models import PaymentAgency
 
         if MonetaryTransfer.objects.count() > 0:
             self.stdout.write('MonetaryTransfer: already has data, skipping')
@@ -47,7 +47,7 @@ class Command(BaseCommand):
 
         plan = BenefitPlan.objects.first()
         province = Location.objects.filter(type='D').first()
-        pp = PaymentPoint.objects.first()
+        pp = PaymentAgency.objects.first()
 
         if not plan or not province:
             self.stdout.write(self.style.WARNING('MonetaryTransfer: missing BenefitPlan or Location'))

@@ -28,7 +28,6 @@ from location.models import Location
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
 from social_protection.models import BenefitPlan, GroupBeneficiary as Beneficiary
 
-from .models import ProvincePaymentPoint
 from .monetary_transfer_import_service import MonetaryTransferImportService
 
 from .serializers import (
@@ -1722,66 +1721,47 @@ class GroupBeneficiaryCheckViewSet(viewsets.ViewSet):
 
 class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
     """
-    API endpoint to get communes for provinces that have payment points
+    API endpoint to get communes for provinces that have payment agencies.
+    Used by payment agencies (OAuth2) to discover which communes they serve.
     """
     permission_classes = [TokenHasScope]
     required_scopes = ['location:read']
 
     def get_required_scopes(self, request):
-        """Return appropriate scopes based on request method"""
         return ['location:read']
 
     def list(self, request):
-        """
-        GET: List all communes for provinces that have payment points
-        Optional query parameters:
-        - province: Filter by specific province code
-        - payment_plan: Filter by specific payment plan code
-        - programme: Filter by specific programme code
-        """
         try:
             application_name = request.auth.application.name
 
-            # Get filter parameters from query params
             province = request.query_params.get('province')
-            payment_plan = request.query_params.get('payment_plan')
             programme = request.query_params.get('programme')
 
-            # Build filter conditions dynamically
-            payment_point_filters = {
+            # Use ProvincePaymentAgency instead of legacy ProvincePaymentPoint
+            from merankabandi.models import ProvincePaymentAgency
+            agency_filters = {
                 'is_active': True,
-                'payment_point__name': application_name,
+                'payment_agency__name': application_name,
             }
-
-            # Add optional filters
             if province:
-                payment_point_filters['province__code'] = province
-            if payment_plan:
-                payment_point_filters['payment_plan__code'] = payment_plan
+                agency_filters['province__code'] = province
             if programme:
-                benefit_plans = BenefitPlan.objects.filter(is_deleted=False, code=programme)
-                benefit_plan_ids = list(benefit_plans.values_list('id', flat=True).iterator())
-                payment_point_filters['payment_plan__benefit_plan_id__in'] = benefit_plan_ids
+                agency_filters['benefit_plan__code'] = programme
 
-            # Get provinces that have payment points
-            province_payment_points = ProvincePaymentPoint.objects.filter(
-                **payment_point_filters
+            province_agencies = ProvincePaymentAgency.objects.filter(
+                **agency_filters
             ).distinct()
 
-            # Extract province IDs
-            province_ids = [ppp.province_id for ppp in province_payment_points]
+            province_ids = [pa.province_id for pa in province_agencies]
 
-            # Get communes (type='W') for these provinces
             communes = Location.objects.filter(
                 parent_id__in=province_ids,
                 type='W',
                 validity_to__isnull=True
             ).select_related('parent').order_by('parent__name', 'name')
 
-            # Serialize the data
             serializer = CommuneSerializer(communes, many=True)
 
-            # Group by province for better organization
             communes_by_province = {}
             for commune_data in serializer.data:
                 province_name = commune_data['province_name']
@@ -1804,11 +1784,8 @@ class ProvincePaymentPointCommunesViewSet(viewsets.ViewSet):
             })
 
         except Exception as e:
-            logger.error(f"Error retrieving communes for provinces with payment points: {str(e)}")
+            logger.error(f"Error retrieving communes for provinces with payment agencies: {str(e)}")
             return Response(
-                {
-                    'error': 'Error retrieving communes data',
-                    'data': []
-                },
+                {'error': 'Error retrieving communes data', 'data': []},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

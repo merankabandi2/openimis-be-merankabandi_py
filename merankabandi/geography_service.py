@@ -602,14 +602,17 @@ class GeographyService:
 
         pp_query = """
             SELECT
-                mpp.id,
-                pp.name AS payment_point_name
-            FROM merankabandi_province_payment_point mpp
-            INNER JOIN payroll_paymentpoint pp
-                ON pp."UUID" = mpp.payment_point_id
-            WHERE mpp.province_id = %s
-              AND mpp.is_active = true
-            ORDER BY pp.name
+                ppa.id,
+                pa.name AS payment_point_name,
+                bp.name AS benefit_plan_name
+            FROM merankabandi_province_payment_agency ppa
+            INNER JOIN merankabandi_payment_agency pa
+                ON pa.id = ppa.payment_agency_id
+            LEFT JOIN social_protection_benefitplan bp
+                ON bp."UUID" = ppa.benefit_plan_id
+            WHERE ppa.province_id = %s
+              AND ppa.is_active = true
+            ORDER BY pa.name
         """
 
         with connection.cursor() as cursor:

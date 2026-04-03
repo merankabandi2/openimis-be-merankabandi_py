@@ -39,7 +39,7 @@ WITH combined_payments AS (
         CASE WHEN ind."Json_ext"->>'sexe' = 'F' THEN 1 ELSE 0 END AS female_count,
         CASE WHEN grp."Json_ext"->>'menage_mutwa' = 'OUI' THEN 1 ELSE 0 END AS twa_count,
         bc.status AS payment_status,
-        pp.name AS payment_point_name
+        p."Json_ext"->>'payment_agency_name' AS payment_point_name
     FROM payroll_benefitconsumption bc
     INNER JOIN individual_individual ind ON ind."UUID" = bc.individual_id
     INNER JOIN individual_groupindividual gi ON gi.individual_id = ind."UUID" AND gi."isDeleted" = false
@@ -51,7 +51,6 @@ WITH combined_payments AS (
     LEFT JOIN "tblLocations" prov ON prov."LocationId" = com."ParentLocationId"
     LEFT JOIN payroll_payrollbenefitconsumption pbc ON pbc.benefit_id = bc."UUID" AND pbc."isDeleted" = false
     LEFT JOIN payroll_payroll p ON p."UUID" = pbc.payroll_id AND p."isDeleted" = false
-    LEFT JOIN payroll_paymentpoint pp ON pp."UUID" = p.payment_point_id
     WHERE bc."isDeleted" = false
 
     UNION ALL

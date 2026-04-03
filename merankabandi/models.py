@@ -5,9 +5,8 @@ from datetime import datetime
 
 from core.models import User, UUIDModel
 from location.models import Location
-from payroll.models import PaymentPoint, Payroll, PayrollStatus
+from payroll.models import Payroll, PayrollStatus
 from social_protection.models import BenefitPlan
-from contribution_plan.models import PaymentPlan
 
 # Host community communes as specified
 HOST_COMMUNES = ['Butezi', 'Ruyigi', 'Kiremba', 'Gasorwe', 'Gashoho', 'Muyinga', 'Cankuzo']
@@ -654,38 +653,6 @@ class IndicatorAchievement(models.Model):
     def __str__(self):
         return f"{self.indicator.name} - {self.achieved} at {self.date}"
 
-
-class ProvincePaymentPoint(UUIDModel):
-    """
-    DEPRECATED — kept for backward compatibility during migration.
-    Use ProvincePaymentAgency instead.
-    """
-    province = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='province_payment_points')
-    payment_point = models.ForeignKey(PaymentPoint, on_delete=models.PROTECT, related_name='province_associations')
-    payment_plan = models.ForeignKey(PaymentPlan, on_delete=models.PROTECT, null=True,
-                                     blank=True, related_name='province_payment_points')
-    is_active = models.BooleanField(default=True)
-    created_date = models.DateTimeField(auto_now_add=True)
-    updated_date = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'merankabandi_province_payment_point'
-        unique_together = ('province', 'payment_point', 'payment_plan')
-
-    def update(self, *args, user=None, username=None, save=True, **kwargs):
-        obj_data = kwargs.pop('data', {})
-        if not obj_data:
-            obj_data = kwargs
-            kwargs = {}
-        for key in obj_data:
-            setattr(self, key, obj_data[key])
-        if save:
-            self.save()
-        return self
-
-    def __str__(self):
-        benefit_plan_name = self.payment_plan.benefit_plan.name if self.payment_plan else "All plans"
-        return f"{self.province.name} - {self.payment_point.name} - {benefit_plan_name}"
 
 
 class ProvincePaymentAgency(models.Model):

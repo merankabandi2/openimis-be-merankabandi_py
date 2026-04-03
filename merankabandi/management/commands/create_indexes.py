@@ -211,10 +211,10 @@ class Command(BaseCommand):
                 'where': '"isDeleted" = false AND status = \'ACTIVE\''
             },
 
-            # Payment point and location indexes
+            # Payment agency and location indexes
             {
-                'name': 'idx_payment_point_name',
-                'table': 'payroll_paymentpoint',
+                'name': 'idx_payment_agency_name',
+                'table': 'merankabandi_payment_agency',
                 'type': 'BTREE',
                 'columns': '(name)'
             },
@@ -271,7 +271,7 @@ class Command(BaseCommand):
                 'individual_individual',
                 'social_protection_groupbeneficiary',
                 'payroll_benefitconsumption',
-                'payroll_paymentpoint',
+                'merankabandi_payment_agency',
                 '"tblBill"',
                 '"tblLocations"'
             ]

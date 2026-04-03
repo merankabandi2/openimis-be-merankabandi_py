@@ -1,11 +1,11 @@
 import logging
 from merankabandi.models import (
     MonetaryTransfer, Section, Indicator, IndicatorAchievement,
-    ProvincePaymentPoint, PaymentAgency, ProvincePaymentAgency
+    PaymentAgency, ProvincePaymentAgency
 )
 from merankabandi.validation import (
     MonetaryTransferValidation, SectionValidation, IndicatorValidation,
-    IndicatorAchievementValidation, ProvincePaymentPointValidation
+    IndicatorAchievementValidation
 )
 
 from datetime import datetime
@@ -19,7 +19,6 @@ from payroll.models import BenefitConsumption, BenefitConsumptionStatus, Payroll
 from location.models import Location
 from payment_cycle.models import PaymentCycle
 from payroll.services import PayrollService
-from payroll.models import PaymentPoint
 from contribution_plan.models import PaymentPlan
 from dateutil.relativedelta import relativedelta
 from social_protection.models import BeneficiaryStatus, GroupBeneficiary
@@ -77,26 +76,15 @@ class PayrollGenerationService:
                 is_active=True,
             ).select_related('payment_agency').first()
 
-            # Fallback to legacy ProvincePaymentPoint if no ProvincePaymentAgency yet
             if not province_agency:
-                province_payment_point = ProvincePaymentPoint.objects.filter(
-                    province_id=province_id,
-                    payment_plan_id=payment_plan_id
-                ).first()
-                payment_point = province_payment_point.payment_point if province_payment_point else None
-            else:
-                # Find the matching PaymentPoint by agency name (for upstream compatibility)
-                from payroll.models import PaymentPoint
-                payment_point = PaymentPoint.objects.filter(
-                    name=province_agency.payment_agency.name
-                ).first()
-
-            if not payment_point:
                 return {
                     'success': False,
-                    'error': 'No payment agency found for this province and programme',
+                    'error': 'No payment agency found for this province and programme. '
+                             'Configure one via Paiement → Agences de paiement.',
                     'generated_payrolls': []
                 }
+
+            payment_agency = province_agency.payment_agency
 
             # Find the appropriate payment cycle for the given date
             payment_cycle = PaymentCycle.objects.filter(
@@ -170,7 +158,6 @@ class PayrollGenerationService:
                     'name': f"Demande de paiement du {payment_date.strftime('%d/%m/%Y')} pour la commune de {commune.name}",
                     'payment_cycle_id': payment_cycle.id,
                     'payment_plan_id': payment_plan.id,
-                    'payment_point_id': payment_point.id,
                     'location_id': commune.id,
                     'date_valid_from': payment_date,
                     'date_valid_to': payment_date + relativedelta(months=1),
@@ -222,8 +209,8 @@ class PaymentDataService:
     @classmethod
     def get_benefits_for_agence(cls, agence, commune, status):
         filters = Q(
-            payrollbenefitconsumption__payroll__payment_point__name=agence,
-            payroll__location__name=commune,
+            payrollbenefitconsumption__payroll__json_ext__payment_agency_name=agence,
+            payrollbenefitconsumption__payroll__json_ext__commune_name=commune,
             is_deleted=False,
             status=status,
             payrollbenefitconsumption__is_deleted=False,
@@ -677,7 +664,7 @@ class PaymentApiService:
 
             # Filter by payment provider if specified
             if payment_provider:
-                payroll_query = payroll_query.filter(payment_point__name__iexact=payment_provider)
+                payroll_query = payroll_query.filter(json_ext__payment_agency_name__iexact=payment_provider)
 
             # Filter by payment cycle if specified
             if payment_cycle:
@@ -798,7 +785,7 @@ class PaymentApiService:
                 from payroll.models import PayrollBenefitConsumption
                 has_access = PayrollBenefitConsumption.objects.filter(
                     benefit=benefit,
-                    payroll__payment_point__name=payment_agency,
+                    payroll__json_ext__payment_agency_name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
 
@@ -888,7 +875,7 @@ class PaymentApiService:
                 from payroll.models import PayrollBenefitConsumption
                 has_access = PayrollBenefitConsumption.objects.filter(
                     benefit=benefit,
-                    payroll__payment_point__name=payment_agency,
+                    payroll__json_ext__payment_agency_name=payment_agency,
                     payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT
                 ).exists()
 
@@ -1028,94 +1015,6 @@ class IndicatorService(BaseService):
         return build_delete_instance_payload()
 
 
-class ProvincePaymentPointService(BaseService):
-    """
-    Service for managing payment points at province level
-    """
-    OBJECT_TYPE = ProvincePaymentPoint
-
-    def __init__(self, user, validation_class=ProvincePaymentPointValidation):
-        super().__init__(user, validation_class)
-
-    @register_service_signal('province_payment_point_service.create')
-    def create(self, obj_data):
-        return super().create(obj_data)
-
-    @register_service_signal('province_payment_point_service.update')
-    def update(self, obj_data):
-        return super().update(obj_data)
-
-    @register_service_signal('province_payment_point_service.delete')
-    def delete(self, obj_data):
-        return super().delete(obj_data)
-
-    def save_instance(self, obj_):
-        obj_.save()
-        dict_repr = model_representation(obj_)
-        return output_result_success(dict_representation=dict_repr)
-
-    def delete_instance(self, obj_):
-        obj_.delete()
-        return build_delete_instance_payload()
-
-    def add_province_payment_point(self, province_id, payment_point_id, payment_plan_id=None):
-        """
-        Add a payment point to a province
-
-        Args:
-            province_id (str): UUID of the province location
-            payment_point_id (str): UUID of the payment point
-            payment_plan_id (str, optional): UUID of the payment plan
-
-        Returns:
-            dict: Summary of operation results
-        """
-
-        try:
-            # Create the province payment point
-            result = self.create({
-                'province_id': province_id,
-                'payment_point_id': payment_point_id,
-                'payment_plan_id': payment_plan_id
-            })
-
-            if 'success' in result and result['success']:
-                # Validate province
-                province = Location.objects.filter(id=province_id, type='D').first()
-
-                # Validate payment point
-                payment_point = PaymentPoint.objects.filter(id=payment_point_id).first()
-
-                # If payment_plan_id is provided, verify it exists
-                benefit_plan = None
-                if payment_plan_id:
-                    # Get the payment plan and associated benefit plan
-                    payment_plan = PaymentPlan.objects.filter(id=payment_plan_id).first()
-                    if payment_plan:
-                        benefit_plan = payment_plan.benefit_plan
-
-                # Return summary
-                return {
-                    'success': True,
-                    'province_id': str(province.id),
-                    'province_name': province.name,
-                    'payment_point_id': str(payment_point.id),
-                    'payment_point_name': payment_point.name,
-                    'benefit_plan_id': str(benefit_plan.id) if benefit_plan else None,
-                    'benefit_plan_name': benefit_plan.name if benefit_plan else None,
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': result.get('error', 'Unknown error occurred')
-                }
-
-        except Exception as e:
-            logger.error(f"Error adding province-wide payment point: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
 
 
 class IndicatorAchievementService(BaseService):

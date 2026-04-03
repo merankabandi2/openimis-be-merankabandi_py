@@ -10,11 +10,11 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
-from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, ProvincePaymentPoint, PaymentAgency, ProvincePaymentAgency, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, PaymentAgency, ProvincePaymentAgency, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
 from location.models import UserDistrict
 from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService,
-    IndicatorAchievementService, ProvincePaymentPointService
+    IndicatorAchievementService
 )
 from django.core.management import call_command
 from social_protection.models import BenefitPlan
@@ -502,149 +502,6 @@ class GenerateProvincePayrollMutation(BaseMutation):
 
         return result
 
-# Add Province Payment Point mutation
-
-
-class AddProvincePaymentPointInputType(OpenIMISMutation.Input):
-    province_id = graphene.String(required=True, description="UUID of the province location")
-    payment_point_id = graphene.String(required=True, description="UUID of the payment point")
-    payment_plan_id = graphene.String(required=False, description="UUID of the payment plan (optional)")
-
-
-class AddProvincePaymentPointResponseType(graphene.ObjectType):
-    success = graphene.Boolean(required=True)
-    error = graphene.String()
-    province_id = graphene.String()
-    province_name = graphene.String()
-    payment_point_id = graphene.String()
-    payment_point_name = graphene.String()
-    benefit_plan_id = graphene.String()
-    benefit_plan_name = graphene.String()
-
-
-class AddProvincePaymentPointMutation(BaseMutation):
-    _mutation_class = "AddProvincePaymentPointMutation"
-    _mutation_module = MerankabandiConfig.name
-
-    class Input(AddProvincePaymentPointInputType):
-        pass
-
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id or not user.has_perms(
-                PayrollConfig.gql_payroll_create_perms):
-            raise ValidationError(_("mutation.authentication_required"))
-
-    @classmethod
-    def _mutate(cls, user, **data):
-        from merankabandi.services import ProvincePaymentPointService
-
-        data.pop('client_mutation_id', None)
-        data.pop('client_mutation_label', None)
-
-        province_id = data.get('province_id')
-        payment_point_id = data.get('payment_point_id')
-        payment_plan_id = data.get('payment_plan_id')
-
-        service = ProvincePaymentPointService(user)
-        result = service.add_province_payment_point(
-            province_id=province_id,
-            payment_point_id=payment_point_id,
-            payment_plan_id=payment_plan_id
-        )
-
-        return result
-
-# ProvincePaymentPoint mutations
-
-
-class CreateProvincePaymentPointInputType(OpenIMISMutation.Input):
-    province_id = graphene.String(required=True, description="UUID of the province location")
-    payment_point_id = graphene.String(required=True, description="UUID of the payment point")
-    payment_plan_id = graphene.String(required=False, description="UUID of the payment plan (optional)")
-    is_active = graphene.Boolean(required=False, description="Is the association active")
-
-
-class UpdateProvincePaymentPointInputType(CreateProvincePaymentPointInputType):
-    id = graphene.String(required=True)
-
-
-class DeleteProvincePaymentPointInputType(OpenIMISMutation.Input):
-    ids = graphene.List(graphene.String, required=True)
-
-
-class CreateProvincePaymentPointMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
-    _mutation_class = "CreateProvincePaymentPointMutation"
-    _mutation_module = MerankabandiConfig.name
-    _model = ProvincePaymentPoint
-
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id or not user.has_perms(
-                PayrollConfig.gql_payroll_create_perms):
-            raise ValidationError(_("mutation.authentication_required"))
-
-    @classmethod
-    def _mutate(cls, user, **data):
-        data.pop('client_mutation_id', None)
-        data.pop('client_mutation_label', None)
-
-        service = ProvincePaymentPointService(user)
-        return service.create(data)
-
-    class Input(CreateProvincePaymentPointInputType):
-        pass
-
-
-class UpdateProvincePaymentPointMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
-    _mutation_class = "UpdateProvincePaymentPointMutation"
-    _mutation_module = MerankabandiConfig.name
-    _model = ProvincePaymentPoint
-
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id or not user.has_perms(
-                PayrollConfig.gql_payroll_create_perms):
-            raise ValidationError(_("mutation.authentication_required"))
-
-    @classmethod
-    def _mutate(cls, user, **data):
-        data.pop('client_mutation_id', None)
-        data.pop('client_mutation_label', None)
-
-        service = ProvincePaymentPointService(user)
-        return service.update(data)
-
-    class Input(UpdateProvincePaymentPointInputType):
-        pass
-
-
-class DeleteProvincePaymentPointMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
-    _mutation_class = "DeleteProvincePaymentPointMutation"
-    _mutation_module = MerankabandiConfig.name
-    _model = ProvincePaymentPoint
-
-    @classmethod
-    def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id or not user.has_perms(
-                PayrollConfig.gql_payroll_create_perms):
-            raise ValidationError(_("mutation.authentication_required"))
-
-    @classmethod
-    def _mutate(cls, user, **data):
-        data.pop('client_mutation_id', None)
-        data.pop('client_mutation_label', None)
-
-        service = ProvincePaymentPointService(user)
-
-        ids = data.get('ids')
-        if ids:
-            with transaction.atomic():
-                for id in ids:
-                    service.delete({'id': id})
-
-    class Input(DeleteProvincePaymentPointInputType):
-        pass
 
 
 # PaymentAgency CRUD mutations

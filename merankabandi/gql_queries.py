@@ -8,12 +8,12 @@ from location.gql_queries import LocationGQLType
 from location.models import Location
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining,
-    Section, Indicator, IndicatorAchievement, ProvincePaymentPoint,
+    Section, Indicator, IndicatorAchievement,
     PaymentAgency, ProvincePaymentAgency,
     ResultFrameworkSnapshot, IndicatorCalculationRule, PmtFormula, SelectionQuota,
     PreCollecte,
 )
-from payroll.gql_queries import PaymentPointGQLType
+
 from social_protection.gql_queries import BenefitPlanGQLType
 
 
@@ -284,22 +284,6 @@ class IndicatorAchievementGQLType(DjangoObjectType):
         }
         connection_class = ExtendedConnection
 
-
-class ProvincePaymentPointGQLType(DjangoObjectType):
-    class Meta:
-        model = ProvincePaymentPoint
-        interfaces = (graphene.relay.Node,)
-        filter_fields = {
-            "id": ["exact"],
-            "province": ["exact"],
-            "payment_point": ["exact"],
-            "payment_plan": ["exact", "isnull"],
-            "created_date": ["exact", "lt", "lte", "gt", "gte"],
-            "updated_date": ["exact", "lt", "lte", "gt", "gte"],
-            **prefix_filterset("province__", LocationGQLType._meta.filter_fields),
-            **prefix_filterset("payment_point__", PaymentPointGQLType._meta.filter_fields),
-        }
-        connection_class = ExtendedConnection
 
 
 class PaymentAgencyGQLType(DjangoObjectType):
