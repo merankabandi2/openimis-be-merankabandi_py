@@ -1460,3 +1460,43 @@ class PromoteFromWaitingListMutation(BaseMutation):
             username=user.username,
         )
         return result
+
+
+# Enhanced comment mutation with json_ext support (avoids modifying upstream grievance module)
+
+class CreateTicketCommentInputType(OpenIMISMutation.Input):
+    ticket_id = graphene.UUID(required=True)
+    commenter_type = graphene.String(required=False)
+    commenter_id = graphene.String(required=False)
+    comment = graphene.String(required=True)
+    json_ext = graphene.JSONString(required=False)
+
+
+class CreateTicketCommentMutation(BaseMutation):
+    _mutation_class = "CreateTicketCommentMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from grievance_social_protection.services import CommentService
+
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        if 'commenter_type' in data:
+            data['commenter_type'] = (data.get('commenter_type') or '').lower()
+
+        service = CommentService(user)
+        response = service.create(data)
+
+        if not response.get('success', True):
+            return response
+        return None
+
+    class Input(CreateTicketCommentInputType):
+        pass

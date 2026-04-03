@@ -83,7 +83,7 @@ WITH combined_payments AS (
         pp.name AS payment_point_name
     FROM merankabandi_monetarytransfer mt
     LEFT JOIN social_protection_benefitplan bp ON bp."UUID" = mt.programme_id
-    LEFT JOIN payroll_paymentpoint pp ON pp."UUID" = mt.payment_agency_id
+    LEFT JOIN merankabandi_payment_agency pp ON pp.id = mt.payment_agency_id
     LEFT JOIN "tblLocations" loc ON loc."LocationId" = mt.location_id
     LEFT JOIN "tblLocations" com ON com."LocationId" = loc."ParentLocationId"
     LEFT JOIN "tblLocations" prov ON prov."LocationId" = com."ParentLocationId"

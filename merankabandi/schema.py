@@ -28,6 +28,7 @@ from merankabandi.gql_mutations import (
     CreateProvincePaymentPointMutation, UpdateProvincePaymentPointMutation, DeleteProvincePaymentPointMutation,
     CreatePaymentAgencyMutation, UpdatePaymentAgencyMutation, DeletePaymentAgencyMutation,
     CreateProvincePaymentAgencyMutation, UpdateProvincePaymentAgencyMutation, DeleteProvincePaymentAgencyMutation,
+    CreateTicketCommentMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
     ImportSurveyDataMutation, TriggerPMTCalculationMutation,
     BulkUpdateGroupBeneficiaryStatusMutation,
@@ -42,7 +43,7 @@ from merankabandi.gql_queries import (
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType,
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType, BenefitPlanLocationGQLType,
     SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType, ProvincePaymentPointGQLType,
-    PaymentAgencyGQLType, ProvincePaymentAgencyGQLType,
+    PaymentAgencyGQLType, ProvincePaymentAgencyGQLType, PaymentGatewayConnectorGQLType,
     PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
 )
 from merankabandi.payment_schedule_gql import (
@@ -334,12 +335,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     )
 
     payment_gateway_connectors = graphene.List(
-        graphene.ObjectType.create_type(
-            'PaymentGatewayConnectorType',
-            key=graphene.String(),
-            label=graphene.String(),
-            class_path=graphene.String(),
-        ),
+        PaymentGatewayConnectorGQLType,
         description="List of available payment gateway connectors",
     )
 
@@ -1166,7 +1162,10 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
 
     def resolve_payment_gateway_connectors(self, info, **kwargs):
         from merankabandi.payment_gateway import PaymentGatewayRegistry
-        return [type('Obj', (), item) for item in PaymentGatewayRegistry.get_all()]
+        return [
+            PaymentGatewayConnectorGQLType(key=c['key'], label=c['label'], class_path=c['classPath'])
+            for c in PaymentGatewayRegistry.get_all()
+        ]
 
     def resolve_province_payment_agency(self, info, **kwargs):
         return gql_optimizer.query(ProvincePaymentAgency.objects.all(), info)
@@ -1407,6 +1406,10 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_role_assignment = CreateRoleAssignmentMutation.Field()
     update_role_assignment = UpdateRoleAssignmentMutation.Field()
     delete_role_assignment = DeleteRoleAssignmentMutation.Field()
+
+    # Enhanced comment with json_ext (tags, actions)
+    create_ticket_comment = CreateTicketCommentMutation.Field()
+
     create_workflow_step_template = CreateWorkflowStepTemplateMutation.Field()
     update_workflow_step_template = UpdateWorkflowStepTemplateMutation.Field()
     delete_workflow_step_template = DeleteWorkflowStepTemplateMutation.Field()

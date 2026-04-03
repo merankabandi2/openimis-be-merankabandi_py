@@ -314,8 +314,10 @@ def on_grievance_updated(**kwargs):
 
 
 def on_grievance_comment(**kwargs):
-    """comment_service.create AFTER — notify all ticket participants."""
+    """comment_service.create AFTER — notify ticket participants + tagged users."""
     from notification.services import NotificationService, RecipientResolver
+    from core.models import User
+    from merankabandi.workflow_models import RoleAssignment
 
     result = kwargs.get("result")
     user = kwargs.get("user")
@@ -330,6 +332,7 @@ def on_grievance_comment(**kwargs):
     if not ticket:
         return
 
+    # Base recipients: reporter + attending staff
     reporter = getattr(ticket, "reporter", None)
     attending = getattr(ticket, "attending_staff", None)
     recipients = RecipientResolver.merge(
@@ -337,20 +340,71 @@ def on_grievance_comment(**kwargs):
         RecipientResolver.by_assignment(attending),
     )
 
-    comment_text = str(getattr(comment, "content", ""))
+    # Parse json_ext for tagged users/roles/action assignees
+    json_ext = getattr(comment, "json_ext", None) or {}
+    if isinstance(json_ext, str):
+        import json
+        try:
+            json_ext = json.loads(json_ext)
+        except (ValueError, TypeError):
+            json_ext = {}
+
+    tagged_user_id = json_ext.get("tagged_user_id")
+    tagged_role = json_ext.get("tagged_role")
+    action_assignee_id = json_ext.get("action_assignee_id")
+
+    # Add tagged user to recipients
+    if tagged_user_id:
+        try:
+            tagged_user = User.objects.get(id=tagged_user_id)
+            recipients = RecipientResolver.merge(
+                recipients, RecipientResolver.by_assignment(tagged_user),
+            )
+        except User.DoesNotExist:
+            pass
+
+    # Add action assignee to recipients
+    if action_assignee_id and action_assignee_id != tagged_user_id:
+        try:
+            assignee = User.objects.get(id=action_assignee_id)
+            recipients = RecipientResolver.merge(
+                recipients, RecipientResolver.by_assignment(assignee),
+            )
+        except User.DoesNotExist:
+            pass
+
+    # Add all users with tagged role to recipients
+    if tagged_role:
+        role_assignments = RoleAssignment.objects.filter(
+            role=tagged_role, is_active=True,
+        ).select_related('user')
+        for ra in role_assignments:
+            recipients = RecipientResolver.merge(
+                recipients, RecipientResolver.by_assignment(ra.user),
+            )
+
+    comment_text = str(getattr(comment, "comment", getattr(comment, "content", "")))
     preview = comment_text[:100] + "..." if len(comment_text) > 100 else comment_text
+
+    context = {
+        "ticket_number": str(getattr(ticket, "code", getattr(ticket, "id", ""))),
+        "comment_preview": preview,
+        "actor_name": _get_actor_name(user),
+    }
+    if tagged_role:
+        context["tagged_role"] = tagged_role
+    if json_ext.get("action"):
+        context["action_required"] = json_ext["action"]
+    if json_ext.get("action_assignee_name"):
+        context["action_assignee"] = json_ext["action_assignee_name"]
 
     NotificationService.notify(
         event_code="grievance.comment",
         actor=user,
         entity=ticket,
-        entity_url=f"/grievance/{ticket.id}" if hasattr(ticket, "id") else "",
+        entity_url=f"/grievance/detail/{ticket.id}" if hasattr(ticket, "id") else "",
         recipients=recipients,
-        context={
-            "ticket_number": str(getattr(ticket, "code", getattr(ticket, "id", ""))),
-            "comment_preview": preview,
-            "actor_name": _get_actor_name(user),
-        },
+        context=context,
     )
 
 

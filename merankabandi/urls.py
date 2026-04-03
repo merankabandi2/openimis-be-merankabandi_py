@@ -95,6 +95,7 @@ urlpatterns = [
 
     # Excel exports
     path('export/subcomponents/', views_export.export_subcomponents_report, name='export_subcomponents'),
+    path('export/result-framework/', views_export.export_result_framework, name='export_result_framework'),
 
     # Mobile sync endpoints (WatermelonDB pull/push)
     path('sync/pull/', sync_views.sync_pull, name='sync_pull'),

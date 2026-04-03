@@ -17,6 +17,13 @@ from payroll.gql_queries import PaymentPointGQLType
 from social_protection.gql_queries import BenefitPlanGQLType
 
 
+class PaymentGatewayConnectorGQLType(graphene.ObjectType):
+    """Available payment gateway connectors (auto-registered from merankabandi.payment_gateway)"""
+    key = graphene.String()
+    label = graphene.String()
+    class_path = graphene.String()
+
+
 class SensitizationTrainingGQLType(DjangoObjectType):
     uuid = graphene.String(source='id')
     validation_status_display = graphene.String()

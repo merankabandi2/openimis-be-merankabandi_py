@@ -281,3 +281,57 @@ def export_subcomponents_report(request):
         from rest_framework.response import Response
         from rest_framework import status
         return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ─── Result Framework Export ─────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_result_framework(request):
+    """Export the Result Framework as a styled xlsx, streamed directly."""
+    from .models import Section
+    from .result_framework_service import ResultFrameworkService
+    from .result_framework_mutations import _generate_xlsx
+
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+
+    try:
+        service = ResultFrameworkService()
+        sections_data = []
+        for section in Section.objects.all().prefetch_related('indicators'):
+            section_entry = {'name': section.name, 'indicators': []}
+            for indicator in section.indicators.all():
+                result = service.calculate_indicator_value(
+                    indicator.id, date_from=date_from, date_to=date_to,
+                )
+                section_entry['indicators'].append({
+                    'name': indicator.name,
+                    'pbc': indicator.pbc or '',
+                    'baseline': float(indicator.baseline) if indicator.baseline else 0,
+                    'target': float(indicator.target) if indicator.target else 0,
+                    'achieved': result.get('value', 0),
+                })
+            sections_data.append(section_entry)
+
+        wb = _generate_xlsx(sections_data, date_from, date_to)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'cadre_resultats_{timestamp}.xlsx'
+
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except Exception as e:
+        logger.error(f"Result framework export error: {e}")
+        from rest_framework.response import Response
+        from rest_framework import status as rf_status
+        return Response({'success': False, 'error': str(e)}, status=rf_status.HTTP_500_INTERNAL_SERVER_ERROR)

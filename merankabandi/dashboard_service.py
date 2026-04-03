@@ -54,6 +54,39 @@ CATEGORY_LABELS = {
     'uncategorized': 'Non catégorisé',
 }
 
+# Map KoBo-transliterated subcategory codes to their parent category
+CATEGORY_NORMALIZE = {
+    'probl_me_de_paiement__non_r_ception__mon': 'paiement',
+    'probl_me_de_paiement__retard': 'paiement',
+    'probl_me_de_paiement__montant': 'paiement',
+    'carte_sim__bloqu_e__vol_e__perdue__etc': 'telephone',
+    'probl_mes_de_t_l_phone__vol__endommag__n': 'telephone',
+    'probl_mes_de_t_l_phone__no_tm': 'telephone',
+    'probl_mes_de_t_l_phone__mdp': 'telephone',
+    'probl_mes_de_compte_mobile_money__ecocas': 'compte',
+    'probl_mes_de_compte_mobile_money__bloque': 'compte',
+    'incoh_rence_des_donn_es_personnelles__nu': 'information',
+    'demande_d_information': 'information',
+    'erreur_d_inclusion_potentielle': 'erreur_inclusion',
+    'cibl__mais_pas_collect': 'erreur_exclusion',
+    'cibl__et_collect': 'erreur_exclusion',
+    'eas_hs__exploitation__abus_sexuel___harc': 'violence_vbg',
+    'pr_l_vements_de_fonds': 'corruption',
+    'd_tournement_de_fonds___corruption': 'corruption',
+    'conflit_familial': 'violence_vbg',
+    'accident_grave_ou_n_gligence_professionn': 'accident_negligence',
+    'discrimination_ethnie_relig': 'discrimination_ethnie_religion',
+    # Common compound values from v1 form
+    'paiement compte': 'paiement',
+    'paiement telephone': 'paiement',
+    'information telephone': 'information',
+    'compte paiement': 'compte',
+    'violence_vbg corruption': 'violence_vbg',
+    'corruption autre': 'corruption',
+}
+
+MAX_CATEGORY_CHART_ITEMS = 10
+
 
 class DashboardService:
     """
@@ -154,7 +187,7 @@ class DashboardService:
                 counter[cat] += 1
 
         result = []
-        for key, count in counter.most_common():
+        for key, count in counter.most_common(MAX_CATEGORY_CHART_ITEMS):
             result.append({
                 'category': CATEGORY_LABELS.get(key, key),
                 'count': count,
@@ -185,6 +218,7 @@ class DashboardService:
                         item = str(item).strip()
                         if CATEGORY_SEPARATOR in item:
                             item = item.split(CATEGORY_SEPARATOR)[0].strip()
+                        item = CATEGORY_NORMALIZE.get(item, item)
                         if item:
                             result.append(item)
                     return result
@@ -194,6 +228,9 @@ class DashboardService:
         # Bare string — take top-level category before separator
         if CATEGORY_SEPARATOR in raw:
             raw = raw.split(CATEGORY_SEPARATOR)[0].strip()
+
+        # Normalize KoBo subcategory codes to parent categories
+        raw = CATEGORY_NORMALIZE.get(raw, raw)
 
         return [raw] if raw else []
 
