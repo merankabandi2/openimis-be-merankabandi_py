@@ -77,6 +77,12 @@ urlpatterns = [
     path('dashboard/optimized/grievances/',
          optimized_dashboard_views.optimized_grievance_dashboard,
          name='optimized_grievance_dashboard'),
+    path('dashboard/optimized/refugee-host-breakdown/',
+         optimized_dashboard_views.optimized_refugee_host_breakdown,
+         name='optimized_refugee_host_breakdown'),
+    path('dashboard/optimized/twa-metrics/',
+         optimized_dashboard_views.optimized_twa_metrics,
+         name='optimized_twa_metrics'),
     path(
         'dashboard/optimized/refresh/',
         optimized_dashboard_views.refresh_dashboard_views,

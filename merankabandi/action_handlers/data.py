@@ -15,8 +15,52 @@ class LocationUpdateHandler(BaseActionHandler):
         return ['new_province', 'new_commune', 'new_colline']
 
     def execute(self, task, ticket, user, data=None):
+        from individual.models import Group
+        from location.models import Location
+
         data = data or {}
-        return {'new_province': data.get('new_province', ''), 'new_commune': data.get('new_commune', ''), 'new_colline': data.get('new_colline', ''), 'action': 'location_updated'}
+        new_colline = data.get('new_colline', '')
+
+        if not new_colline:
+            return {'error': 'new_colline is required'}
+
+        location = Location.objects.filter(
+            code=new_colline, type='V', validity_to__isnull=True,
+        ).first()
+        if not location:
+            return {'error': f'Colline with code {new_colline} not found'}
+
+        # Find the individual from the workflow's verify task
+        workflow = task.workflow
+        verify_task = workflow.tasks.filter(
+            step_template__action_type__in=['verify_social_id', 'verify_individual'],
+            status='COMPLETED',
+        ).first()
+        individual_id = (verify_task.result or {}).get('individual_id') if verify_task else None
+
+        if not individual_id:
+            return {'error': 'No verified individual found in workflow'}
+
+        group = Group.objects.filter(
+            individuals__individual_id=individual_id,
+            is_deleted=False,
+        ).first()
+
+        if not group:
+            return {'error': f'No group found for individual {individual_id}'}
+
+        old_location_code = group.location.code if group.location else None
+        group.location = location
+        group.save()
+
+        return {
+            'new_province': data.get('new_province', ''),
+            'new_commune': data.get('new_commune', ''),
+            'new_colline': new_colline,
+            'group_id': str(group.id),
+            'old_location_code': old_location_code,
+            'action': 'location_updated',
+        }
 
 
 class PhoneNumberSwapHandler(BaseActionHandler):
@@ -24,8 +68,47 @@ class PhoneNumberSwapHandler(BaseActionHandler):
         return ['old_phone', 'new_phone', 'confirmation']
 
     def execute(self, task, ticket, user, data=None):
+        from individual.models import Individual
+
         data = data or {}
-        return {'old_phone': data.get('old_phone', ''), 'new_phone': data.get('new_phone', ''), 'action': 'phone_swapped'}
+        old_phone = data.get('old_phone', '')
+        new_phone = data.get('new_phone', '')
+
+        if not old_phone or not new_phone:
+            return {'error': 'Both old_phone and new_phone are required'}
+
+        old_individual = Individual.objects.filter(
+            json_ext__moyen_telecom__msisdn=old_phone,
+            is_deleted=False,
+        ).first()
+        new_individual = Individual.objects.filter(
+            json_ext__moyen_telecom__msisdn=new_phone,
+            is_deleted=False,
+        ).first()
+
+        if not old_individual:
+            return {'error': f'No individual found with phone {old_phone}'}
+        if not new_individual:
+            return {'error': f'No individual found with phone {new_phone}'}
+
+        old_ext = old_individual.json_ext or {}
+        new_ext = new_individual.json_ext or {}
+
+        old_ext.setdefault('moyen_telecom', {})['msisdn'] = new_phone
+        new_ext.setdefault('moyen_telecom', {})['msisdn'] = old_phone
+
+        old_individual.json_ext = old_ext
+        old_individual.save(username=user.username)
+        new_individual.json_ext = new_ext
+        new_individual.save(username=user.username)
+
+        return {
+            'old_phone': old_phone,
+            'new_phone': new_phone,
+            'old_individual_id': str(old_individual.id),
+            'new_individual_id': str(new_individual.id),
+            'action': 'phone_swapped',
+        }
 
 
 class AddToCollectionHandler(BaseActionHandler):

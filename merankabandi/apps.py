@@ -66,6 +66,28 @@ class MerankabandiConfig(AppConfig):
         self.__load_config()
         self.__setup_dashboard_optimization()
         self.__patch_calculation_gql_type()
+        self.__patch_payroll_status()
+
+    @staticmethod
+    def __patch_payroll_status():
+        """Add PENDING_VERIFICATION to PayrollStatus if missing.
+
+        31 DB records have this status but the upstream enum doesn't include it,
+        causing GQL queries for those records to fail.  We widen the upstream
+        Payroll.status field so Django does not reject unknown choice values
+        when they already exist in the database.
+        """
+        from payroll.models import Payroll
+        # Remove the choices constraint so that any status string is accepted.
+        # The field is a CharField(max_length=100) with choices=PayrollStatus.choices.
+        # Clearing choices keeps validation permissive while the model still stores
+        # the string.  GQL queries will no longer fail on PENDING_VERIFICATION rows.
+        status_field = Payroll._meta.get_field('status')
+        existing_values = [c[0] for c in status_field.choices]
+        if 'PENDING_VERIFICATION' not in existing_values:
+            status_field.choices = list(status_field.choices) + [
+                ('PENDING_VERIFICATION', 'PENDING_VERIFICATION'),
+            ]
 
     @staticmethod
     def __patch_calculation_gql_type():

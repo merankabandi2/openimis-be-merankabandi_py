@@ -142,11 +142,15 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM'}
 
     def _count_households_refugees(self, indicator, date_from, date_to, location, config):
-        """Count refugee households (Indicator 2)"""
+        """Count refugee households (Indicator 2).
+
+        Filter by the menage_refugie flag in json_ext rather than excluding
+        host communes, which was incorrectly returning the total household
+        count minus host-commune households.
+        """
         query = Group.objects.filter(
-            is_deleted=False
-        ).exclude(
-            location__parent__name__in=HOST_COMMUNES
+            is_deleted=False,
+            json_ext__menage_refugie='OUI',
         )
 
         if date_from:
@@ -158,11 +162,16 @@ class ResultFrameworkService:
 
         count = query.count()
 
-        # Get gender breakdown
+        # Get gender breakdown from the primary individual in each group
+        from individual.models import GroupIndividual
         gender_data = {}
-        for gb in query.select_related('head'):
-            if gb.group.head and gb.group.head.json_ext:
-                gender = gb.group.head.json_ext.get('sexe', 'unknown')
+        primary_individuals = GroupIndividual.objects.filter(
+            group__in=query,
+            recipient_type=GroupIndividual.RecipientType.PRIMARY,
+        ).select_related('individual')
+        for gi in primary_individuals:
+            if gi.individual and gi.individual.json_ext:
+                gender = gi.individual.json_ext.get('sexe', 'unknown')
                 gender_data[gender] = gender_data.get(gender, 0) + 1
 
         return {
@@ -310,24 +319,22 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_refugees(self, indicator, date_from, date_to, location, config):
+        """Count refugee beneficiaries using the menage_refugie flag."""
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__groupindividuals__individual__json_ext__sexe='F',
-            group__groupindividuals__recipient_type='PRIMARY',
-            benefit_plan__code__in=['1.4']
+            group__json_ext__menage_refugie='OUI',
         )
 
         if date_from:
-            query = query.filter(date_due__gte=date_from)
+            query = query.filter(date_created__gte=date_from)
         if date_to:
-            query = query.filter(date_due__lte=date_to)
+            query = query.filter(date_created__lte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
         return {'value': count, 'calculation_type': 'SYSTEM'}
-        return self._get_latest_achievement(indicator, date_from, date_to)
 
     def _count_beneficiaries_host_communities(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(

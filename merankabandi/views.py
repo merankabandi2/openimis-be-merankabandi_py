@@ -11,12 +11,11 @@ from pathlib import Path
 import qrcode
 
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, FileResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.template.loader import render_to_string
 
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -265,9 +264,13 @@ class BeneficiaryCardGenerator:
         )
 
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def generate_beneficiary_card_view(request, social_id):
-    """View for generating a single beneficiary's card"""
+    """View for generating a single beneficiary's card.
+
+    Supports both JWT Bearer token and session-based authentication via DRF.
+    """
     try:
         beneficiary = Beneficiary.objects.get(group__code=social_id)
 
@@ -284,7 +287,8 @@ def generate_beneficiary_card_view(request, social_id):
         return HttpResponse("Beneficiary not found", status=404)
 
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def generate_colline_cards_view(request, commune_name):
     """View for generating cards for all beneficiaries in a colline"""
     try:
@@ -317,7 +321,8 @@ def generate_colline_cards_view(request, commune_name):
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)
 
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def generate_location_cards_view(request, location_id):
     """View for generating cards for all beneficiaries in a specific location"""
     try:
@@ -373,7 +378,8 @@ def generate_location_cards_view(request, location_id):
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)
 
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
     household = individual.groupindividuals.get().group
@@ -399,7 +405,8 @@ def beneficiary_photo_view(request, type, id):
     return FileResponse(open(file_path, 'rb'))
 
 
-@login_required
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def beneficiary_photos_view(request, socialid):
     types = ['photo', 'photo_ci1', 'photo_ci2']
 
@@ -1481,7 +1488,8 @@ def _run_generate_cards_command(location_type, location_id, location_name):
                      cwd=settings.BASE_DIR)
 
 
-@login_required
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
 def trigger_background_card_generation(request, location_id, location_type=None):
     """View for triggering card generation as a background task"""
     try:

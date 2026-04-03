@@ -162,27 +162,18 @@ def _build_workbook(sheets_data):
         ws = wb.create_sheet(title=sheet_def['title'])
 
         # Row 1: empty
-        # Row 2: section header
+        # Row 2: section header — write value BEFORE merging to avoid MergedCell error
         row = 2
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=11)
         cell = ws.cell(row=row, column=1, value=sheet_def['header'])
         cell.font = header_font
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=11)
 
         # Row 4-5: column headers (two-level)
+        # Write all cell values and formatting BEFORE merging to avoid
+        # openpyxl MergedCell read-only errors.
         row = 4
         planned_label = sheet_def['planned_label']
         achieved_label = sheet_def['achieved_label']
-
-        # Merge headers
-        ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)  # Province
-        ws.merge_cells(start_row=row, start_column=2, end_row=row + 1, end_column=2)  # Commune
-        ws.merge_cells(start_row=row, start_column=3, end_row=row + 1, end_column=3)  # Colline
-        ws.merge_cells(start_row=row, start_column=4, end_row=row, end_column=5)       # Planned H/F
-        ws.merge_cells(start_row=row, start_column=6, end_row=row + 1, end_column=6)  # TOTAL
-        ws.merge_cells(start_row=row, start_column=7, end_row=row + 1, end_column=7)  # Twa
-        ws.merge_cells(start_row=row, start_column=8, end_row=row, end_column=9)       # Achieved H/F
-        ws.merge_cells(start_row=row, start_column=10, end_row=row + 1, end_column=10) # TOTAL
-        ws.merge_cells(start_row=row, start_column=11, end_row=row + 1, end_column=11) # Twa
 
         headers_r1 = ['Province', 'Commune', 'Colline', planned_label, '', 'TOTAL', 'Twa',
                        achieved_label, '', 'TOTAL', 'Twa']
@@ -201,6 +192,17 @@ def _build_workbook(sheets_data):
             c.alignment = Alignment(horizontal='center', vertical='center')
             c.fill = header_fill
             c.border = thin_border
+
+        # Now merge cells after all values are written
+        ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)  # Province
+        ws.merge_cells(start_row=row, start_column=2, end_row=row + 1, end_column=2)  # Commune
+        ws.merge_cells(start_row=row, start_column=3, end_row=row + 1, end_column=3)  # Colline
+        ws.merge_cells(start_row=row, start_column=4, end_row=row, end_column=5)       # Planned H/F
+        ws.merge_cells(start_row=row, start_column=6, end_row=row + 1, end_column=6)  # TOTAL
+        ws.merge_cells(start_row=row, start_column=7, end_row=row + 1, end_column=7)  # Twa
+        ws.merge_cells(start_row=row, start_column=8, end_row=row, end_column=9)       # Achieved H/F
+        ws.merge_cells(start_row=row, start_column=10, end_row=row + 1, end_column=10) # TOTAL
+        ws.merge_cells(start_row=row, start_column=11, end_row=row + 1, end_column=11) # Twa
 
         # Data rows starting at row 6
         data_row = row + 2

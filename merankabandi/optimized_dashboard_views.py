@@ -386,6 +386,179 @@ class OptimizedDashboardHealthView(View):
             }
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def optimized_refugee_host_breakdown(request):
+    """
+    Refugee vs host community breakdown from dashboard_vulnerable_groups_summary.
+    GET /api/merankabandi/dashboard/optimized/refugee-host-breakdown/
+    """
+    try:
+        filters = parse_filters(request)
+        from django.db import connection
+
+        conditions, params = [], []
+        if filters.get('province_id'):
+            conditions.append("province_id = %s")
+            params.append(filters['province_id'])
+
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+        query = f"""
+        SELECT
+            SUM(total_households) AS total_households,
+            SUM(total_members) AS total_members,
+            SUM(total_beneficiaries) AS total_beneficiaries,
+            SUM(refugee_households) AS refugee_households,
+            SUM(refugee_members) AS refugee_members,
+            SUM(refugee_beneficiaries) AS refugee_beneficiaries
+        FROM dashboard_vulnerable_groups_summary
+        {where}
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            columns = [col[0] for col in cursor.description]
+            row = cursor.fetchone()
+            r = dict(zip(columns, row)) if row else {}
+
+        total_hh = int(r.get('total_households') or 0)
+        total_ben = int(r.get('total_beneficiaries') or 0)
+        refugee_hh = int(r.get('refugee_households') or 0)
+        refugee_members = int(r.get('refugee_members') or 0)
+        refugee_ben = int(r.get('refugee_beneficiaries') or 0)
+        host_hh = total_hh - refugee_hh
+        host_ben = total_ben - refugee_ben
+
+        data = {
+            'refugee_community': {
+                'planned_households': refugee_hh,
+                'planned_members': refugee_members,
+                'planned_beneficiaries': refugee_ben,
+            },
+            'host_community': {
+                'planned_households': host_hh,
+                'planned_members': int(r.get('total_members') or 0) - refugee_members,
+                'planned_beneficiaries': host_ben,
+            },
+            'totals': {
+                'total_households': total_hh,
+                'total_beneficiaries': total_ben,
+                'refugee_percentage': round(refugee_ben / total_ben * 100, 2) if total_ben else 0,
+                'host_percentage': round(host_ben / total_ben * 100, 2) if total_ben else 0,
+            },
+        }
+
+        return Response({
+            'success': True,
+            'data': data,
+            'source': 'materialized_views'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def optimized_twa_metrics(request):
+    """
+    Twa/Batwa inclusion metrics from dashboard_vulnerable_groups_summary.
+    GET /api/merankabandi/dashboard/optimized/twa-metrics/
+    """
+    try:
+        filters = parse_filters(request)
+        from django.db import connection
+
+        conditions, params = [], []
+        if filters.get('province_id'):
+            conditions.append("province_id = %s")
+            params.append(filters['province_id'])
+
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+        # Overall Twa metrics
+        query = f"""
+        SELECT
+            SUM(total_households) AS total_households,
+            SUM(total_members) AS total_members,
+            SUM(total_beneficiaries) AS total_beneficiaries,
+            SUM(twa_households) AS twa_households,
+            SUM(twa_members) AS twa_members,
+            SUM(twa_beneficiaries) AS twa_beneficiaries
+        FROM dashboard_vulnerable_groups_summary
+        {where}
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            columns = [col[0] for col in cursor.description]
+            row = cursor.fetchone()
+            overall = dict(zip(columns, row)) if row else {}
+
+        # By province
+        query_prov = f"""
+        SELECT
+            province, province_id,
+            SUM(total_households) AS total_households,
+            SUM(total_beneficiaries) AS total_beneficiaries,
+            SUM(twa_households) AS twa_households,
+            SUM(twa_beneficiaries) AS twa_beneficiaries
+        FROM dashboard_vulnerable_groups_summary
+        {where}
+        GROUP BY province, province_id
+        ORDER BY SUM(twa_beneficiaries) DESC
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query_prov, params)
+            columns = [col[0] for col in cursor.description]
+            prov_rows = [dict(zip(columns, r)) for r in cursor.fetchall()]
+
+        total_hh = int(overall.get('total_households') or 0)
+        total_ben = int(overall.get('total_beneficiaries') or 0)
+        twa_hh = int(overall.get('twa_households') or 0)
+        twa_members = int(overall.get('twa_members') or 0)
+        twa_ben = int(overall.get('twa_beneficiaries') or 0)
+
+        data = {
+            'overall': {
+                'twa_households': twa_hh,
+                'twa_members': twa_members,
+                'twa_beneficiaries': twa_ben,
+                'total_households': total_hh,
+                'total_beneficiaries': total_ben,
+                'twa_household_percentage': round(twa_hh / total_hh * 100, 2) if total_hh else 0,
+                'twa_beneficiary_percentage': round(twa_ben / total_ben * 100, 2) if total_ben else 0,
+            },
+            'by_province': [
+                {
+                    'province': r.get('province', ''),
+                    'province_id': int(r.get('province_id') or 0),
+                    'twa_households': int(r.get('twa_households') or 0),
+                    'twa_beneficiaries': int(r.get('twa_beneficiaries') or 0),
+                    'total_beneficiaries': int(r.get('total_beneficiaries') or 0),
+                    'twa_percentage': round(
+                        int(r.get('twa_beneficiaries') or 0) / int(r.get('total_beneficiaries') or 1) * 100, 2
+                    ) if int(r.get('total_beneficiaries') or 0) > 0 else 0,
+                }
+                for r in prov_rows
+            ],
+        }
+
+        return Response({
+            'success': True,
+            'data': data,
+            'source': 'materialized_views'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # Legacy endpoint redirects for backwards compatibility
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

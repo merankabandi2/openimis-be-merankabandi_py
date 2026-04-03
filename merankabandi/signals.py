@@ -24,6 +24,9 @@ def bind_service_signals():
         on_grievance_updated,
         on_grievance_comment,
         on_grievance_reopened,
+        on_activity_validated,
+        on_quota_selection_completed,
+        on_promotion_completed,
     )
 
     bind_service_signal(
@@ -46,6 +49,13 @@ def bind_service_signals():
         on_grievance_created,
         ServiceSignalBindType.AFTER,
     )
+
+    from merankabandi.workflow_signals import on_ticket_created_workflow
+    bind_service_signal(
+        'ticket_service.create',
+        on_ticket_created_workflow,
+        ServiceSignalBindType.AFTER,
+    )
     bind_service_signal(
         'ticket_service.update',
         on_grievance_updated,
@@ -59,5 +69,34 @@ def bind_service_signals():
     bind_service_signal(
         'ticket_service.reopen_ticket',
         on_grievance_reopened,
+        ServiceSignalBindType.AFTER,
+    )
+
+    # Activity validation signals
+    bind_service_signal(
+        'activity_validation_service.validate_sensitization',
+        on_activity_validated,
+        ServiceSignalBindType.AFTER,
+    )
+    bind_service_signal(
+        'activity_validation_service.validate_behavior_change',
+        on_activity_validated,
+        ServiceSignalBindType.AFTER,
+    )
+    bind_service_signal(
+        'activity_validation_service.validate_microproject',
+        on_activity_validated,
+        ServiceSignalBindType.AFTER,
+    )
+
+    # Selection lifecycle signals
+    bind_service_signal(
+        'selection_service.apply_quota_selection',
+        on_quota_selection_completed,
+        ServiceSignalBindType.AFTER,
+    )
+    bind_service_signal(
+        'selection_service.promote_to_beneficiary',
+        on_promotion_completed,
         ServiceSignalBindType.AFTER,
     )

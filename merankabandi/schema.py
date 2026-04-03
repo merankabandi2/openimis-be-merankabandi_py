@@ -80,6 +80,11 @@ from merankabandi.workflow_gql_mutations import (
     UpdateWorkflowStepTemplateMutation,
     DeleteWorkflowStepTemplateMutation,
 )
+from merankabandi.result_framework_mutations import (
+    CreateResultFrameworkSnapshotMutation,
+    FinalizeSnapshotMutation,
+    GenerateResultFrameworkDocumentMutation,
+)
 from location.apps import LocationConfig
 from individual.apps import IndividualConfig
 from individual.gql_queries import IndividualGQLType, GroupGQLType
@@ -1353,3 +1358,8 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_workflow_step_template = CreateWorkflowStepTemplateMutation.Field()
     update_workflow_step_template = UpdateWorkflowStepTemplateMutation.Field()
     delete_workflow_step_template = DeleteWorkflowStepTemplateMutation.Field()
+
+    # Result framework mutations
+    create_result_framework_snapshot = CreateResultFrameworkSnapshotMutation.Field()
+    finalize_snapshot = FinalizeSnapshotMutation.Field()
+    generate_result_framework_document = GenerateResultFrameworkDocumentMutation.Field()

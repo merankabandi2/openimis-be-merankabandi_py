@@ -178,9 +178,17 @@ def on_activity_validated(**kwargs):
     from notification.services import NotificationService, RecipientResolver
 
     user = kwargs.get("user")
-    activity = kwargs.get("result")
-    if not activity:
+    result = kwargs.get("result")
+    if not result:
         return
+
+    # The validation service returns (success, activity, error)
+    if isinstance(result, (tuple, list)) and len(result) >= 2:
+        success, activity = result[0], result[1]
+        if not success or not activity:
+            return
+    else:
+        activity = result
 
     validation_status = getattr(activity, "validation_status", None)
     if validation_status == "VALIDATED":

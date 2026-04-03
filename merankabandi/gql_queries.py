@@ -229,6 +229,23 @@ class IndicatorGQLType(DjangoObjectType):
 
 
 class IndicatorAchievementGQLType(DjangoObjectType):
+    quarter = graphene.Int()
+    year = graphene.Int()
+
+    def resolve_quarter(self, info):
+        if self.date:
+            return (self.date.month - 1) // 3 + 1
+        if self.timestamp:
+            return (self.timestamp.month - 1) // 3 + 1
+        return None
+
+    def resolve_year(self, info):
+        if self.date:
+            return self.date.year
+        if self.timestamp:
+            return self.timestamp.year
+        return None
+
     class Meta:
         model = IndicatorAchievement
         interfaces = (graphene.relay.Node,)

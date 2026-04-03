@@ -14,6 +14,8 @@ class BeneficiaryDeactivateHandler(BaseActionHandler):
             raise ValueError('Cannot deactivate: no verified individual found')
 
     def execute(self, task, ticket, user, data=None):
+        from social_protection.models import GroupBeneficiary
+
         data = data or {}
         workflow = task.workflow
         verify_task = workflow.tasks.filter(
@@ -22,10 +24,22 @@ class BeneficiaryDeactivateHandler(BaseActionHandler):
         individual_id = (verify_task.result or {}).get('individual_id') if verify_task else None
         if not individual_id:
             return {'error': 'No individual to deactivate'}
+
+        beneficiaries = GroupBeneficiary.objects.filter(
+            group__individuals__individual_id=individual_id,
+            is_deleted=False,
+        ).exclude(status='SUSPENDED')
+        updated = 0
+        for gb in beneficiaries:
+            gb.status = 'SUSPENDED'
+            gb.save(username=user.username)
+            updated += 1
+
         return {
             'individual_id': individual_id,
             'deactivation_reason': data.get('deactivation_reason', ''),
-            'status': 'deactivation_pending',
+            'status': 'deactivated',
+            'beneficiaries_suspended': updated,
         }
 
 

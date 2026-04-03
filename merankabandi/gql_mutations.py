@@ -851,6 +851,27 @@ class BulkUpdateGroupBeneficiaryStatusMutation(BaseMutation):
         else:
             updated = qs.update(status=status)
 
+        # Fire community validation notification if selection_status was set
+        if json_ext_update:
+            sel_status = update_data.get('selection_status', '') if isinstance(update_data, dict) else ''
+            if sel_status in ('COMMUNITY_VALIDATED', 'COMMUNITY_REJECTED'):
+                try:
+                    from merankabandi.notification_signals import on_community_validation_completed
+                    bp = BenefitPlan.objects.filter(id=benefit_plan_id).first()
+                    validated = updated if sel_status == 'COMMUNITY_VALIDATED' else 0
+                    rejected = updated if sel_status == 'COMMUNITY_REJECTED' else 0
+                    on_community_validation_completed(
+                        user=user,
+                        result={
+                            "program_name": (bp.name or bp.code) if bp else "",
+                            "location": "",
+                            "validated_count": validated,
+                            "rejected_count": rejected,
+                        },
+                    )
+                except Exception:
+                    pass
+
         return {"success": True, "count": updated}
 
     class Input(OpenIMISMutation.Input):

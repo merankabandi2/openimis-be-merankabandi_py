@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+from core.signals import register_service_signal
 from individual.models import Group
 from social_protection.models import BenefitPlan, GroupBeneficiary, BeneficiaryStatus
 
@@ -21,6 +22,7 @@ class SelectionService:
         group.save()
 
     @classmethod
+    @register_service_signal('selection_service.apply_quota_selection')
     def apply_quota_selection(cls, benefit_plan_id, targeting_round=1):
         """
         Rank PMT_SCORED groups by pmt_score (lowest = poorest = selected first).
@@ -65,7 +67,13 @@ class SelectionService:
             "Quota selection: %d selected, %d waiting list for plan %s round %d",
             total_selected, total_waiting, benefit_plan.code, targeting_round,
         )
-        return {"selected": total_selected, "waiting_list": total_waiting}
+        return {
+            "selected": total_selected,
+            "waiting_list": total_waiting,
+            "program_name": benefit_plan.name or benefit_plan.code,
+            "round": targeting_round,
+            "selected_count": total_selected,
+        }
 
     @classmethod
     def apply_criteria_selection(cls, benefit_plan_id):
@@ -112,6 +120,7 @@ class SelectionService:
         return {"selected": count}
 
     @classmethod
+    @register_service_signal('selection_service.promote_to_beneficiary')
     def promote_to_beneficiary(cls, benefit_plan_id, username):
         """
         Create GroupBeneficiary records for COMMUNITY_VALIDATED groups.
@@ -125,7 +134,9 @@ class SelectionService:
 
         groups = Group.objects.filter(
             json_ext__selection_status=source_status,
-        )
+            groupbeneficiary__benefit_plan=benefit_plan,
+            groupbeneficiary__is_deleted=False,
+        ).distinct()
 
         # Collect existing group ids to skip duplicates
         existing_group_ids = set(
@@ -171,7 +182,11 @@ class SelectionService:
         logger.info(
             "Promoted %d groups to beneficiary for plan %s", created, benefit_plan.code
         )
-        return {"created": created}
+        return {
+            "created": created,
+            "program_name": benefit_plan.name or benefit_plan.code,
+            "promoted_count": created,
+        }
 
     @classmethod
     def promote_from_waiting_list(cls, benefit_plan_id, colline_id, count, username):

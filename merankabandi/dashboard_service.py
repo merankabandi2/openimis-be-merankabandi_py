@@ -459,6 +459,9 @@ class DashboardService:
                     SUM(male_participants) AS male_participants,
                     SUM(female_participants) AS female_participants,
                     SUM(twa_participants) AS twa_participants,
+                    SUM(CASE WHEN validation_status = 'VALIDATED' THEN activity_count ELSE 0 END) AS total_validated,
+                    SUM(CASE WHEN validation_status = 'PENDING' THEN activity_count ELSE 0 END) AS total_pending,
+                    SUM(CASE WHEN validation_status = 'REJECTED' THEN activity_count ELSE 0 END) AS total_rejected,
                     COUNT(DISTINCT province_id) AS provinces_with_activities
                 FROM dashboard_activities_summary {where}
             """, params)
@@ -467,14 +470,17 @@ class DashboardService:
             # By activity type (replaces dashboard_activities_by_type view)
             cursor.execute(f"""
                 SELECT activity_type,
-                    SUM(activity_count) AS count,
+                    SUM(activity_count) AS total,
                     SUM(total_participants) AS participants,
-                    SUM(male_participants) AS male_participants,
-                    SUM(female_participants) AS female_participants,
-                    SUM(twa_participants) AS twa_participants,
+                    SUM(male_participants) AS male,
+                    SUM(female_participants) AS female,
+                    SUM(twa_participants) AS twa,
                     SUM(agriculture_beneficiaries) AS agriculture,
                     SUM(livestock_beneficiaries) AS livestock,
-                    SUM(commerce_services_beneficiaries) AS commerce
+                    SUM(commerce_services_beneficiaries) AS commerce,
+                    SUM(CASE WHEN validation_status = 'VALIDATED' THEN activity_count ELSE 0 END) AS validated,
+                    SUM(CASE WHEN validation_status = 'PENDING' THEN activity_count ELSE 0 END) AS pending,
+                    SUM(CASE WHEN validation_status = 'REJECTED' THEN activity_count ELSE 0 END) AS rejected
                 FROM dashboard_activities_summary {where}
                 GROUP BY activity_type
             """, params)
@@ -493,12 +499,12 @@ class DashboardService:
 
             # Monthly trends
             cursor.execute(f"""
-                SELECT year, month,
-                    SUM(activity_count) AS count,
-                    SUM(total_participants) AS participants
+                SELECT year, month, activity_type,
+                    SUM(activity_count) AS activity_count,
+                    SUM(total_participants) AS total_participants
                 FROM dashboard_activities_summary {where}
-                GROUP BY year, month
-                ORDER BY year, month
+                GROUP BY year, month, activity_type
+                ORDER BY year, month, activity_type
             """, params)
             monthly_trends = cls._dictfetchall(cursor)
 
@@ -506,24 +512,29 @@ class DashboardService:
         by_type = {}
         for r in by_type_rows:
             by_type[r.get('activity_type', '')] = {
-                'count': cls._safe_int(r.get('count')),
+                'total': cls._safe_int(r.get('total')),
                 'participants': cls._safe_int(r.get('participants')),
-                'male_participants': cls._safe_int(r.get('male_participants')),
-                'female_participants': cls._safe_int(r.get('female_participants')),
-                'twa_participants': cls._safe_int(r.get('twa_participants')),
-                'agriculture_beneficiaries': cls._safe_int(r.get('agriculture')),
-                'livestock_beneficiaries': cls._safe_int(r.get('livestock')),
-                'commerce_services_beneficiaries': cls._safe_int(r.get('commerce')),
+                'male': cls._safe_int(r.get('male')),
+                'female': cls._safe_int(r.get('female')),
+                'twa': cls._safe_int(r.get('twa')),
+                'agriculture': cls._safe_int(r.get('agriculture')),
+                'livestock': cls._safe_int(r.get('livestock')),
+                'commerce': cls._safe_int(r.get('commerce')),
+                'validated': cls._safe_int(r.get('validated')),
+                'pending': cls._safe_int(r.get('pending')),
+                'rejected': cls._safe_int(r.get('rejected')),
             }
 
         data = {
             'overall': {
                 'total_activities': cls._safe_int(overall.get('total_activities')),
                 'total_participants': cls._safe_int(overall.get('total_participants')),
-                'male_participants': cls._safe_int(overall.get('male_participants')),
-                'female_participants': cls._safe_int(overall.get('female_participants')),
-                'twa_participants': cls._safe_int(overall.get('twa_participants')),
-                'provinces_with_activities': cls._safe_int(overall.get('provinces_with_activities')),
+                'total_male': cls._safe_int(overall.get('male_participants')),
+                'total_female': cls._safe_int(overall.get('female_participants')),
+                'total_twa': cls._safe_int(overall.get('twa_participants')),
+                'total_validated': cls._safe_int(overall.get('total_validated')),
+                'total_pending': cls._safe_int(overall.get('total_pending')),
+                'total_rejected': cls._safe_int(overall.get('total_rejected')),
             },
             'by_type': by_type,
             'by_province': by_province,
@@ -531,8 +542,9 @@ class DashboardService:
                 {
                     'year': cls._safe_int(r.get('year')),
                     'month': cls._safe_int(r.get('month')),
-                    'count': cls._safe_int(r.get('count')),
-                    'participants': cls._safe_int(r.get('participants')),
+                    'activity_type': r.get('activity_type', ''),
+                    'activity_count': cls._safe_int(r.get('activity_count')),
+                    'total_participants': cls._safe_int(r.get('total_participants')),
                 }
                 for r in monthly_trends
             ],

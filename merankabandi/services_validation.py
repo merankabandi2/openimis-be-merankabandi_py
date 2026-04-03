@@ -1,6 +1,7 @@
 import logging
 from django.db import transaction
 from django.utils import timezone
+from core.signals import register_service_signal
 from merankabandi.models import SensitizationTraining, BehaviorChangePromotion, MicroProject
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ class KoboDataValidationService:
 
     @classmethod
     @transaction.atomic
+    @register_service_signal('activity_validation_service.validate_sensitization')
     def validate_sensitization_training(cls, user, training_id, status, comment=None):
         """
         Validate or reject a sensitization training record
@@ -50,6 +52,7 @@ class KoboDataValidationService:
 
     @classmethod
     @transaction.atomic
+    @register_service_signal('activity_validation_service.validate_behavior_change')
     def validate_behavior_change(cls, user, behavior_change_id, status, comment=None):
         """
         Validate or reject a behavior change promotion record
@@ -87,6 +90,7 @@ class KoboDataValidationService:
 
     @classmethod
     @transaction.atomic
+    @register_service_signal('activity_validation_service.validate_microproject')
     def validate_microproject(cls, user, microproject_id, status, comment=None):
         """
         Validate or reject a microproject record

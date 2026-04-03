@@ -117,9 +117,22 @@ class WorkflowService:
     @classmethod
     @transaction.atomic
     def complete_task(cls, task, user, result=None):
+        from merankabandi.action_handlers import get_handler
+
         task.status = GrievanceTask.STATUS_COMPLETED
         task.completed_at = timezone.now()
-        task.result = result or {}
+
+        handler = get_handler(task.step_template.action_type)
+        handler_result = {}
+        try:
+            handler.validate(task, task.ticket)
+            handler_result = handler.execute(task, task.ticket, user, data=result) or {}
+        except Exception as e:
+            logger.error(f"Action handler error for task {task.id}: {e}")
+            handler_result = {'error': str(e), 'handler_failed': True}
+
+        merged_result = {**(result or {}), **handler_result}
+        task.result = merged_result
         task.save()
         cls._progress_workflow(task.workflow)
         return task

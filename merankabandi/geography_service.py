@@ -647,15 +647,15 @@ class GeographyService:
             SELECT
                 g."UUID" AS group_uuid,
                 g."Json_ext" AS json_ext,
-                head_ind."LastName" AS head_last_name,
-                head_ind."OtherNames" AS head_other_names,
+                head_ind.last_name AS head_last_name,
+                head_ind.first_name AS head_first_name,
                 COUNT(DISTINCT gi_all.individual_id) AS member_count,
                 COALESCE(MAX(gb.status), 'UNKNOWN') AS status
             FROM individual_group g
             LEFT JOIN individual_groupindividual gi_head
                 ON gi_head.group_id = g."UUID"
                 AND gi_head."isDeleted" = false
-                AND gi_head.recipient_type = 'HEAD'
+                AND gi_head.role = 'HEAD'
             LEFT JOIN individual_individual head_ind
                 ON head_ind."UUID" = gi_head.individual_id
                 AND head_ind."isDeleted" = false
@@ -669,8 +669,8 @@ class GeographyService:
             WHERE g.location_id = %s
               AND g."isDeleted" = false
             GROUP BY g."UUID", g."Json_ext",
-                     head_ind."LastName", head_ind."OtherNames"
-            ORDER BY head_ind."LastName", head_ind."OtherNames"
+                     head_ind.last_name, head_ind.first_name
+            ORDER BY head_ind.last_name, head_ind.first_name
         """
 
         with connection.cursor() as cursor:
@@ -697,8 +697,8 @@ class GeographyService:
             head_name_parts = []
             if r.get('head_last_name'):
                 head_name_parts.append(r['head_last_name'])
-            if r.get('head_other_names'):
-                head_name_parts.append(r['head_other_names'])
+            if r.get('head_first_name'):
+                head_name_parts.append(r['head_first_name'])
             head_name = ' '.join(head_name_parts) if head_name_parts else ''
 
             social_id = json_ext.get('social_id', '')

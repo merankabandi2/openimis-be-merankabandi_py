@@ -11,7 +11,7 @@ from datetime import datetime
 
 from django.db import transaction
 from core.services import BaseService
-from core.services.utils import model_representation, output_result_success
+from core.services.utils import model_representation, output_result_success, build_delete_instance_payload
 from core.signals import register_service_signal
 from django.db.models import Q
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus, Payroll, PayrollStatus
@@ -940,6 +940,10 @@ class MonetaryTransferService(BaseService):
         dict_repr = model_representation(obj_)
         return output_result_success(dict_representation=dict_repr)
 
+    def delete_instance(self, obj_):
+        obj_.delete()
+        return build_delete_instance_payload()
+
 
 class SectionService(BaseService):
     OBJECT_TYPE = Section
@@ -964,6 +968,10 @@ class SectionService(BaseService):
         dict_repr = model_representation(obj_)
         return output_result_success(dict_representation=dict_repr)
 
+    def delete_instance(self, obj_):
+        obj_.delete()
+        return build_delete_instance_payload()
+
 
 class IndicatorService(BaseService):
     OBJECT_TYPE = Indicator
@@ -987,6 +995,10 @@ class IndicatorService(BaseService):
         obj_.save()
         dict_repr = model_representation(obj_)
         return output_result_success(dict_representation=dict_repr)
+
+    def delete_instance(self, obj_):
+        obj_.delete()
+        return build_delete_instance_payload()
 
 
 class ProvincePaymentPointService(BaseService):
@@ -1014,6 +1026,10 @@ class ProvincePaymentPointService(BaseService):
         obj_.save()
         dict_repr = model_representation(obj_)
         return output_result_success(dict_representation=dict_repr)
+
+    def delete_instance(self, obj_):
+        obj_.delete()
+        return build_delete_instance_payload()
 
     def add_province_payment_point(self, province_id, payment_point_id, payment_plan_id=None):
         """
@@ -1097,3 +1113,7 @@ class IndicatorAchievementService(BaseService):
         obj_.save()
         dict_repr = model_representation(obj_)
         return output_result_success(dict_representation=dict_repr)
+
+    def delete_instance(self, obj_):
+        obj_.delete()
+        return build_delete_instance_payload()
