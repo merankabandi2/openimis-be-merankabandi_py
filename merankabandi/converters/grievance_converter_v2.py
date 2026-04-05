@@ -126,35 +126,40 @@ def _derive_status(data):
     return 'OPEN'
 
 
-def _derive_category(data):
-    """Derive upstream category from case type + subcategory."""
+def _derive_category_and_flags(data):
+    """Derive category + flags from case type + subcategory.
+
+    Returns (main_category, additional_categories, flags).
+    Category is a single plain string matching the module config.
+    For multi-value KoBo selections, picks the most restrictive.
+    """
+    from merankabandi.converters.category_resolver import (
+        resolve_categories, derive_flags_from_category,
+    )
+
     case_type = _get(data, 'group_jl6wb36/Quel_est_le_type_de_cas_que_vo')
+
+    # Remplacement/suppression are action types, not grievance categories
     if case_type == 'cas_de_remplacement':
-        return 'remplacement'
+        return 'uncategorized', None, None
     if case_type == 'cas_de_suppression__retrait_du_programme':
-        return 'suppression'
-    # For réclamation, use the subcategory
-    reclamation_type = _get(data, 'group_mk9yc92/group_wl7av77/Quel_type_de_r_clamation_souha')
-    if reclamation_type == 'cas_sensibles':
-        cats = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_sensibles_pr_cisez_', '')
-        return cats.split(' ')[0] if cats else 'cas_sensibles'
-    if reclamation_type == 'cas_sp_ciaux':
-        cats = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_sp_ciaux_pr_cisez_', '')
-        return cats.split(' ')[0] if cats else 'cas_sp_ciaux'
-    if reclamation_type == 'cas_non_sensibles':
-        cats = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_non_sensibles_pr_cisez_', '')
-        return cats.split(' ')[0] if cats else 'cas_non_sensibles'
-    return None
+        return 'uncategorized', None, None
 
+    # Collect all selected sub-category values from the form
+    raw_values = []
+    sensitive = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_sensibles_pr_cisez_', '')
+    if sensitive:
+        raw_values.append(sensitive)
+    special = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_sp_ciaux_pr_cisez_', '')
+    if special:
+        raw_values.append(special)
+    non_sensitive = _get(data, 'group_mk9yc92/group_wl7av77/Si_cas_non_sensibles_pr_cisez_', '')
+    if non_sensitive:
+        raw_values.append(non_sensitive)
 
-def _derive_flags(data):
-    """Derive flags from reclamation type."""
-    reclamation_type = _get(data, 'group_mk9yc92/group_wl7av77/Quel_type_de_r_clamation_souha')
-    if reclamation_type == 'cas_sensibles':
-        return 'SENSITIVE'
-    if reclamation_type == 'cas_sp_ciaux':
-        return 'SPECIAL'
-    return None
+    main, additional, _ = resolve_categories(raw_values)
+    flags = derive_flags_from_category(main)
+    return main, additional, flags
 
 
 def _kobo_to_openimis_code(kobo_code):
@@ -318,13 +323,17 @@ class GrievanceConverterV2:
         json_ext = _build_json_ext(kobo_data, resolved_location=resolved_loc)
         channels = ' '.join(json_ext.get('submission', {}).get('channels', []))
 
+        main_cat, additional_cats, flags = _derive_category_and_flags(kobo_data)
+        if additional_cats:
+            json_ext['additional_categories'] = additional_cats
+
         ticket = Ticket(
             id=kobo_data.get('_uuid'),
             title=title,
             description=_get(kobo_data, 'group_nn77z12/Br_ve_description_de_la_plaint'),
             status=_derive_status(kobo_data),
-            category=_derive_category(kobo_data),
-            flags=_derive_flags(kobo_data),
+            category=main_cat,
+            flags=flags,
             channel=channels,
             date_of_incident=datetime.strptime(collection_date, '%Y-%m-%d').date() if collection_date else None,
             json_ext=json_ext,

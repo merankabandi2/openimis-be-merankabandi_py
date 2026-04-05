@@ -28,6 +28,7 @@ from merankabandi.gql_mutations import (
     CreatePaymentAgencyMutation, UpdatePaymentAgencyMutation, DeletePaymentAgencyMutation,
     CreateProvincePaymentAgencyMutation, UpdateProvincePaymentAgencyMutation, DeleteProvincePaymentAgencyMutation,
     CreateTicketCommentMutation,
+    CreateTicketWithExtMutation, UpdateTicketWithExtMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
     ImportSurveyDataMutation, TriggerPMTCalculationMutation,
     BulkUpdateGroupBeneficiaryStatusMutation,
@@ -1384,3 +1385,8 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_commune_payment_round = CreateCommunePaymentRoundMutation.Field()
     create_retry_payment_round = CreateRetryPaymentRoundMutation.Field()
     sync_payment_schedule = SyncPaymentScheduleMutation.Field()
+
+    # Enhanced grievance mutations with json_ext (avoids modifying upstream)
+    create_ticket_comment = CreateTicketCommentMutation.Field()
+    create_ticket_with_ext = CreateTicketWithExtMutation.Field()
+    update_ticket_with_ext = UpdateTicketWithExtMutation.Field()

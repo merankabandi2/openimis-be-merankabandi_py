@@ -1357,3 +1357,81 @@ class CreateTicketCommentMutation(BaseMutation):
 
     class Input(CreateTicketCommentInputType):
         pass
+
+
+# Enhanced ticket mutations with json_ext support (avoids modifying upstream grievance module)
+
+class CreateTicketWithExtInputType(OpenIMISMutation.Input):
+    key = graphene.String(required=False)
+    title = graphene.String(required=False)
+    description = graphene.String(required=False)
+    reporter_type = graphene.String(required=False)
+    reporter_id = graphene.String(required=False)
+    attending_staff_id = graphene.UUID(required=False)
+    date_of_incident = graphene.Date(required=False)
+    status = graphene.String(required=False)
+    priority = graphene.String(required=False)
+    due_date = graphene.Date(required=False)
+    category = graphene.String(required=False)
+    flags = graphene.String(required=False)
+    channel = graphene.String(required=False)
+    resolution = graphene.String(required=False)
+    json_ext = graphene.JSONString(required=False)
+
+
+class CreateTicketWithExtMutation(BaseMutation):
+    _mutation_class = "CreateTicketWithExtMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from grievance_social_protection.services import TicketService
+
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        service = TicketService(user)
+        response = service.create(data)
+
+        if not response.get('success', True):
+            return response
+        return None
+
+    class Input(CreateTicketWithExtInputType):
+        pass
+
+
+class UpdateTicketWithExtInputType(CreateTicketWithExtInputType):
+    id = graphene.UUID(required=True)
+
+
+class UpdateTicketWithExtMutation(BaseMutation):
+    _mutation_class = "UpdateTicketWithExtMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        from grievance_social_protection.services import TicketService
+
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        service = TicketService(user)
+        response = service.update(data)
+
+        if not response.get('success', True):
+            return response
+        return None
+
+    class Input(UpdateTicketWithExtInputType):
+        pass
