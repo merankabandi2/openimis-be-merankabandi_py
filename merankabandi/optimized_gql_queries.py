@@ -209,6 +209,7 @@ class CommunityDataType(graphene.ObjectType):
 
 class DashboardSummaryType(graphene.ObjectType):
     total_beneficiaries = graphene.Int()
+    total_households = graphene.Int()
     total_transfers = graphene.Int()
     total_amount_paid = graphene.Float()
     avg_amount_per_beneficiary = graphene.Float()
@@ -361,6 +362,39 @@ class LocationByBenefitPlanType(graphene.ObjectType):
     count_graduated = graphene.Int()
 
 
+# ─── Dashboard Targets Types ─────────────────────────────────
+
+class ProgrammeTargetType(graphene.ObjectType):
+    id = graphene.String()
+    code = graphene.String()
+    name = graphene.String()
+    target_households = graphene.Int()
+    max_rounds = graphene.Int()
+    amount_per_round = graphene.Int()
+    total_amount = graphene.Float()
+    programme_type = graphene.String()
+    collect_target = graphene.Int()
+
+
+class DashboardTargetsType(graphene.ObjectType):
+    total_target_households = graphene.Int()
+    total_target_collected = graphene.Int()
+    total_target_amount = graphene.Float()
+    programmes = graphene.List(ProgrammeTargetType)
+
+
+class VagueProgressType(graphene.ObjectType):
+    vague_number = graphene.Int()
+    province_count = graphene.Int()
+    province_names = graphene.List(graphene.String)
+    completed_rounds = graphene.Int()
+    max_rounds = graphene.Int()
+
+
+class TransferProgressType(graphene.ObjectType):
+    vagues = graphene.List(VagueProgressType)
+
+
 # Input Types for Filters
 class DashboardFiltersInput(graphene.InputObjectType):
     start_date = graphene.String()
@@ -436,6 +470,20 @@ class OptimizedDashboardQuery(graphene.ObjectType):
         LocationByBenefitPlanType,
         filters=graphene.Argument(DashboardFiltersInput),
         description="Fast location data with beneficiary counts for map display"
+    )
+
+    # Programme targets from BenefitPlan configuration
+    dashboard_targets = graphene.Field(
+        DashboardTargetsType,
+        filters=graphene.Argument(DashboardFiltersInput, required=False),
+        description="Programme targets from BenefitPlan configuration",
+    )
+
+    # Per-vague payment round progress
+    transfer_progress = graphene.Field(
+        TransferProgressType,
+        filters=graphene.Argument(DashboardFiltersInput, required=False),
+        description="Per-vague payment round progress",
     )
 
     # System stats and health
@@ -1093,3 +1141,28 @@ class OptimizedDashboardQuery(graphene.ObjectType):
         except Exception as e:
             print(f"Error in optimized_location_by_benefit_plan: {e}")
             return []
+
+    def resolve_dashboard_targets(self, info, filters=None):
+        """Resolve programme targets from BenefitPlan configuration"""
+        service_filters = {}
+        if filters and filters.get('benefit_plan_id'):
+            service_filters['benefit_plan_id'] = filters['benefit_plan_id']
+
+        data = DashboardService.get_programme_targets(service_filters)
+        return DashboardTargetsType(
+            total_target_households=data['total_target_households'],
+            total_target_collected=data['total_target_collected'],
+            total_target_amount=data['total_target_amount'],
+            programmes=[ProgrammeTargetType(**p) for p in data['programmes']],
+        )
+
+    def resolve_transfer_progress(self, info, filters=None):
+        """Resolve per-vague payment round progress"""
+        service_filters = {}
+        if filters and filters.get('benefit_plan_id'):
+            service_filters['benefit_plan_id'] = filters['benefit_plan_id']
+
+        vagues = DashboardService.get_transfer_progress(service_filters)
+        return TransferProgressType(
+            vagues=[VagueProgressType(**v) for v in vagues],
+        )

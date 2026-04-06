@@ -44,16 +44,26 @@ def bind_service_signals():
         on_task_created,
         ServiceSignalBindType.AFTER,
     )
-    bind_service_signal(
-        'ticket_service.create',
-        on_grievance_created,
-        ServiceSignalBindType.AFTER,
-    )
-
+    # Workflow auto-creation MUST run before notifications to avoid
+    # notification errors blocking workflow creation
     from merankabandi.workflow_signals import on_ticket_created_workflow
     bind_service_signal(
         'ticket_service.create',
         on_ticket_created_workflow,
+        ServiceSignalBindType.AFTER,
+    )
+
+    # Wrap notification in error-safe handler so it never blocks workflow
+    def safe_on_grievance_created(**kwargs):
+        try:
+            on_grievance_created(**kwargs)
+        except Exception as e:
+            import logging
+            logging.getLogger('merankabandi').warning(f"Notification signal error (non-fatal): {e}")
+
+    bind_service_signal(
+        'ticket_service.create',
+        safe_on_grievance_created,
         ServiceSignalBindType.AFTER,
     )
     bind_service_signal(

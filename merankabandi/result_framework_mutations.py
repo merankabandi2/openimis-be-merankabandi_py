@@ -183,8 +183,14 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
         for ind in section["indicators"]:
             indicator_num += 1
             target = float(ind.get("target", 0))
-            achieved = float(ind.get("achieved", 0))
+            raw_achieved = float(ind.get("achieved", 0))
             baseline = float(ind.get("baseline", 0))
+            # For CRI stock indicators (beneficiary counts), the DB only has Merankabandi II data.
+            # The baseline (pilot data) must be added to get the cumulative Réalisé.
+            # But for flow indicators (provinces, percentages), the current value already
+            # includes the baseline context, so don't add it.
+            include_baseline = ind.get("include_baseline", False)
+            achieved = baseline + raw_achieved if include_baseline and baseline > 0 else raw_achieved
             progress = (achieved / target * 100) if target > 0 else 0
 
             values = [
@@ -250,11 +256,20 @@ class GenerateResultFrameworkDocumentMutation(graphene.Mutation):
                         result = service.calculate_indicator_value(
                             indicator.id, date_from=date_from, date_to=date_to
                         )
+                        # CRI stock indicators: baseline should be added to achieved
+                        # because DB only has Merankabandi II data, not pilot data.
+                        # Identified by: has baseline > 0 AND unit is count (not %)
+                        is_stock_count = (
+                            float(indicator.baseline or 0) > 0
+                            and 'Pourcentage' not in indicator.name
+                            and 'provinces' not in indicator.name.lower()
+                        )
                         section_entry["indicators"].append({
                             "name": indicator.name,
                             "pbc": indicator.pbc or "",
                             "baseline": float(indicator.baseline) if indicator.baseline else 0,
                             "target": float(indicator.target) if indicator.target else 0,
+                            "include_baseline": is_stock_count,
                             "achieved": result.get("value", 0),
                         })
                     sections_data.append(section_entry)

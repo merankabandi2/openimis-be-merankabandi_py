@@ -58,12 +58,94 @@ class WorkflowService:
                     if tpl:
                         templates.append(tpl)
 
+        # Fallback: use ticket.category field if no templates matched from json_ext
+        if not templates and hasattr(ticket, 'category') and ticket.category:
+            cat_parts = ticket.category.split(' > ')
+            # Try the most specific part first (sub-category), then parent
+            for part in reversed(cat_parts):
+                part = part.strip()
+                # Determine sensitivity from category
+                from merankabandi.converters.category_resolver import RESTRICTIVENESS
+                sensitivity = RESTRICTIVENESS.get(cat_parts[0].strip(), 99)
+                if sensitivity <= 5:
+                    prefix = 'reclamation:sensible'
+                elif sensitivity <= 7:
+                    prefix = 'reclamation:speciale'
+                else:
+                    prefix = 'reclamation:non_sensible'
+                key = f"{prefix}:{part}"
+                tpl = cls._find_template(key)
+                if tpl:
+                    templates.append(tpl)
+                    break
+
         return templates
+
+    # Map normalized category names (from module config) to legacy KoBo template keys
+    CATEGORY_TO_TEMPLATE_KEY = {
+        # Payment
+        'paiement_pas_recu': 'probl_me_de_paiement__non_r_ception__mon',
+        'paiement_en_retard': 'probl_me_de_paiement__retard',
+        'paiement_incomplet': 'probl_me_de_paiement__montant',
+        'vole': 'carte_sim__bloqu_e__vol_e__perdue__etc',
+        # Phone
+        'perdu': 'probl_mes_de_t_l_phone__vol__endommag__n',
+        'recoit_pas_tm': 'probl_mes_de_t_l_phone__no_tm',
+        'mot_de_passe_oublie': 'probl_mes_de_t_l_phone__mdp',
+        # Account
+        'non_active': 'probl_mes_de_compte_mobile_money__ecocas',
+        'bloque': 'probl_mes_de_compte_mobile_money__bloque',
+        # Data
+        'information': 'demande_d_information',
+        # Sensitive
+        'eas_hs__exploitation__abus_sexuel___harc': 'eas_hs__exploitation__abus_sexuel___harc',
+        'pr_l_vements_de_fonds': 'pr_l_vements_de_fonds',
+        'd_tournement_de_fonds___corruption': 'd_tournement_de_fonds___corruption',
+        'conflit_familial': 'conflit_familial',
+        'accident_grave_ou_n_gligence_professionn': 'accident_grave_ou_n_gligence_professionn',
+        # Special
+        'erreur_d_inclusion_potentielle': 'erreur_d_inclusion_potentielle',
+        'cibl__mais_pas_collect': 'cibl__mais_pas_collect',
+        'cibl__et_collect': 'cibl__et_collect',
+        'migration': 'migration',
+        # Sub-category from config name → old KoBo key
+        'paiement': 'probl_me_de_paiement__non_r_ception__mon',
+        'telephone': 'probl_mes_de_t_l_phone__vol__endommag__n',
+        'compte': 'probl_mes_de_compte_mobile_money__ecocas',
+        # From new form category name → KoBo form value
+        'violence_vbg': 'eas_hs__exploitation__abus_sexuel___harc',
+        'corruption': 'd_tournement_de_fonds___corruption',
+        'accident_negligence': 'accident_grave_ou_n_gligence_professionn',
+        'erreur_exclusion': 'cibl__mais_pas_collect',
+        'erreur_inclusion': 'erreur_d_inclusion_potentielle',
+    }
 
     @classmethod
     def _find_template(cls, case_type_key):
-        return WorkflowTemplate.objects.filter(
+        # Try exact match first
+        tpl = WorkflowTemplate.objects.filter(
             case_type=case_type_key, is_active=True
+        ).first()
+        if tpl:
+            return tpl
+
+        # Try mapping the category part to legacy KoBo key
+        parts = case_type_key.rsplit(':', 1)
+        if len(parts) == 2:
+            prefix, cat = parts
+            legacy_cat = cls.CATEGORY_TO_TEMPLATE_KEY.get(cat)
+            if legacy_cat and legacy_cat != cat:
+                legacy_key = f"{prefix}:{legacy_cat}"
+                tpl = WorkflowTemplate.objects.filter(
+                    case_type=legacy_key, is_active=True
+                ).first()
+                if tpl:
+                    return tpl
+
+        # Try contains match as last resort
+        return WorkflowTemplate.objects.filter(
+            case_type__icontains=case_type_key.rsplit(':', 1)[-1],
+            is_active=True
         ).first()
 
     @classmethod
@@ -241,7 +323,7 @@ class WorkflowService:
         ).count()
         if active_workflows == 0:
             ticket.status = 'CLOSED'
-            ticket.save(username='workflow_engine')
+            ticket.save(username='Admin')
 
     @classmethod
     def _evaluate_condition(cls, condition, ticket):

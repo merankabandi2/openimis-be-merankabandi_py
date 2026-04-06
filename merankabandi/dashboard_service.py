@@ -259,7 +259,7 @@ class DashboardService:
     @classmethod
     def _summary_from_master_view(cls) -> Dict[str, Any]:
         query = """
-        SELECT total_beneficiaries, total_transfers, total_amount_paid,
+        SELECT total_beneficiaries, total_households, total_transfers, total_amount_paid,
                active_provinces, total_grievances, resolved_grievances
         FROM dashboard_master_summary
         LIMIT 1
@@ -273,6 +273,7 @@ class DashboardService:
         return {
             'summary': {
                 'total_beneficiaries': total_ben,
+                'total_households': cls._safe_int(row.get('total_households')),
                 'total_transfers': cls._safe_int(row.get('total_transfers')),
                 'total_amount_paid': total_amt,
                 'avg_amount_per_beneficiary': total_amt / total_ben if total_ben else 0,
@@ -1139,6 +1140,162 @@ class DashboardService:
         }
         cache.set(cache_key, data, cls.CACHE_TTL['payment'])
         return data
+
+    # ─── Programme Targets ─────────────────────────────────────
+
+    @classmethod
+    def get_programme_targets(cls, filters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Read programme targets from BenefitPlan.json_ext.programme_targets."""
+        from social_protection.models import BenefitPlan
+        from merankabandi.models import SelectionQuota
+        from django.db.models import Sum, F
+
+        qs = BenefitPlan.objects.filter(is_deleted=False)
+        if filters and filters.get('benefit_plan_id'):
+            qs = qs.filter(id=filters['benefit_plan_id'])
+
+        programmes = []
+        total_target_households = 0
+        total_target_amount = 0
+        total_target_collected = 0
+
+        for bp in qs:
+            targets = (bp.json_ext or {}).get('programme_targets')
+            if not targets:
+                continue
+
+            target_hh = targets.get('target_households', 0)
+            max_rounds = targets.get('max_rounds', 0)
+            amount_per_round = targets.get('amount_per_round', 0)
+            programme_amount = target_hh * max_rounds * amount_per_round
+
+            collect_target = SelectionQuota.objects.filter(
+                benefit_plan=bp
+            ).aggregate(
+                total=Sum(F('quota') * F('collect_multiplier'))
+            )['total'] or 0
+
+            total_target_households += target_hh
+            total_target_amount += programme_amount
+            total_target_collected += int(collect_target)
+
+            programmes.append({
+                'id': str(bp.id),
+                'code': bp.code,
+                'name': bp.name,
+                'target_households': target_hh,
+                'max_rounds': max_rounds,
+                'amount_per_round': amount_per_round,
+                'total_amount': programme_amount,
+                'programme_type': targets.get('programme_type', 'REGULAR'),
+                'collect_target': int(collect_target),
+            })
+
+        return {
+            'total_target_households': total_target_households,
+            'total_target_collected': total_target_collected,
+            'total_target_amount': total_target_amount,
+            'programmes': programmes,
+        }
+
+    # ─── Transfer Progress (per-vague) ──────────────────────────
+
+    @classmethod
+    def get_transfer_progress(cls, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        Compute per-vague payment round progress.
+        Vagues are province-level targeting rounds derived from SelectionQuota.
+        Progress = MIN(max reconciled round) across all communes in the vague's provinces.
+        """
+        from merankabandi.models import SelectionQuota, CommunePaymentSchedule, CommunePaymentScheduleStatus
+        from social_protection.models import BenefitPlan
+        from location.models import Location
+        from django.db.models import Max
+
+        benefit_plan_id = (filters or {}).get('benefit_plan_id')
+        if benefit_plan_id:
+            bp = BenefitPlan.objects.filter(id=benefit_plan_id, is_deleted=False).first()
+        else:
+            bp = BenefitPlan.objects.filter(code='1.2', is_deleted=False).first()
+
+        if not bp:
+            return []
+
+        targets = (bp.json_ext or {}).get('programme_targets', {})
+        max_rounds = targets.get('max_rounds', 12)
+
+        # Step 1: Group SelectionQuota by targeting_round → provinces
+        quotas = SelectionQuota.objects.filter(
+            benefit_plan=bp
+        ).values_list(
+            'targeting_round', 'location__parent__id', 'location__parent__name'
+        ).distinct()
+
+        vague_provinces = {}
+        for targeting_round, province_id, province_name in quotas:
+            if targeting_round not in vague_provinces:
+                vague_provinces[targeting_round] = {}
+            if province_id:
+                vague_provinces[targeting_round][province_id] = province_name
+
+        if not vague_provinces:
+            return []
+
+        # Step 2: For each vague, compute progress
+        vagues = []
+        for vague_num in sorted(vague_provinces.keys()):
+            provinces = vague_provinces[vague_num]
+            province_ids = list(provinces.keys())
+            province_names = list(provinces.values())
+
+            # Only count communes that have SelectionQuota entries for this vague
+            # (not all communes in the province — some may not be in the programme yet)
+            quota_commune_ids = list(
+                SelectionQuota.objects.filter(
+                    benefit_plan=bp,
+                    targeting_round=vague_num,
+                    location__parent__id__in=province_ids,
+                ).values_list('location_id', flat=True)
+            )
+
+            if not quota_commune_ids:
+                vagues.append({
+                    'vague_number': vague_num,
+                    'province_count': len(province_ids),
+                    'province_names': province_names,
+                    'completed_rounds': 0,
+                    'max_rounds': max_rounds,
+                })
+                continue
+
+            commune_progress = CommunePaymentSchedule.objects.filter(
+                benefit_plan=bp,
+                commune_id__in=quota_commune_ids,
+                is_retry=False,
+                status__in=[
+                    CommunePaymentScheduleStatus.RECONCILED,
+                    CommunePaymentScheduleStatus.APPROVED,
+                    CommunePaymentScheduleStatus.IN_PAYMENT,
+                ],
+            ).values('commune_id').annotate(
+                max_round=Max('round_number')
+            )
+
+            if not commune_progress:
+                completed = 0
+            else:
+                # MAX — all communes in a province are paid together per cycle
+                completed = max(cp['max_round'] for cp in commune_progress)
+
+            vagues.append({
+                'vague_number': vague_num,
+                'province_count': len(province_ids),
+                'province_names': province_names,
+                'completed_rounds': completed,
+                'max_rounds': max_rounds,
+            })
+
+        return vagues
 
     # ─── View Management ──────────────────────────────────────────
 

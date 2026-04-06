@@ -207,7 +207,7 @@ class ResultFrameworkService:
         if date_from:
             query = query.filter(date_created__gte=date_from)
         if date_to:
-            query = query.filter(date_created__gte=date_to)
+            query = query.filter(date_created__lte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
 
@@ -234,20 +234,17 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_unconditional_transfers(self, indicator, date_from, date_to, location, config):
-        """Count beneficiaries of unconditional transfers (Indicator 7)"""
-        # Filter by benefit plan code for unconditional transfers
+        """Count beneficiaries of unconditional transfers — programme 1.2 (Indicator 7)"""
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__groupindividuals__individual__json_ext__sexe='F',
-            group__groupindividuals__recipient_type='PRIMARY',
-            benefit_plan__code__in=['1.2']  # Adjust based on actual codes
+            benefit_plan__code__in=['1.2'],
         )
 
         if date_from:
-            query = query.filter(date_due__gte=date_from)
+            query = query.filter(date_created__gte=date_from)
         if date_to:
-            query = query.filter(date_due__lte=date_to)
+            query = query.filter(date_created__lte=date_to)
         if location:
             query = query.filter(group__location__parent__parent=location)
 
@@ -281,17 +278,25 @@ class ResultFrameworkService:
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
 
     def _count_provinces_with_transfers(self, indicator, date_from, date_to, location, config):
-        """Count provinces implementing transfers (Indicator 16)"""
-        query = MonetaryTransfer.objects.all()
-
-        if date_from:
-            query = query.filter(transfer_date__gte=date_from)
-        if date_to:
-            query = query.filter(transfer_date__lte=date_to)
-
-        # Get unique provinces
-        provinces = query.values('location__parent__parent').distinct().count()
-        return {'value': provinces, 'calculation_type': 'SYSTEM'}
+        """Count provinces implementing transfers (Indicator 16).
+        Counts distinct provinces that have active beneficiaries with payment records.
+        Uses GroupBeneficiary → Group → Location → Province chain as the most reliable source.
+        """
+        from django.db import connection
+        query = """
+            SELECT COUNT(DISTINCT prov."LocationId")
+            FROM social_protection_groupbeneficiary gb
+            JOIN individual_group grp ON grp."UUID" = gb.group_id AND grp."isDeleted" = false
+            JOIN "tblLocations" col ON col."LocationId" = grp.location_id
+            JOIN "tblLocations" com ON com."LocationId" = col."ParentLocationId"
+            JOIN "tblLocations" prov ON prov."LocationId" = com."ParentLocationId"
+            WHERE gb."isDeleted" = false
+              AND prov."LocationType" = 'D'
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(query)
+            count = cursor.fetchone()[0]
+        return {'value': count or 0, 'calculation_type': 'SYSTEM'}
 
     def _calculate_payment_timeliness(self, indicator, date_from, date_to, location, config):
         """Calculate percentage of beneficiaries paid on time (Indicator 17)"""

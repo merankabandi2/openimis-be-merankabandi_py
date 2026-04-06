@@ -73,3 +73,35 @@ def validate_commune_reconciliation(**kwargs):
             raise ValueError(
                 _("merankabandi.payroll.commune_not_reconciled")
             )
+
+
+def sync_payment_schedule_on_payroll_change(**kwargs):
+    """Auto-sync CommunePaymentSchedule when payroll status changes."""
+    from merankabandi.models import CommunePaymentSchedule
+    from payroll.models import Payroll, BenefitConsumption
+
+    obj_data = kwargs.get('data', {})
+    payroll_id = obj_data.get('id')
+    if not payroll_id:
+        return
+
+    schedules = CommunePaymentSchedule.objects.filter(payroll_id=payroll_id)
+    if not schedules.exists():
+        return
+
+    try:
+        payroll = Payroll.objects.get(id=payroll_id)
+    except Payroll.DoesNotExist:
+        return
+
+    for schedule in schedules:
+        schedule.sync_from_payroll()
+        benefits = BenefitConsumption.objects.filter(
+            payrollbenefitconsumption__payroll=payroll, is_deleted=False,
+        )
+        schedule.total_beneficiaries = benefits.count()
+        schedule.reconciled_count = benefits.filter(status='RECONCILED').count()
+        schedule.failed_count = benefits.filter(status='REJECTED').count()
+        if schedule.total_beneficiaries > 0:
+            schedule.total_amount = schedule.amount_per_beneficiary * schedule.total_beneficiaries
+        schedule.save()
