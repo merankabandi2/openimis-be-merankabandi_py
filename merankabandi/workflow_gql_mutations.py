@@ -92,6 +92,32 @@ class ReassignGrievanceTaskMutation(BaseMutation):
         pass
 
 
+class AddTaskToWorkflowInputType(OpenIMISMutation.Input):
+    workflow_id = graphene.UUID(required=True)
+    step_template_id = graphene.UUID(required=True)
+
+
+class AddTaskToWorkflowMutation(BaseMutation):
+    _mutation_class = "AddTaskToWorkflowMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        from merankabandi.workflow_models import GrievanceWorkflow
+        workflow = GrievanceWorkflow.objects.get(id=data['workflow_id'])
+        WorkflowService.add_task_to_workflow(workflow, data['step_template_id'], user)
+
+    class Input(AddTaskToWorkflowInputType):
+        pass
+
+
 class ApproveReplacementRequestInputType(OpenIMISMutation.Input):
     request_id = graphene.UUID(required=True)
 

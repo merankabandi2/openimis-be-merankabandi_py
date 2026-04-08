@@ -1,0 +1,770 @@
+[
+  {
+    "model": "core.role",
+    "pk": "1",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.167000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1,
+      "uuid": "fe17fee9-a501-48c2-966e-091b765f3718",
+      "name": "Enrolment Officer",
+      "alt_language": null,
+      "is_system": 1,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "2",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.173000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 2,
+      "uuid": "10824c66-f7dc-4eb7-a4c9-481f514e35ac",
+      "name": "Manager",
+      "alt_language": null,
+      "is_system": 2,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "3",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.180000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 3,
+      "uuid": "496d7cdc-16d2-4d36-ae35-313a5795158b",
+      "name": "Accountant",
+      "alt_language": null,
+      "is_system": 4,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "4",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.180000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 4,
+      "uuid": "caa6fe3c-b59d-4b2f-b9e6-9df6ef35f7de",
+      "name": "Clerk",
+      "alt_language": null,
+      "is_system": 8,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "6",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.187000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 6,
+      "uuid": "335a2380-211b-44dc-bb69-7ad6c4de7dce",
+      "name": "Scheme Administrator",
+      "alt_language": null,
+      "is_system": 32,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "7",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.190000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 7,
+      "uuid": "e794c4ab-3554-4f14-98c4-a5c72d6c3e9a",
+      "name": "IMIS Administrator",
+      "alt_language": null,
+      "is_system": 64,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "8",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.193000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 8,
+      "uuid": "f9725efc-a649-4af9-962b-003d24d4e863",
+      "name": "Receptionist",
+      "alt_language": null,
+      "is_system": 128,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "11",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.207000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 11,
+      "uuid": "b5a31366-35a1-466d-b814-213ca76adf30",
+      "name": "HF Administrator",
+      "alt_language": null,
+      "is_system": 524288,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "12",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.210000",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 12,
+      "uuid": "009436c3-6066-4c34-a96f-cee3b4aa7329",
+      "name": "Offline Administrator",
+      "alt_language": null,
+      "is_system": 1048576,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "13",
+    "fields": {
+      "validity_from": "2024-10-08 15:10:39.106649",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 13,
+      "uuid": "18658803-dd22-41ea-a1c1-0dcf610ac26e",
+      "name": "Schema Admin",
+      "alt_language": null,
+      "is_system": 4194304,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "14",
+    "fields": {
+      "validity_from": "2024-10-08 15:10:46.714507",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 14,
+      "uuid": "50218be7-ff51-40de-bb33-314d866a435c",
+      "name": "Task Triage",
+      "alt_language": null,
+      "is_system": 2097152,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "15",
+    "fields": {
+      "validity_from": "2025-02-10 00:19:01.616222",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 15,
+      "uuid": "c0a52184-98bd-46fb-9346-f2abf8a946c5",
+      "name": "Paiement Agency",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "16",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.183000",
+      "validity_to": "2025-02-25 10:10:58.466851",
+      "legacy_id": 5,
+      "id": 16,
+      "uuid": "1c0cbf5f-b060-46c1-b7d2-c5be99572c68",
+      "name": "Medical Officer",
+      "alt_language": null,
+      "is_system": 16,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "5",
+    "fields": {
+      "validity_from": "2025-02-25 10:10:58.471129",
+      "validity_to": "2025-02-25 10:10:58.471129",
+      "legacy_id": null,
+      "id": 5,
+      "uuid": "47b0f22f-29f6-41f7-b17e-469aae76e7d3",
+      "name": "Medical Officer",
+      "alt_language": null,
+      "is_system": 16,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "17",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.200000",
+      "validity_to": "2025-02-25 10:11:24.067799",
+      "legacy_id": 9,
+      "id": 17,
+      "uuid": "bd78bda8-790f-47bb-9dd0-c3e526a8d0ba",
+      "name": "Claim Administrator",
+      "alt_language": null,
+      "is_system": 256,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "9",
+    "fields": {
+      "validity_from": "2025-02-25 10:11:24.068862",
+      "validity_to": "2025-02-25 10:11:24.068862",
+      "legacy_id": null,
+      "id": 9,
+      "uuid": "20f7fc37-c0c3-427c-8241-04af84fcf876",
+      "name": "Claim Administrator",
+      "alt_language": null,
+      "is_system": 256,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "18",
+    "fields": {
+      "validity_from": "2019-05-10 05:08:23.200000",
+      "validity_to": "2025-02-25 10:11:26.687057",
+      "legacy_id": 10,
+      "id": 18,
+      "uuid": "92928918-1176-46ce-9706-7a746541be16",
+      "name": "Claim Contributor",
+      "alt_language": null,
+      "is_system": 512,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "10",
+    "fields": {
+      "validity_from": "2025-02-25 10:11:26.688240",
+      "validity_to": "2025-02-25 10:11:26.688240",
+      "legacy_id": null,
+      "id": 10,
+      "uuid": "577f654d-4ace-49fe-9abd-0e6d1ca2c95f",
+      "name": "Claim Contributor",
+      "alt_language": null,
+      "is_system": 512,
+      "is_blocked": false,
+      "audit_user_id": null
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "20",
+    "fields": {
+      "validity_from": "2025-03-02 17:27:21.915335",
+      "validity_to": "2025-03-02 17:35:01.615986",
+      "legacy_id": 19,
+      "id": 20,
+      "uuid": "74b5e1a8-bc58-41df-acac-59358d1525c4",
+      "name": "preparation paiement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "21",
+    "fields": {
+      "validity_from": "2025-03-02 17:27:21.915335",
+      "validity_to": "2025-03-02 18:17:58.521104",
+      "legacy_id": 19,
+      "id": 21,
+      "uuid": "db23d979-2cb2-4bff-9d6c-1676ca1a1e30",
+      "name": "preparation paiement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "22",
+    "fields": {
+      "validity_from": "2025-03-02 17:27:21.915335",
+      "validity_to": "2025-03-02 18:35:35.207245",
+      "legacy_id": 19,
+      "id": 22,
+      "uuid": "66b7a151-1e25-4678-b68f-39bf4bdd6e9f",
+      "name": "preparation paiement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "19",
+    "fields": {
+      "validity_from": "2025-03-02 17:27:21.915335",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 19,
+      "uuid": "53b552c2-ee85-442a-93ff-50dd2a2b54b8",
+      "name": "preparation paiement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "24",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 16:20:36.185051",
+      "legacy_id": 23,
+      "id": 24,
+      "uuid": "a837854f-302c-4d80-b91a-15f12bab1800",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "25",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 16:38:19.151357",
+      "legacy_id": 23,
+      "id": 25,
+      "uuid": "d8da9e69-e49f-433e-bda0-9414aa6798f6",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "26",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 16:47:17.893483",
+      "legacy_id": 23,
+      "id": 26,
+      "uuid": "d9d3c2b3-ddb4-441b-af94-623c97238443",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "27",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 16:48:23.302175",
+      "legacy_id": 23,
+      "id": 27,
+      "uuid": "8a3750be-b3db-43cb-9783-54c3898b3154",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "28",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 16:52:57.305628",
+      "legacy_id": 23,
+      "id": 28,
+      "uuid": "26d49de1-cd34-4ad8-a117-bcf6e50173ad",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "29",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": "2025-06-18 17:07:42.970625",
+      "legacy_id": 23,
+      "id": 29,
+      "uuid": "eab20033-fc52-4080-8940-47e9b1ba4051",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "23",
+    "fields": {
+      "validity_from": "2025-06-18 15:58:43.117041",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 23,
+      "uuid": "90568442-7305-4850-b113-3b0dc413e40a",
+      "name": "Superviseur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1311",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1311,
+      "uuid": "0f1671fd-71df-4208-bb57-4e65ad43e484",
+      "name": "Coordonnateur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1313",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1313,
+      "uuid": "2d694b30-65d6-4d6a-be4f-7b54aa2701a4",
+      "name": "Responsable Provincial",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1314",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1314,
+      "uuid": "39a05517-2d04-4d7a-a425-6c607fe8efae",
+      "name": "Operateur de Terrain",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1315",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1315,
+      "uuid": "134ab72a-1976-4247-ad91-55040fd53eb0",
+      "name": "Responsable SI",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1316",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1316,
+      "uuid": "eb7d32b2-1fc1-4d9b-b8b4-221d19b0555d",
+      "name": "Auditeur",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1312",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": "2026-03-30 00:00:00",
+      "legacy_id": null,
+      "id": 1312,
+      "uuid": "f578b427-6eff-4e64-9a05-bad14ecce1be",
+      "name": "Responsable Sectoriel",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1318",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1318,
+      "uuid": "b0b62d16-5962-4c0e-a205-b5dde0e8f296",
+      "name": "Responsable Transferts Monétaires",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1320",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1320,
+      "uuid": "43a2de99-4e44-4665-be9a-99578aa0245f",
+      "name": "Responsable des Opérations",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1321",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1321,
+      "uuid": "6252bb14-bd03-4324-92de-45ea43ce8ed3",
+      "name": "Responsable Mesures d'Accompagnement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1322",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1322,
+      "uuid": "ca62f312-6d01-4307-a7eb-77fa43f8a0fa",
+      "name": "Responsable Communication",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1323",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1323,
+      "uuid": "386247e7-f19a-47ce-ba1a-043023aabf81",
+      "name": "Responsable Nutrition et Éducation Sociale",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1324",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1324,
+      "uuid": "d387516f-46c4-4b0d-97d7-8957533bc909",
+      "name": "Spécialiste Environnemental et Protection",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1325",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1325,
+      "uuid": "68aa0d0c-e930-46b1-bf76-a6d1d74dc882",
+      "name": "Responsable Programme Mobile",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1326",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1326,
+      "uuid": "0504c991-2b5e-46bf-b232-09afc34cdb9a",
+      "name": "Responsable Inclusion Réfugiés",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1327",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1327,
+      "uuid": "a8d9825f-5578-4cac-b532-4c64735d218e",
+      "name": "Responsable Suivi-Évaluation",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1319",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": "2026-03-30 00:00:00",
+      "legacy_id": null,
+      "id": 1319,
+      "uuid": "4712bbcf-72c4-4a1e-86b4-9b914ad33602",
+      "name": "Responsable Instruments de Paiement",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1328",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1328,
+      "uuid": "d7b58894-d88e-48ff-b1bf-53bafa1f7efb",
+      "name": "Responsable Mesures d'Inclusion Productive",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1329",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": "2026-04-03 01:39:58.657150",
+      "legacy_id": 1317,
+      "id": 1329,
+      "uuid": "54ad03c6-d98d-4637-8e5b-e4181fc5d920",
+      "name": "Responsable VBG",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  },
+  {
+    "model": "core.role",
+    "pk": "1317",
+    "fields": {
+      "validity_from": "2026-03-30 00:00:00",
+      "validity_to": null,
+      "legacy_id": null,
+      "id": 1317,
+      "uuid": "1659846e-193d-4afc-96ad-35212eeb4a4b",
+      "name": "Responsable VBG",
+      "alt_language": null,
+      "is_system": 0,
+      "is_blocked": false,
+      "audit_user_id": 1
+    }
+  }
+]

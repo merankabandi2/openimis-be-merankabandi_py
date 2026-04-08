@@ -1,0 +1,18 @@
+services:
+  opensearch:
+    container_name: ${PROJECT_NAME:-merankabandi}-opensearch
+    image: opensearchproject/opensearch:latest
+    environment:
+      - discovery.type=single-node
+      - cluster.name=${PROJECT_NAME:-merankabandi}-opensearch
+      - http.port=9200
+      - plugins.security.ssl.http.enabled=false
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    restart: always
+    networks:
+      openimis-net: null
+volumes:
+  opensearch-data: null

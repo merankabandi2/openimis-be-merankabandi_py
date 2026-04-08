@@ -154,6 +154,7 @@ class GrievanceTask(models.Model):
     due_date = models.DateField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     json_ext = models.JSONField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0, help_text="Display order within workflow")
 
     class Meta:
         db_table = 'merankabandi_grievance_task'

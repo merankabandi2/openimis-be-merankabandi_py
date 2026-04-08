@@ -17,18 +17,28 @@ class LocationUpdateHandler(BaseActionHandler):
     def execute(self, task, ticket, user, data=None):
         from individual.models import Group
         from location.models import Location
+        import json, logging
 
         data = data or {}
+        if isinstance(data, str):
+            try: data = json.loads(data)
+            except: data = {}
+        logging.getLogger('openIMIS').info(f"LocationUpdateHandler data={data}")
         new_colline = data.get('new_colline', '')
 
         if not new_colline:
             return {'error': 'new_colline is required'}
 
+        # Search by code first, then by name
         location = Location.objects.filter(
             code=new_colline, type='V', validity_to__isnull=True,
         ).first()
         if not location:
-            return {'error': f'Colline with code {new_colline} not found'}
+            location = Location.objects.filter(
+                name__iexact=new_colline, type='V', validity_to__isnull=True,
+            ).first()
+        if not location:
+            return {'error': f'Colline "{new_colline}" not found (searched by code and name)'}
 
         # Find the individual from the workflow's verify task
         workflow = task.workflow
@@ -42,7 +52,7 @@ class LocationUpdateHandler(BaseActionHandler):
             return {'error': 'No verified individual found in workflow'}
 
         group = Group.objects.filter(
-            individuals__individual_id=individual_id,
+            groupindividuals__individual_id=individual_id,
             is_deleted=False,
         ).first()
 
@@ -51,7 +61,7 @@ class LocationUpdateHandler(BaseActionHandler):
 
         old_location_code = group.location.code if group.location else None
         group.location = location
-        group.save()
+        group.save(username=user.username if user else 'Admin')
 
         return {
             'new_province': data.get('new_province', ''),

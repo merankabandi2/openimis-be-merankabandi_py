@@ -1,0 +1,132 @@
+[
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "610fc09e-c493-4c96-a088-d00cb85d2e9a",
+    "fields": {
+      "id": "610fc09e-c493-4c96-a088-d00cb85d2e9a",
+      "module": "location",
+      "layer": "be",
+      "version": "1",
+      "config": "{\"location_types\": [\"D\", \"W\", \"V\"], \"Location.types\": [\"D\", \"W\", \"V\"], \"Location\": {\"types\": [\"D\", \"W\", \"V\"]}}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "594fb635-4362-4c78-9aed-37750aace7aa",
+    "fields": {
+      "id": "594fb635-4362-4c78-9aed-37750aace7aa",
+      "module": "invoice",
+      "layer": "be",
+      "version": "1",
+      "config": "{\"default_currency_code\": \"BIF\"}",
+      "is_exposed": false,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "935a0163-2224-41f7-acfe-91c5c68b229f",
+    "fields": {
+      "id": "935a0163-2224-41f7-acfe-91c5c68b229f",
+      "module": "core",
+      "layer": "be",
+      "version": "1",
+      "config": "{\r\n \"async_mutations\":\"False\",\r\n \"currency\": \"BIF\"\r\n}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "3cc2fdc8-2995-4338-ab63-e222fafd1582",
+    "fields": {
+      "id": "3cc2fdc8-2995-4338-ab63-e222fafd1582",
+      "module": "individual",
+      "layer": "be",
+      "version": "1",
+      "config": "{\"individual_schema\": \"{\\\"$id\\\": \\\"https://example.com/beneficiares.schema.json\\\", \\\"type\\\": \\\"object\\\", \\\"title\\\": \\\"Record of beneficiares\\\", \\\"$schema\\\": \\\"http://json-schema.org/draft-04/schema#\\\", \\\"properties\\\": {\\\"etat\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"email address to contact with beneficiary\\\", \\\"validationCalculation\\\": {\\\"name\\\": \\\"EmailValidationStrategy\\\"}}, \\\"able_bodied\\\": {\\\"type\\\": \\\"boolean\\\", \\\"description\\\": \\\"Flag determining whether someone is able bodied or not\\\"}, \\\"national_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"national id\\\"}, \\\"educated_level\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"The level of person when it comes to the school/education/studies\\\"}, \\\"chronic_illness\\\": {\\\"type\\\": \\\"boolean\\\", \\\"description\\\": \\\"Flag determining whether someone has such kind of illness or not\\\"}, \\\"national_id_type\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"A type of national id\\\"}, \\\"number_of_elderly\\\": {\\\"type\\\": \\\"integer\\\", \\\"description\\\": \\\"Number of elderly\\\"}, \\\"number_of_children\\\": {\\\"type\\\": \\\"integer\\\", \\\"description\\\": \\\"Number of children\\\"}, \\\"beneficiary_data_source\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"The source from where such beneficiary comes\\\"}}, \\\"description\\\": \\\"This document records the details beneficiares\\\"}\"}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "9fbc14e2-4f42-4169-af3e-9607d98b3d3a",
+    "fields": {
+      "id": "9fbc14e2-4f42-4169-af3e-9607d98b3d3a",
+      "module": "openimis-fe-core_js",
+      "layer": "fe",
+      "version": "2",
+      "config": "{\"menuLeft\": true, \"showJournalSidebar\": false}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "2a65922e-1711-488b-8c29-b22471df9ef0",
+    "fields": {
+      "id": "2a65922e-1711-488b-8c29-b22471df9ef0",
+      "module": "payroll",
+      "layer": "be",
+      "version": "1",
+      "config": "{\n  \"csv_reconciliation_field_mapping\": {\n    \"individual__groupindividuals__group__location__parent__parent__name\": \"province\",\n    \"individual__groupindividuals__group__location__parent__name\": \"commune\",\n    \"individual__groupindividuals__group__location__name\": \"colline\",\n    \"individual__first_name\": \"prenom\",\n    \"individual__last_name\": \"nom\",\n    \"individual__json_ext__ci\": \"num_cni\",\n    \"json_ext__phoneNumber\": \"telephone\",\n    \"json_ext__payment_request__amount\": \"amount_paid\",\n    \"json_ext__payment_request__statusCode\": \"status_code\",\n    \"json_ext__payment_request__statusDesc\": \"status_description\",\n    \"json_ext__payment_request__description\": \"description\",\n    \"json_ext__payment_request__transactionDate\": \"transaction_date\",\n    \"json_ext__payment_request__extTransactionID\": \"external_transaction_id\",\n    \"json_ext__payment_request__ibbTransactionID\": \"ibb_transaction_id\",\n    \"json_ext__tp_account_number\": \"tp_account_number\",\n    \"individual__dob\": \"naissance_date\",\n    \"individual__json_ext__sexe\": \"genre\",\n    \"code\": \"code\",\n    \"amount\": \"montant\",\n    \"status\": \"Status\"\n  }\n}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "39b281dd-94c0-4412-99ff-90132418eb33",
+    "fields": {
+      "id": "39b281dd-94c0-4412-99ff-90132418eb33",
+      "module": "fe-core",
+      "layer": "fe",
+      "version": "1",
+      "config": "{\"menuLeft\": true, \"showJournalSidebar\": false, \"menus\": [{\"position\": 1, \"id\": \"SocialRegistryMainMenu\", \"name\": \"Registre des Bénéficiaires\", \"icon\": \"task-icon\", \"description\": \"Registre Social\", \"submenus\": [{\"position\": 1, \"id\": \"socialProtection.benefitPlans\"}, {\"position\": 2, \"id\": \"individual.groups\"}, {\"position\": 3, \"id\": \"individual.individuals\"}, {\"position\": 4, \"id\": \"merankabandi.me.geography\"}]}, {\"position\": 2, \"id\": \"mainMenuPayment\", \"name\": \"Paiement\", \"icon\": \"task-icon\", \"description\": \"Paiement\", \"submenus\": [{\"position\": 1, \"id\": \"legalAndFinance.paymentPlans\"}, {\"position\": 2, \"id\": \"merankabandi.paymentAgencies\"}, {\"position\": 3, \"id\": \"legalAndFinance.paymentCycles\"}, {\"position\": 4, \"id\": \"mainMenuPayment.paymentrequests\"}]}, {\"position\": 3, \"id\": \"MEMainMenu\", \"name\": \"Suivi-Evaluation\", \"icon\": \"task-icon\", \"description\": \"Suivi et Évaluation\", \"submenus\": [{\"position\": 1, \"id\": \"merankabandi.me.dashboard\"}, {\"position\": 2, \"id\": \"merankabandi.me.resultsFrameworkDashboard\"}, {\"position\": 3, \"id\": \"merankabandi.me.resultsFramework\"}, {\"position\": 4, \"id\": \"merankabandi.me.activitiesDashboard\"}, {\"position\": 5, \"id\": \"merankabandi.me.activities\"}, {\"position\": 6, \"id\": \"merankabandi.me.monetaryTransfers\"}]}, {\"position\": 4, \"id\": \"PTBAMainMenu\", \"name\": \"PTBA\", \"icon\": \"task-icon\", \"description\": \"Plan de Travail et Budget Annuel\", \"submenus\": [{\"position\": 1, \"id\": \"activity.menu.ptba\"}, {\"position\": 2, \"id\": \"activity.menu.weeklyPlan\"}, {\"position\": 3, \"id\": \"activity.menu.calendar\"}]}, {\"position\": 5, \"id\": \"GrievanceMainMenu\", \"name\": \"Plaintes\", \"icon\": \"task-icon\", \"description\": \"Gestion des Plaintes\", \"submenus\": [{\"position\": 1, \"id\": \"grievance.dashboard\"}, {\"position\": 2, \"id\": \"meragrievance.grievances\"}, {\"position\": 3, \"id\": \"meragrievance.add\"}, {\"position\": 4, \"id\": \"merankabandi.grievanceMyTasks\"}]}, {\"position\": 6, \"id\": \"ConfigMainMenu\", \"name\": \"Configurations\", \"icon\": \"task-icon\", \"description\": \"Configuration du système\", \"submenus\": [{\"position\": 1, \"id\": \"merankabandi.pmtFormulas\"}, {\"position\": 2, \"id\": \"merankabandi.koboETLAdmin\"}, {\"position\": 3, \"id\": \"activity.menu.fundingSources\"}, {\"position\": 4, \"id\": \"merankabandi.workflowTemplates\"}, {\"position\": 5, \"id\": \"merankabandi.roleAssignments\"}, {\"position\": 6, \"id\": \"analytics.queryBuilder\"}]}, {\"position\": 7, \"id\": \"AdminMainMenu\", \"name\": \"Administration\", \"icon\": \"task-icon\", \"description\": \"Administration du système\", \"submenus\": [{\"position\": 1, \"id\": \"admin.roleManagement\"}, {\"position\": 2, \"id\": \"admin.users\"}, {\"position\": 3, \"id\": \"task.allTasks\"}, {\"position\": 4, \"id\": \"analytics.dashboard\"}, {\"position\": 5, \"id\": \"profile.myProfile\"}, {\"position\": 6, \"id\": \"profile.changePassword\"}]}]}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "b27fff7f-b591-471d-a479-d7390fa43106",
+    "fields": {
+      "id": "b27fff7f-b591-471d-a479-d7390fa43106",
+      "module": "fe-location",
+      "layer": "fe",
+      "version": "1",
+      "config": "{\"location_types\": [\"D\", \"W\", \"V\"], \"Location.types\": [\"D\", \"W\", \"V\"], \"Location\": {\"types\": [\"D\", \"W\", \"V\"]}}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "daaffb16-35e4-41d4-9e07-263b506ef35b",
+    "fields": {
+      "id": "daaffb16-35e4-41d4-9e07-263b506ef35b",
+      "module": "fe-home",
+      "layer": "fe",
+      "version": "1",
+      "config": "{\"HomePage.enableCustomDashboard\": true}",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  },
+  {
+    "model": "core.moduleconfiguration",
+    "pk": "5f8a2ad0-44c1-414b-882a-2658f00eb204",
+    "fields": {
+      "id": "5f8a2ad0-44c1-414b-882a-2658f00eb204",
+      "module": "grievance_social_protection",
+      "layer": "be",
+      "version": "1",
+      "config": "{\n    \"default_grievance_type\": \"uncategorized\",\n    \"grievance_types\": [\n      {\n        \"name\": \"violence_vbg\",\n        \"priority\": \"High\",\n        \"permissions\": [\"restricted_read\", \"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SENSITIVE\"],\n        \"resolution_times\": \"2,0\",\n        \"visible_fields\": [\"category\", \"description\", \"date_of_incident\", \"reporter\", \"status\", \"attending_staff\"],\n        \"children\": [\n          \"viol\",\n          \"mariage_force_precoce\",\n          \"violence_abus\",\n          \"sante_maternelle\",\n          \"autre\"\n        ]\n      },\n      {\n        \"name\": \"corruption\",\n        \"priority\": \"High\",\n        \"permissions\": [\"restricted_read\", \"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SENSITIVE\"],\n        \"resolution_times\": \"3,0\"\n      },\n      {\n        \"name\": \"accident_negligence\",\n        \"priority\": \"High\",\n        \"permissions\": [\"restricted_read\", \"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SENSITIVE\"],\n        \"resolution_times\": \"3,0\"\n      },\n      {\n        \"name\": \"discrimination_ethnie_religion\",\n        \"priority\": \"High\",\n        \"permissions\": [\"restricted_read\", \"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SENSITIVE\"],\n        \"resolution_times\": \"3,0\"\n      },\n      {\n        \"name\": \"erreur_exclusion\",\n        \"priority\": \"Medium\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SPECIAL\"],\n        \"resolution_times\": \"4,0\",\n        \"children\": [\n          \"demande_insertion\",\n          \"probleme_identification\",\n          \"autre\"\n        ]\n      },\n      {\n        \"name\": \"erreur_inclusion\",\n        \"priority\": \"Medium\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SPECIAL\"],\n        \"resolution_times\": \"4,0\"\n      },\n      {\n        \"name\": \"maladie_mentale\",\n        \"priority\": \"Medium\",\n        \"permissions\": [\"restricted_read\", \"read\", \"create\", \"update\"],\n        \"default_flags\": [\"SPECIAL\"],\n        \"resolution_times\": \"3,0\"\n      },\n      {\n        \"name\": \"paiement\",\n        \"priority\": \"Low\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"resolution_times\": \"5,0\",\n        \"children\": [\n          \"paiement_pas_recu\",\n          \"paiement_en_retard\",\n          \"paiement_incomplet\",\n          \"vole\",\n          \"autre\"\n        ]\n      },\n      {\n        \"name\": \"telephone\",\n        \"priority\": \"Low\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"resolution_times\": \"5,0\",\n        \"children\": [\n          \"perdu\",\n          \"pas_de_reseau\",\n          \"allume_pas_batterie\",\n          \"recoit_pas_tm\",\n          \"mot_de_passe_oublie\",\n          \"autre\"\n        ]\n      },\n      {\n        \"name\": \"compte\",\n        \"priority\": \"Low\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"resolution_times\": \"5,0\",\n        \"children\": [\n          \"non_active\",\n          \"bloque\",\n          \"autre\"\n        ]\n      },\n      {\n        \"name\": \"information\",\n        \"priority\": \"Low\",\n        \"permissions\": [\"read\", \"create\", \"update\"],\n        \"resolution_times\": \"3,0\"\n      }\n    ],\n    \"grievance_flags\": [\n      {\n        \"name\": \"SENSITIVE\",\n        \"priority\": \"High\",\n        \"permissions\": [\"restricted_read\", \"read\"]\n      },\n      {\n        \"name\": \"SPECIAL\",\n        \"priority\": \"Medium\",\n        \"permissions\": [\"read\"]\n      }\n    ],\n    \"grievance_channels\": [\n      \"telephone\",\n      \"sms\",\n      \"en_personne\",\n      \"courrier_simple\",\n      \"courrier_electronique\",\n      \"ligne_verte\",\n      \"boite_suggestion\",\n      \"autre\"\n    ],\n    \"beneficiary_types\": [\n      \"ordinaire\",\n      \"securite_alimentaire_cerc\",\n      \"chocs_climatiques\",\n      \"autre\"\n    ],\n    \"default_resolution\": {\n      \"Default\": \"5,0\",\n      \"violence_vbg\": \"2,0\",\n      \"corruption\": \"3,0\",\n      \"accident_negligence\": \"3,0\",\n      \"discrimination_ethnie_religion\": \"3,0\",\n      \"erreur_exclusion\": \"4,0\",\n      \"erreur_inclusion\": \"4,0\",\n      \"maladie_mentale\": \"3,0\",\n      \"paiement\": \"5,0\",\n      \"telephone\": \"5,0\",\n      \"compte\": \"5,0\",\n      \"information\": \"3,0\"\n    }\n  }",
+      "is_exposed": true,
+      "is_disabled_until": null
+    }
+  }
+]

@@ -26,7 +26,7 @@ class BeneficiaryDeactivateHandler(BaseActionHandler):
             return {'error': 'No individual to deactivate'}
 
         beneficiaries = GroupBeneficiary.objects.filter(
-            group__individuals__individual_id=individual_id,
+            group__groupindividuals__individual_id=individual_id,
             is_deleted=False,
         ).exclude(status='SUSPENDED')
         updated = 0
@@ -53,7 +53,16 @@ class BeneficiaryReplaceHandler(BaseActionHandler):
             ticket=ticket, status=ReplacementRequest.STATUS_APPROVED,
         ).first()
         if not replacement:
-            return {'error': 'No approved replacement request found'}
+            # Auto-approve pending replacement if the deactivate step already completed
+            pending = ReplacementRequest.objects.filter(
+                ticket=ticket, status=ReplacementRequest.STATUS_PENDING,
+            ).first()
+            if pending:
+                pending.status = ReplacementRequest.STATUS_APPROVED
+                pending.save()
+                replacement = pending
+        if not replacement:
+            return {'error': 'No replacement request found'}
         return {
             'replacement_id': str(replacement.id),
             'new_nom': replacement.new_nom, 'new_prenom': replacement.new_prenom,

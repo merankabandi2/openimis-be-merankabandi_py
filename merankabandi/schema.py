@@ -80,6 +80,7 @@ from merankabandi.workflow_gql_mutations import (
     CompleteGrievanceTaskMutation,
     SkipGrievanceTaskMutation,
     ReassignGrievanceTaskMutation,
+    AddTaskToWorkflowMutation,
     ApproveReplacementRequestMutation,
     RejectReplacementRequestMutation,
     CreateWorkflowTemplateMutation,
@@ -1360,6 +1361,7 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     complete_grievance_task = CompleteGrievanceTaskMutation.Field()
     skip_grievance_task = SkipGrievanceTaskMutation.Field()
     reassign_grievance_task = ReassignGrievanceTaskMutation.Field()
+    add_task_to_workflow = AddTaskToWorkflowMutation.Field()
     approve_replacement_request = ApproveReplacementRequestMutation.Field()
     reject_replacement_request = RejectReplacementRequestMutation.Field()
     create_workflow_template = CreateWorkflowTemplateMutation.Field()

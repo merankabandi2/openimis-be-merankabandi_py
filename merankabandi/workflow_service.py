@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -190,6 +190,7 @@ class WorkflowService:
                 status=status,
                 blocked_by=blocked_by,
                 due_date=cls._calculate_due_date(step),
+                order=step.order,
             )
             prev_task = task
 
@@ -199,25 +200,131 @@ class WorkflowService:
     @classmethod
     @transaction.atomic
     def complete_task(cls, task, user, result=None):
+        import json as _json
         from merankabandi.action_handlers import get_handler
 
-        task.status = GrievanceTask.STATUS_COMPLETED
-        task.completed_at = timezone.now()
+        # Ensure result is a dict (may arrive as JSON string from GQL)
+        if isinstance(result, str):
+            try: result = _json.loads(result)
+            except: result = {'resolution_notes': result}
+        result = result or {}
 
         handler = get_handler(task.step_template.action_type)
         handler_result = {}
+        handler_error = None
         try:
             handler.validate(task, task.ticket)
             handler_result = handler.execute(task, task.ticket, user, data=result) or {}
         except Exception as e:
             logger.error(f"Action handler error for task {task.id}: {e}")
-            handler_result = {'error': str(e), 'handler_failed': True}
+            handler_error = str(e)
+            handler_result = {'error': handler_error, 'handler_failed': True}
 
         merged_result = {**(result or {}), **handler_result}
+
+        # If handler returned an error, keep task IN_PROGRESS — don't auto-complete
+        if handler_result.get('error') or handler_error:
+            task.result = merged_result
+            task.save()
+            logger.warning(
+                f"Task {task.step_template.name} not completed — handler error: "
+                f"{handler_result.get('error') or handler_error}"
+            )
+            return task
+
+        # Handler succeeded — mark as completed and progress workflow
+        task.status = GrievanceTask.STATUS_COMPLETED
+        task.completed_at = timezone.now()
         task.result = merged_result
         task.save()
+
+        # Save back beneficiary identifiers to ticket for quick lookup
+        cls._save_beneficiary_to_ticket(task.ticket, merged_result)
+
         cls._progress_workflow(task.workflow)
         return task
+
+    @classmethod
+    def _save_beneficiary_to_ticket(cls, ticket, task_result):
+        """
+        When a task provides social_id or cni, save it to ticket.json_ext.beneficiary
+        so the detail page can look up household/payments without extra queries.
+        """
+        if not task_result:
+            return
+
+        # Extract identifiers from task result
+        social_id = task_result.get('social_id') or task_result.get('code_menage')
+        cni = task_result.get('cni') or task_result.get('ci') or task_result.get('cni_number')
+
+        if not social_id and not cni:
+            return
+
+        # Also check replacement data on ticket
+        ext = ticket.json_ext or {}
+        if isinstance(ext, str):
+            import json
+            ext = json.loads(ext)
+
+        beneficiary = ext.get('beneficiary', {})
+        updated = False
+
+        if social_id and not beneficiary.get('social_id'):
+            beneficiary['social_id'] = social_id
+            updated = True
+        if cni and not beneficiary.get('cni'):
+            beneficiary['cni'] = cni
+            updated = True
+
+        if updated:
+            ext['beneficiary'] = beneficiary
+            ticket.json_ext = ext
+            ticket.save(username='Admin', update_fields=['json_ext'])
+            logger.info(f"Saved beneficiary identifiers to ticket {ticket.code}: {beneficiary}")
+
+    @classmethod
+    @transaction.atomic
+    def add_task_to_workflow(cls, workflow, step_template_id, user):
+        """Add a task from the global step template pool into an active workflow.
+        Inserts after the current IN_PROGRESS task.
+        """
+        from merankabandi.workflow_models import WorkflowStepTemplate
+
+        current_task = workflow.tasks.filter(
+            status=GrievanceTask.STATUS_IN_PROGRESS
+        ).order_by('order').first()
+
+        if not current_task:
+            raise ValueError("No active task in this workflow — cannot insert")
+
+        step_template = WorkflowStepTemplate.objects.get(id=step_template_id)
+        insertion_order = current_task.order + 1
+
+        workflow.tasks.filter(order__gte=insertion_order).update(
+            order=models.F('order') + 1
+        )
+
+        new_task = GrievanceTask.objects.create(
+            workflow=workflow,
+            step_template=step_template,
+            ticket=workflow.ticket,
+            assigned_role=step_template.role,
+            status=GrievanceTask.STATUS_PENDING,
+            blocked_by=current_task,
+            order=insertion_order,
+            json_ext={
+                'is_additional': True,
+                'added_by': str(user.id),
+                'added_at': timezone.now().isoformat(),
+                'source_template': step_template.workflow_template.name,
+            },
+        )
+
+        logger.info(
+            f"Added task '{step_template.label}' to workflow {workflow.id} "
+            f"at order {insertion_order}"
+        )
+        return new_task
 
     @classmethod
     @transaction.atomic

@@ -1,0 +1,12 @@
+services:
+  redis:
+    container_name: ${PROJECT_NAME:-merankabandi}-redis
+    image: redis:7-alpine
+    restart: always
+    networks:
+      openimis-net: null
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5

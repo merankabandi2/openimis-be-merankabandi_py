@@ -8,14 +8,64 @@ class VerifySocialIdHandler(BaseActionHandler):
     def execute(self, task, ticket, user, data=None):
         from individual.models import Individual
         json_ext = ticket.json_ext or {}
-        social_id = (json_ext.get('replacement') or {}).get('replaced_social_id')
+        data = data or {}
+
+        # Try multiple sources for social_id (order: explicit > replacement > suppression > reporter)
+        social_id = (
+            data.get('social_id')  # User-provided in task completion
+            or (json_ext.get('replacement') or {}).get('replaced_social_id')
+            or (json_ext.get('suppression') or {}).get('social_id')
+            or (json_ext.get('reporter') or {}).get('social_id')
+            or (json_ext.get('reporter') or {}).get('cni_number')
+        )
         if not social_id:
-            social_id = (json_ext.get('reporter') or {}).get('cni_number')
-        if not social_id:
-            return {'found': False, 'error': 'No social_id in ticket data'}
-        individual = Individual.objects.filter(
+            return {'found': False, 'error': 'Social ID ou CNI manquant — saisir dans le champ notes'}
+
+        # Search strategy:
+        # 1. By social_id on household (Group) → find primary recipient
+        # 2. By CNI directly on Individual json_ext
+        # 3. By social_id in PreCollecte records
+
+        from individual.models import Group, GroupIndividual
+        individual = None
+
+        # 1. Search household by social_id → primary recipient
+        group = Group.objects.filter(
             json_ext__contains={'social_id': social_id}, is_deleted=False,
         ).first()
+        if group:
+            primary = GroupIndividual.objects.filter(
+                group=group, role='HEAD', is_deleted=False,
+            ).first() or GroupIndividual.objects.filter(
+                group=group, recipient_type='PRIMARY', is_deleted=False,
+            ).first()
+            if primary:
+                individual = primary.individual
+
+        # 2. Fallback: search Individual directly by social_id in json_ext
+        if not individual:
+            individual = Individual.objects.filter(
+                json_ext__contains={'social_id': social_id}, is_deleted=False,
+            ).first()
+
+        # 3. Fallback: search by CNI number in Individual json_ext
+        if not individual:
+            individual = Individual.objects.filter(
+                json_ext__contains={'numero_cni': social_id}, is_deleted=False,
+            ).first()
+
+        # 4. Fallback: search in PreCollecte records
+        if not individual:
+            from merankabandi.models import PreCollecte
+            pc = PreCollecte.objects.filter(social_id=social_id).first()
+            if not pc:
+                pc = PreCollecte.objects.filter(ci=social_id).first()
+            if pc and pc.group:
+                gi = GroupIndividual.objects.filter(
+                    group=pc.group, role='HEAD', is_deleted=False,
+                ).first()
+                if gi:
+                    individual = gi.individual
         if individual:
             return {
                 'found': True, 'individual_id': str(individual.id),

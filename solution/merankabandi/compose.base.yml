@@ -1,0 +1,116 @@
+x-api:
+  image: ghcr.io/merankabandi2/openimis-be:${BE_TAG:-develop}
+  environment: &ref_0
+    - DB_DEFAULT=${DB_DEFAULT:-postgresql}
+    - DB_HOST=${DB_HOST}
+    - DB_PORT=${DB_PORT}
+    - DB_NAME=${DB_NAME}
+    - DB_USER=${DB_USER}
+    - DB_PASSWORD=${DB_PASSWORD}
+    - SECRET_KEY=${SECRET_KEY}
+    - SITE_ROOT=api
+    - SITE_URL=${DOMAIN}
+    - CELERY_BROKER_URL=amqp://rabbitmq
+    - MODE=${MODE:-Prod}
+    - HOSTS=${HOSTS}
+    - CACHE_BACKEND=${CACHE_BACKEND}
+    - CACHE_URL=${CACHE_URL}
+    - CACHE_OPTIONS=${CACHE_OPTIONS}
+    - OPENSEARCH_ADMIN=${OPENSEARCH_ADMIN}
+    - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    - OPENSEARCH_HOSTS=${OPENSEARCH_HOSTS}
+    - TOKEN_KOBO=${TOKEN_KOBO}
+    - PAYMENT_GATEWAYS=${PAYMENT_GATEWAYS}
+    - LUMICASH_PAYMENT_GATEWAY_BASE_URL=${LUMICASH_PAYMENT_GATEWAY_BASE_URL}
+    - LUMICASH_PAYMENT_GATEWAY_ENDPOINT_PAYMENT=${LUMICASH_PAYMENT_GATEWAY_ENDPOINT_PAYMENT}
+    - LUMICASH_PAYMENT_GATEWAY_API_KEY=${LUMICASH_PAYMENT_GATEWAY_API_KEY}
+    - LUMICASH_PAYMENT_GATEWAY_BASIC_AUTH_USERNAME=${LUMICASH_PAYMENT_GATEWAY_BASIC_AUTH_USERNAME}
+    - LUMICASH_PAYMENT_GATEWAY_BASIC_AUTH_PASSWORD=${LUMICASH_PAYMENT_GATEWAY_BASIC_AUTH_PASSWORD}
+    - INTERBANK_PAYMENT_GATEWAY_BASE_URL=${INTERBANK_PAYMENT_GATEWAY_BASE_URL}
+    - INTERBANK_PAYMENT_GATEWAY_ENDPOINT_PAYMENT=${INTERBANK_PAYMENT_GATEWAY_ENDPOINT_PAYMENT}
+    - INTERBANK_PAYMENT_GATEWAY_ENDPOINT_RECONCILIATION=${INTERBANK_PAYMENT_GATEWAY_ENDPOINT_RECONCILIATION}
+    - INTERBANK_PAYMENT_GATEWAY_ENDPOINT_TOKEN=${INTERBANK_PAYMENT_GATEWAY_ENDPOINT_TOKEN}
+    - INTERBANK_PAYMENT_GATEWAY_BASIC_AUTH_USERNAME=${INTERBANK_PAYMENT_GATEWAY_BASIC_AUTH_USERNAME}
+    - INTERBANK_PAYMENT_GATEWAY_BASIC_AUTH_PASSWORD=${INTERBANK_PAYMENT_GATEWAY_BASIC_AUTH_PASSWORD}
+    - INTERBANK_PAYMENT_GATEWAY_TRANSACTION_PIN=${INTERBANK_PAYMENT_GATEWAY_TRANSACTION_PIN}
+    - PHOTOS_BASE_PATH=${PHOTOS_BASE_PATH}
+    - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+    - LOGIN_LOCKOUT_FAILURE_LIMIT=${LOGIN_LOCKOUT_FAILURE_LIMIT}
+    - LOGIN_LOCKOUT_COOLOFF_TIME=${LOGIN_LOCKOUT_COOLOFF_TIME}
+    - PASSWORD_MIN_LENGTH=${PASSWORD_MIN_LENGTH}
+    - RATELIMIT_CACHE=${RATELIMIT_CACHE}
+    - RATELIMIT_KEY=${RATELIMIT_KEY}
+    - RATELIMIT_RATE=${RATELIMIT_RATE}
+    - RATELIMIT_METHOD=${RATELIMIT_METHOD}
+    - RATELIMIT_GROUP=${RATELIMIT_GROUP}
+  volumes: &ref_1
+    - photos:/openimis-be/openIMIS/images/insurees
+  depends_on: &ref_2
+    db:
+      condition: service_healthy
+  networks: &ref_3
+    openimis-net: null
+services:
+  frontend:
+    image: ghcr.io/merankabandi2/openimis-fe:${FE_TAG:-develop}
+    restart: always
+    environment:
+      - REACT_APP_API_URL=api
+      - NEW_OPENIMIS_HOST=${DOMAIN}
+      - OPENIMIS_CONF_JSON=${OPENIMIS_FE_CONF_JSON}
+      - OPENSEARCH_BASIC_TOKEN=${OPENSEARCH_BASIC_TOKEN}
+    networks:
+      proxy: null
+      openimis-net: null
+    depends_on:
+      - backend
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    ports:
+      - ${HTTP_PORT:-80}:80
+      - ${HTTPS_PORT:-443}:443
+  migrations:
+    image: ghcr.io/merankabandi2/openimis-be:${BE_TAG:-develop}
+    environment: *ref_0
+    volumes: *ref_1
+    depends_on: *ref_2
+    networks: *ref_3
+    command: init
+    restart: 'no'
+  backend:
+    image: ghcr.io/merankabandi2/openimis-be:${BE_TAG:-develop}
+    environment: *ref_0
+    volumes: *ref_1
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    networks: *ref_3
+    command: start
+    restart: always
+  worker:
+    image: ghcr.io/merankabandi2/openimis-be:${BE_TAG:-develop}
+    environment: *ref_0
+    volumes: *ref_1
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    networks: *ref_3
+    command: worker
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: ${WORKER_REPLICAS:-3}
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    networks:
+      openimis-net: null
+networks:
+  openimis-net:
+    name: ${PROJECT_NAME:-merankabandi}-net
+  proxy:
+    external: true
+volumes:
+  database: null
+  photos: null

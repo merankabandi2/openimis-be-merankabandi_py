@@ -1,0 +1,21 @@
+services:
+  db:
+    container_name: ${PROJECT_NAME:-merankabandi}-db
+    image: ghcr.io/openimis/openimis-pgsql:${DB_TAG:-25.04}
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', '${DB_USER}', '-d', '${DB_NAME}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - database:/var/lib/postgresql/data
+    restart: always
+    ports:
+      - 5432:5432
+    networks:
+      openimis-net: null
