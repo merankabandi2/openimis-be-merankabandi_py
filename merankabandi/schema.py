@@ -52,6 +52,9 @@ from merankabandi.payment_schedule_gql import (
     CreateCommunePaymentRoundMutation,
     CreateRetryPaymentRoundMutation,
     SyncPaymentScheduleMutation,
+    InitializeCycleCommunesMutation,
+    UpdateCommuneDatesBulkMutation,
+    BatchGeneratePayrollsMutation,
 )
 
 from merankabandi.models import (
@@ -1401,6 +1404,11 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_commune_payment_round = CreateCommunePaymentRoundMutation.Field()
     create_retry_payment_round = CreateRetryPaymentRoundMutation.Field()
     sync_payment_schedule = SyncPaymentScheduleMutation.Field()
+
+    # Batch operations (PaymentCycle workspace)
+    initialize_cycle_communes = InitializeCycleCommunesMutation.Field()
+    update_commune_dates_bulk = UpdateCommuneDatesBulkMutation.Field()
+    batch_generate_payrolls = BatchGeneratePayrollsMutation.Field()
 
     # Enhanced grievance mutations with json_ext (avoids modifying upstream)
     create_ticket_comment = CreateTicketCommentMutation.Field()

@@ -215,3 +215,119 @@ class SyncPaymentScheduleMutation(BaseMutation):
 
         service = PaymentScheduleService(user)
         service.sync_schedule_from_payroll(str(data['payroll_id']))
+
+
+# ─── Batch mutations (PaymentCycle workspace) ───────────────────
+
+class CycleInitResultType(graphene.ObjectType):
+    created = graphene.Int()
+    blocked = graphene.Int()
+    skipped = graphene.Int()
+
+
+class InitializeCycleCommunesMutation(BaseMutation):
+    """Create PLANNING CommunePaymentSchedule entries for all communes in selected provinces."""
+    _mutation_class = "InitializeCycleCommunesMutation"
+    _mutation_module = "merankabandi"
+
+    class Input(OpenIMISMutation.Input):
+        payment_cycle_id = graphene.UUID(required=True)
+        benefit_plan_id = graphene.UUID(required=True)
+        province_ids = graphene.List(graphene.UUID, required=True)
+        topup_active = graphene.Boolean(required=False)
+        topup_amount = graphene.Int(required=False)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        import json
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        from payment_cycle.models import PaymentCycle
+        cycle = PaymentCycle.objects.get(id=data['payment_cycle_id'])
+
+        # Save topup config to cycle json_ext
+        ext = cycle.json_ext or {}
+        ext['topup_active'] = data.get('topup_active', False)
+        ext['topup_amount'] = data.get('topup_amount', 0)
+        ext['benefit_plan_id'] = str(data['benefit_plan_id'])
+        ext['province_ids'] = [str(p) for p in data['province_ids']]
+        PaymentCycle.objects.filter(id=cycle.id).update(json_ext=ext)
+
+        service = PaymentScheduleService(user)
+        result = service.initialize_cycle_communes(
+            cycle,
+            str(data['benefit_plan_id']),
+            [str(p) for p in data['province_ids']],
+        )
+        return result
+
+
+class UpdateCommuneDatesBulkMutation(BaseMutation):
+    """Bulk-set validity start date for selected communes in a cycle."""
+    _mutation_class = "UpdateCommuneDatesBulkMutation"
+    _mutation_module = "merankabandi"
+
+    class Input(OpenIMISMutation.Input):
+        payment_cycle_id = graphene.UUID(required=True)
+        commune_ids = graphene.List(graphene.UUID, required=True)
+        date_valid_from = graphene.Date(required=True)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        service = PaymentScheduleService(user)
+        service.update_commune_dates_bulk(
+            str(data['payment_cycle_id']),
+            [str(c) for c in data['commune_ids']],
+            data['date_valid_from'],
+        )
+
+
+class BatchGeneratePayrollsResultType(graphene.ObjectType):
+    generated = graphene.Int()
+    skipped = graphene.Int()
+
+
+class BatchGeneratePayrollsMutation(BaseMutation):
+    """Batch-create payrolls for all PLANNING schedules in a cycle."""
+    _mutation_class = "BatchGeneratePayrollsMutation"
+    _mutation_module = "merankabandi"
+
+    class Input(OpenIMISMutation.Input):
+        payment_cycle_id = graphene.UUID(required=True)
+        payment_plan_id = graphene.UUID(required=True)
+        payment_method = graphene.String(required=False)
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.id:
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+
+        from payment_cycle.models import PaymentCycle
+        cycle = PaymentCycle.objects.get(id=data['payment_cycle_id'])
+
+        service = PaymentScheduleService(user)
+        result = service.batch_generate_payrolls(
+            cycle,
+            str(data['payment_plan_id']),
+            data.get('payment_method', 'ONLINE'),
+        )
+        return result
