@@ -51,8 +51,8 @@ MIGRATION_FIXES = [
 ]
 
 SOLUTION_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-    'solution', 'merankabandi', 'fixtures'
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'fixtures'
 )
 
 
@@ -117,9 +117,14 @@ class Command(BaseCommand):
         # Step 9: Backfill grievance task order
         self._step('9. Backfilling grievance task order', dry_run, self._backfill_task_order)
 
-        # Step 10: Fresh grievances from KoBo (optional)
+        # Step 10: Pull grievance data from KoBo (always — idempotent, skips existing)
+        self._step('10. Pulling grievance data from KoBo', dry_run,
+                   lambda: call_command('pullkobodata'))
+
+        # Step 10b: Fresh grievances from KoBo (optional — deletes first, then re-pulls)
         if options['fresh_grievances']:
-            self._step('10. Refreshing grievances from KoBo', dry_run, self._refresh_grievances)
+            self._step('10b. Refreshing grievances from KoBo (fresh)', dry_run,
+                       self._refresh_grievances)
 
         # Step 11: Normalize ticket categories
         self._step('11. Normalizing ticket categories', dry_run,
@@ -496,5 +501,5 @@ class Command(BaseCommand):
         if count > 0:
             self.stdout.write(f'  Deleting {count} existing tickets...')
             Ticket.objects.all().delete()
-        self.stdout.write('  Run pullkobodata manually to refetch:')
-        self.stdout.write('    python manage.py pullkobodata')
+        self.stdout.write('  Pulling fresh grievance data from KoBo...')
+        call_command('pullkobodata')

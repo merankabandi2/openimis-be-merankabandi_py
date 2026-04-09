@@ -1,0 +1,20 @@
+[
+  {
+    "model": "core.language",
+    "pk": "en",
+    "fields": {
+      "code": "en",
+      "name": "English",
+      "sort_order": null
+    }
+  },
+  {
+    "model": "core.language",
+    "pk": "fr",
+    "fields": {
+      "code": "fr",
+      "name": "Français",
+      "sort_order": null
+    }
+  }
+]
