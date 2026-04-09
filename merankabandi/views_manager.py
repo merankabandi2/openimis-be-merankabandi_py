@@ -45,7 +45,12 @@ class MaterializedViewsManager:
 
     @classmethod
     def create_all_views(cls, category: Optional[str] = None) -> Dict[str, bool]:
-        """Create all views or views for a specific category"""
+        """Create all views or views for a specific category.
+
+        Each view is created in its own cursor/transaction block so that
+        PostgreSQL can release temp memory and locks between views — this
+        matches the performance of running the SQL directly in psql.
+        """
         results = {}
 
         if category:
@@ -55,12 +60,12 @@ class MaterializedViewsManager:
         else:
             categories_to_process = cls.ALL_VIEWS
 
-        with connection.cursor() as cursor:
-            cursor.execute("SET statement_timeout = '30min'")
-            for cat_name, views in categories_to_process.items():
-                logger.info(f"Creating {cat_name} views...")
-                for view_name, view_config in views.items():
-                    try:
+        for cat_name, views in categories_to_process.items():
+            logger.info(f"Creating {cat_name} views...")
+            for view_name, view_config in views.items():
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET statement_timeout = '30min'")
                         # Drop existing view
                         cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {view_name} CASCADE")
 
@@ -75,12 +80,12 @@ class MaterializedViewsManager:
                                 except Exception as idx_e:
                                     logger.warning(f"Index creation warning for {view_name}: {str(idx_e)}")
 
-                        results[view_name] = True
-                        logger.info(f"✓ Created view: {view_name}")
+                    results[view_name] = True
+                    logger.info(f"✓ Created view: {view_name}")
 
-                    except Exception as e:
-                        results[view_name] = False
-                        logger.error(f"✗ Failed to create view {view_name}: {str(e)}")
+                except Exception as e:
+                    results[view_name] = False
+                    logger.error(f"✗ Failed to create view {view_name}: {str(e)}")
 
         return results
 

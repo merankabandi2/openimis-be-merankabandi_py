@@ -458,11 +458,12 @@ class Command(BaseCommand):
         if total == 0:
             return
 
-        # Process in batches
+        # Process in batches — no OFFSET because updated records drop out of
+        # the LIKE filter, so we always fetch from the top of the remaining set.
         updated = 0
-        offset = 0
+        processed = 0
 
-        while offset < total:
+        while True:
             with connection.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT "UUID", "Json_ext" FROM {table_name}
@@ -470,8 +471,8 @@ class Command(BaseCommand):
                       AND "Json_ext" IS NOT NULL
                       AND "Json_ext"::text LIKE %s
                     ORDER BY "UUID"
-                    LIMIT %s OFFSET %s
-                """, [f'%{detect_pattern}%', batch_size, offset])
+                    LIMIT %s
+                """, [f'%{detect_pattern}%', batch_size])
                 rows = cursor.fetchall()
 
             if not rows:
@@ -493,8 +494,12 @@ class Command(BaseCommand):
                     """, batch_updates)
 
             updated += len(batch_updates)
-            offset += len(rows)
-            self.stdout.write(f"  Processed {min(offset, total):,}/{total:,} — {updated:,} updated")
+            processed += len(rows)
+            self.stdout.write(f"  Processed {min(processed, total):,}/{total:,} — {updated:,} updated")
+
+            # Safety: if no records were changed in this batch, we'd loop forever
+            if not batch_updates:
+                break
 
         action = "would update" if dry_run else "updated"
         self.stdout.write(self.style.SUCCESS(f"\n{label}: {action} {updated:,} of {total:,} records"))

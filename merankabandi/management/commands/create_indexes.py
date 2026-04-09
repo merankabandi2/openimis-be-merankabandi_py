@@ -211,6 +211,84 @@ class Command(BaseCommand):
                 'where': '"isDeleted" = false AND status = \'ACTIVE\''
             },
 
+            # --- Group: selection lifecycle ---
+            {
+                'name': 'idx_group_json_selection_status',
+                'table': 'individual_group',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'selection_status\'))'
+            },
+            {
+                'name': 'idx_group_json_pmt_score_selection',
+                'table': 'individual_group',
+                'type': 'BTREE',
+                'columns': '(CAST(NULLIF("Json_ext"->>\'pmt_score\', \'\') AS FLOAT))',
+                'where': '"Json_ext"->>\'pmt_score\' IS NOT NULL AND "Json_ext"->>\'pmt_score\' != \'\''
+            },
+            {
+                'name': 'idx_group_json_payment_agency',
+                'table': 'individual_group',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'payment_agency_id\'))'
+            },
+
+            # --- Individual: telecom & identity ---
+            {
+                'name': 'idx_individual_json_is_twa',
+                'table': 'individual_individual',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'is_twa\'))'
+            },
+            {
+                'name': 'idx_individual_json_telecom_msisdn',
+                'table': 'individual_individual',
+                'type': 'BTREE',
+                'columns': '(("Json_ext"->\'moyen_telecom\'->>\'msisdn\'))',
+                'where': '"Json_ext"->\'moyen_telecom\'->>\'msisdn\' IS NOT NULL'
+            },
+            {
+                'name': 'idx_individual_json_telecom_status',
+                'table': 'individual_individual',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'moyen_telecom\'->\'status\'))'
+            },
+
+            # --- GroupBeneficiary: TWA & telecom ---
+            {
+                'name': 'idx_beneficiary_json_mutwa',
+                'table': 'social_protection_groupbeneficiary',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'menage_mutwa\'))'
+            },
+
+            # --- Ticket (grievance) ---
+            {
+                'name': 'idx_ticket_json_case_type',
+                'table': 'grievance_social_protection_ticket',
+                'type': 'GIN',
+                'columns': '(("json_ext"->\'case_type\'))'
+            },
+            {
+                'name': 'idx_ticket_json_reporter_anonymous',
+                'table': 'grievance_social_protection_ticket',
+                'type': 'GIN',
+                'columns': '(("json_ext"->\'reporter\'->\'is_anonymous\'))'
+            },
+
+            # --- Payroll: payment tracking ---
+            {
+                'name': 'idx_benefit_consumption_json_agency_name',
+                'table': 'payroll_benefitconsumption',
+                'type': 'BTREE',
+                'columns': '(("Json_ext"->>\'payment_agency_name\'))'
+            },
+            {
+                'name': 'idx_benefit_consumption_json_consolidation_status',
+                'table': 'payroll_benefitconsumption',
+                'type': 'GIN',
+                'columns': '(("Json_ext"->\'payment_consolidation\'->\'status\'))'
+            },
+
             # Payment agency and location indexes
             {
                 'name': 'idx_payment_agency_name',
@@ -226,13 +304,20 @@ class Command(BaseCommand):
             }
         ]
 
-        with connection.cursor() as cursor:
+        # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
+        # Use autocommit so each index is its own transaction.
+        autocommit_was = connection.connection.autocommit if connection.connection else None
+        try:
+            connection.ensure_connection()
+            connection.connection.autocommit = True
+
             # Drop indexes if requested
             if options['drop']:
                 self.stdout.write('Dropping existing indexes...')
                 for index in indexes:
                     try:
-                        cursor.execute(f"DROP INDEX IF EXISTS {index['name']}")
+                        with connection.cursor() as cursor:
+                            cursor.execute(f"DROP INDEX IF EXISTS {index['name']}")
                         self.stdout.write(f"Dropped index {index['name']}")
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"Error dropping {index['name']}: {str(e)}"))
@@ -251,7 +336,8 @@ class Command(BaseCommand):
                     if 'where' in index:
                         sql += f" WHERE {index['where']}"
 
-                    cursor.execute(sql)
+                    with connection.cursor() as cursor:
+                        cursor.execute(sql)
 
                     elapsed = time.time() - start_time
                     self.stdout.write(
@@ -263,15 +349,19 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.ERROR(f"Error creating {index['name']}: {str(e)}")
                     )
+        finally:
+            if autocommit_was is not None:
+                connection.connection.autocommit = autocommit_was
 
-            # Analyze tables to update statistics
-            self.stdout.write('\nAnalyzing tables...')
+        # Analyze tables to update statistics
+        self.stdout.write('\nAnalyzing tables...')
             tables = [
                 'individual_group',
                 'individual_individual',
                 'social_protection_groupbeneficiary',
                 'payroll_benefitconsumption',
                 'merankabandi_payment_agency',
+                'grievance_social_protection_ticket',
                 '"tblBill"',
                 '"tblLocations"'
             ]
