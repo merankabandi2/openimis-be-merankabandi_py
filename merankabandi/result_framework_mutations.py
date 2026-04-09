@@ -219,16 +219,45 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
             else:
                 prog_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
-            # Render breakdowns in Observation column
-            breakdowns = ind.get("breakdowns", [])
+            # Render breakdowns as separate rows (WB format: one row per breakdown)
+            breakdowns = [b for b in ind.get("breakdowns", []) if b.get('value', 0) > 0]
             if breakdowns:
-                obs_text = "\n".join(f"{b['label']}: {b['value']:,}" for b in breakdowns if b.get('value', 0) > 0)
-                obs_cell = ws.cell(row=row, column=8, value=obs_text)
+                # First breakdown goes on the indicator's own row
+                first_bd = breakdowns[0]
+                obs_cell = ws.cell(row=row, column=8, value=f"{first_bd['label']}: {first_bd['value']:,}")
                 obs_cell.font = Font(name="Calibri", size=9)
-                obs_cell.alignment = Alignment(vertical="top", wrap_text=True)
+                obs_cell.alignment = Alignment(vertical="top")
                 obs_cell.border = thin_border
+                first_row = row
+                row += 1
 
-            row += 1
+                # Remaining breakdowns get their own rows (repeat indicator name, leave values empty)
+                for bd in breakdowns[1:]:
+                    # Repeat indicator name in col 2 for context
+                    name_cell = ws.cell(row=row, column=2, value=ind.get("name", ""))
+                    name_cell.font = Font(name="Calibri", size=10, color="888888")
+                    name_cell.border = thin_border
+                    name_cell.alignment = Alignment(wrap_text=True)
+
+                    # Repeat the same achieved value (as in the WB docx format)
+                    ws.cell(row=row, column=6, value=achieved).border = thin_border
+                    ws.cell(row=row, column=6).font = Font(name="Calibri", size=10, color="888888")
+                    ws.cell(row=row, column=6).alignment = Alignment(horizontal="center")
+                    ws.cell(row=row, column=6).number_format = "#,##0.0"
+
+                    # Breakdown in Observation column
+                    obs_cell = ws.cell(row=row, column=8, value=f"{bd['label']}: {bd['value']:,}")
+                    obs_cell.font = Font(name="Calibri", size=9)
+                    obs_cell.alignment = Alignment(vertical="top")
+                    obs_cell.border = thin_border
+
+                    # Add borders on empty cells for clean grid
+                    for c in [1, 3, 4, 5, 7]:
+                        ws.cell(row=row, column=c).border = thin_border
+
+                    row += 1
+            else:
+                row += 1
 
     return wb
 
