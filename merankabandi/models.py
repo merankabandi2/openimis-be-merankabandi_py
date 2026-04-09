@@ -851,6 +851,7 @@ class IndicatorCalculationRule(models.Model):
 
 
 class CommunePaymentScheduleStatus(models.TextChoices):
+    PLANNING = "PLANNING", "Planning"
     PENDING = "PENDING", "Pending"
     GENERATING = "GENERATING", "Generating"
     APPROVED = "APPROVED", "Approved"
@@ -864,6 +865,96 @@ class CommunePaymentScheduleStatus(models.TextChoices):
 MAX_PAYMENT_ROUNDS = 12
 # Standard bimonthly transfer amount in BIF (36,000 FBU/month × 2 months)
 STANDARD_TRANSFER_AMOUNT = 72000
+
+# Vague → province mapping (from RTM presentation Nov 2025)
+VAGUE_PROVINCES = {
+    1: ['Kirundo', 'Gitega', 'Karuzi', 'Ruyigi'],
+    2: ['Ngozi', 'Muyinga', 'Muramvya', 'Mwaro'],
+    3: ['Bujumbura Mairie', 'Bubanza', 'Cibitoke', 'Rumonge'],
+    4: ['Kayanza', 'Bujumbura Rural', 'Makamba', 'Cankuzo', 'Bururi', 'Rutana'],
+}
+
+
+class AgencyFeeConfig(models.Model):
+    """
+    Fee rate configuration per PaymentAgency + BenefitPlan + optional Province.
+
+    Lookup order (most specific wins):
+      agency + benefit_plan + province  →  agency + benefit_plan  →  agency default
+
+    fee_included=True means the beneficiary amount already includes the fee
+    (programme pays amount, agency takes fee from it).
+    fee_included=False means fee is added on top
+    (programme pays amount + fee, beneficiary receives amount).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    payment_agency = models.ForeignKey(
+        PaymentAgency, on_delete=models.CASCADE,
+        related_name='fee_configs',
+    )
+    benefit_plan = models.ForeignKey(
+        BenefitPlan, on_delete=models.CASCADE,
+        related_name='agency_fee_configs',
+    )
+    province = models.ForeignKey(
+        Location, on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='agency_fee_configs',
+        help_text="Province-level override (type D). NULL = default for this agency+plan."
+    )
+    fee_rate = models.DecimalField(
+        max_digits=6, decimal_places=4,
+        help_text="Fee rate as decimal (e.g. 0.0550 for 5.5%)"
+    )
+    fee_included = models.BooleanField(
+        default=False,
+        help_text="True = fee included in beneficiary amount, False = fee added on top"
+    )
+    is_active = models.BooleanField(default=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'merankabandi_agency_fee_config'
+        ordering = ['payment_agency', 'benefit_plan', 'province']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['payment_agency', 'benefit_plan', 'province'],
+                name='unique_fee_config_agency_plan_province',
+            ),
+            models.UniqueConstraint(
+                fields=['payment_agency', 'benefit_plan'],
+                condition=models.Q(province__isnull=True),
+                name='unique_fee_config_agency_plan_default',
+            ),
+        ]
+
+    def __str__(self):
+        prov = f" / {self.province.name}" if self.province else ""
+        incl = "incl." if self.fee_included else "excl."
+        return f"{self.payment_agency.code} → {self.benefit_plan.code}{prov}: {self.fee_rate*100:.2f}% ({incl})"
+
+    @classmethod
+    def lookup(cls, payment_agency, benefit_plan, province=None):
+        """Find the most specific fee config for this combination.
+
+        Returns AgencyFeeConfig or None.
+        """
+        if province:
+            config = cls.objects.filter(
+                payment_agency=payment_agency,
+                benefit_plan=benefit_plan,
+                province=province,
+                is_active=True,
+            ).first()
+            if config:
+                return config
+        return cls.objects.filter(
+            payment_agency=payment_agency,
+            benefit_plan=benefit_plan,
+            province__isnull=True,
+            is_active=True,
+        ).first()
 
 
 class CommunePaymentSchedule(models.Model):
@@ -925,6 +1016,20 @@ class CommunePaymentSchedule(models.Model):
     )
     failed_count = models.PositiveIntegerField(
         default=0, help_text="Number of failed payments"
+    )
+    payment_cycle = models.ForeignKey(
+        'payment_cycle.PaymentCycle', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='commune_schedules',
+        help_text="Planning cycle this schedule belongs to"
+    )
+    date_valid_from = models.DateField(
+        null=True, blank=True,
+        help_text="Planned payment validity start date (set during planning)"
+    )
+    topup_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="One-time top-up/compensatory amount for this round (inherited from cycle, editable)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -22,8 +22,10 @@ from social_protection.models import BenefitPlan, GroupBeneficiary, BeneficiaryS
 from merankabandi.models import (
     CommunePaymentSchedule,
     CommunePaymentScheduleStatus,
+    AgencyFeeConfig,
     MAX_PAYMENT_ROUNDS,
     STANDARD_TRANSFER_AMOUNT,
+    VAGUE_PROVINCES,
 )
 
 logger = logging.getLogger(__name__)
@@ -431,3 +433,212 @@ class PaymentScheduleService:
         ).order_by('commune__name')
 
         return list(schedules)
+
+    # ─── Batch operations (PaymentCycle-based) ──────────────────
+
+    @transaction.atomic
+    def initialize_cycle_communes(self, payment_cycle, benefit_plan_id, province_ids):
+        """
+        Create PLANNING CommunePaymentSchedule entries for all communes
+        in selected provinces. Called when saving PaymentCycle scope.
+
+        Reads topup config from payment_cycle.json_ext.
+        Auto-fills agency from ProvincePaymentAgency.
+        Flags blocked communes (previous round not RECONCILED).
+
+        Returns: {created: [], blocked: [], skipped: []}
+        """
+        from merankabandi.models import ProvincePaymentAgency
+
+        benefit_plan = BenefitPlan.objects.get(id=benefit_plan_id)
+        cycle_ext = payment_cycle.json_ext or {}
+        topup = Decimal(str(cycle_ext.get('topup_amount', 0)))
+
+        communes = Location.objects.filter(
+            parent__uuid__in=province_ids,
+            type='W',
+        ).select_related('parent').order_by('parent__name', 'name')
+
+        result = {'created': [], 'blocked': [], 'skipped': []}
+
+        for commune in communes:
+            # Already has a schedule for this cycle?
+            existing = CommunePaymentSchedule.objects.filter(
+                benefit_plan=benefit_plan,
+                commune=commune,
+                payment_cycle=payment_cycle,
+                is_retry=False,
+            ).first()
+            if existing:
+                result['skipped'].append({
+                    'commune_id': str(commune.uuid),
+                    'commune_name': commune.name,
+                    'reason': 'already_exists',
+                })
+                continue
+
+            # Check sequential closure
+            next_round, errors = self.validate_new_round(benefit_plan_id, commune.uuid)
+            is_blocked = len(errors) > 0
+
+            schedule = CommunePaymentSchedule.objects.create(
+                benefit_plan=benefit_plan,
+                commune=commune,
+                round_number=next_round or 0,
+                payment_cycle=payment_cycle,
+                is_retry=False,
+                status=CommunePaymentScheduleStatus.PLANNING,
+                amount_per_beneficiary=STANDARD_TRANSFER_AMOUNT,
+                topup_amount=topup,
+            )
+
+            entry = {
+                'commune_id': str(commune.uuid),
+                'commune_name': commune.name,
+                'province': commune.parent.name if commune.parent else '',
+                'round_number': next_round,
+                'schedule_id': str(schedule.id),
+            }
+
+            if is_blocked:
+                entry['block_reason'] = errors[0]
+                result['blocked'].append(entry)
+            else:
+                # Count eligible beneficiaries
+                colline_ids = list(
+                    Location.objects.filter(parent=commune, type='V')
+                    .values_list('uuid', flat=True)
+                )
+                ben_count = GroupBeneficiary.objects.filter(
+                    benefit_plan=benefit_plan,
+                    status=BeneficiaryStatus.ACTIVE,
+                    is_deleted=False,
+                    group__location__uuid__in=colline_ids,
+                ).count()
+                schedule.total_beneficiaries = ben_count
+                schedule.save()
+                entry['beneficiary_count'] = ben_count
+                result['created'].append(entry)
+
+        return result
+
+    def update_commune_dates_bulk(self, payment_cycle_id, commune_ids,
+                                  date_valid_from):
+        """Bulk-set validity start date for selected communes in this cycle."""
+        updated = CommunePaymentSchedule.objects.filter(
+            payment_cycle_id=payment_cycle_id,
+            commune__uuid__in=commune_ids,
+            status=CommunePaymentScheduleStatus.PLANNING,
+        ).update(date_valid_from=date_valid_from)
+        return updated
+
+    @transaction.atomic
+    def batch_generate_payrolls(self, payment_cycle, payment_plan_id,
+                                payment_method='ONLINE'):
+        """
+        Batch-create payrolls for all PLANNING schedules in this cycle
+        that are not blocked and have a date_valid_from set.
+
+        Returns: {generated: N, skipped: [{commune, reason}]}
+        """
+        schedules = CommunePaymentSchedule.objects.filter(
+            payment_cycle=payment_cycle,
+            status=CommunePaymentScheduleStatus.PLANNING,
+            is_retry=False,
+        ).select_related('commune', 'benefit_plan')
+
+        result = {'generated': 0, 'skipped': []}
+
+        for schedule in schedules:
+            # Re-validate sequential closure
+            _, errors = self.validate_new_round(
+                schedule.benefit_plan_id, schedule.commune.uuid
+            )
+            # Exclude the PLANNING schedule itself from the check
+            if errors:
+                # Check if the only "blocking" schedule is this one (PLANNING)
+                last_open = CommunePaymentSchedule.objects.filter(
+                    benefit_plan=schedule.benefit_plan,
+                    commune=schedule.commune,
+                    is_retry=False,
+                ).exclude(
+                    status__in=[
+                        CommunePaymentScheduleStatus.RECONCILED,
+                        CommunePaymentScheduleStatus.REJECTED,
+                        CommunePaymentScheduleStatus.PLANNING,
+                    ]
+                ).exclude(id=schedule.id).last()
+
+                if last_open:
+                    result['skipped'].append({
+                        'commune': schedule.commune.name,
+                        'reason': f"Tranche {last_open.round_number} non clôturée ({last_open.status})",
+                    })
+                    continue
+
+            if not schedule.date_valid_from:
+                result['skipped'].append({
+                    'commune': schedule.commune.name,
+                    'reason': "Date de début non définie",
+                })
+                continue
+
+            # Create payroll
+            colline_uuids = list(
+                Location.objects.filter(parent=schedule.commune, type='V')
+                .values_list('uuid', flat=True)
+            )
+
+            payroll_name = (
+                f"{schedule.benefit_plan.code} - {schedule.commune.name} "
+                f"- Tranche {schedule.round_number}"
+            )
+
+            payroll_data = {
+                'name': payroll_name,
+                'payment_plan_id': str(payment_plan_id),
+                'status': PayrollStatus.GENERATING,
+                'payment_method': payment_method,
+                'payment_cycle_id': str(payment_cycle.id),
+                'json_ext': {
+                    'filter_criteria': {
+                        'location_ids': [str(u) for u in colline_uuids],
+                    },
+                    'payment_schedule_id': str(schedule.id),
+                    'commune_id': str(schedule.commune.uuid),
+                    'round_number': schedule.round_number,
+                    'topup_amount': float(schedule.topup_amount),
+                },
+            }
+
+            payroll_service = PayrollService(self.user)
+            payroll_result = payroll_service.create(payroll_data)
+
+            if payroll_result.get('success'):
+                payroll = Payroll.objects.get(id=payroll_result['data']['id'])
+                # Set validity dates from schedule
+                payroll.date_valid_from = schedule.date_valid_from
+                payroll.date_valid_to = payment_cycle.end_date
+                payroll.save()
+
+                schedule.payroll = payroll
+                schedule.status = CommunePaymentScheduleStatus.GENERATING
+                schedule.save()
+                result['generated'] += 1
+            else:
+                schedule.status = CommunePaymentScheduleStatus.FAILED
+                schedule.save()
+                result['skipped'].append({
+                    'commune': schedule.commune.name,
+                    'reason': f"Erreur payroll: {payroll_result.get('message', '?')}",
+                })
+
+        return result
+
+    @staticmethod
+    def get_vague_provinces(vague_numbers):
+        """Return province names for given vague numbers."""
+        provinces = []
+        for v in vague_numbers:
+            provinces.extend(VAGUE_PROVINCES.get(v, []))
+        return provinces

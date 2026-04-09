@@ -1,5 +1,6 @@
 """
 Seed programme targets from project document P175327 into BenefitPlan.json_ext.
+Also seeds sub-programme payment plans (petite subvention, etc.).
 """
 from django.core.management.base import BaseCommand
 from social_protection.models import BenefitPlan
@@ -14,6 +15,14 @@ PROGRAMME_TARGETS = {
         'total_per_beneficiary': 864000,
         'programme_type': 'REGULAR',
         'label': 'Transferts Monétaires Réguliers',
+        'sub_programmes': {
+            'SUBVENTION': {
+                'label': 'Petite Subvention',
+                'amount': 400000,
+                'max_rounds': 1,
+                'description': 'One-time productive inclusion grant',
+            },
+        },
     },
     '1.1': {
         'target_households': 25000,

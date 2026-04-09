@@ -27,6 +27,7 @@ from merankabandi.gql_mutations import (
     GenerateProvincePayrollMutation,
     CreatePaymentAgencyMutation, UpdatePaymentAgencyMutation, DeletePaymentAgencyMutation,
     CreateProvincePaymentAgencyMutation, UpdateProvincePaymentAgencyMutation, DeleteProvincePaymentAgencyMutation,
+    CreateAgencyFeeConfigMutation, UpdateAgencyFeeConfigMutation, DeleteAgencyFeeConfigMutation,
     CreateTicketCommentMutation,
     CreateTicketWithExtMutation, UpdateTicketWithExtMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
@@ -43,7 +44,7 @@ from merankabandi.gql_queries import (
     MonetaryTransferGQLType, MonetaryTransferQuarterlyDataGQLType, SensitizationTrainingGQLType,
     TicketResolutionStatusGQLType, BenefitConsumptionByProvinceGQLType, BenefitPlanLocationGQLType,
     SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType,
-    PaymentAgencyGQLType, ProvincePaymentAgencyGQLType, PaymentGatewayConnectorGQLType,
+    PaymentAgencyGQLType, ProvincePaymentAgencyGQLType, AgencyFeeConfigGQLType, PaymentGatewayConnectorGQLType,
     PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
 )
 from merankabandi.payment_schedule_gql import (
@@ -56,7 +57,7 @@ from merankabandi.payment_schedule_gql import (
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer,
     SensitizationTraining, Section, Indicator, IndicatorAchievement,
-    PaymentAgency, ProvincePaymentAgency,
+    PaymentAgency, ProvincePaymentAgency, AgencyFeeConfig,
     PmtFormula, SelectionQuota, PreCollecte,
 )
 from payroll.models import BenefitConsumption, BenefitConsumptionStatus
@@ -1141,6 +1142,14 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     def resolve_province_payment_agency(self, info, **kwargs):
         return gql_optimizer.query(ProvincePaymentAgency.objects.all(), info)
 
+    agency_fee_config = OrderedDjangoFilterConnectionField(
+        AgencyFeeConfigGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    def resolve_agency_fee_config(self, info, **kwargs):
+        return gql_optimizer.query(AgencyFeeConfig.objects.all(), info)
+
     def resolve_location_by_benefit_plan(self, info, **kwargs):
         def _build_filters(info, **kwargs):
             filters = append_validity_filter(**kwargs)
@@ -1325,6 +1334,11 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_province_payment_agency = CreateProvincePaymentAgencyMutation.Field()
     update_province_payment_agency = UpdateProvincePaymentAgencyMutation.Field()
     delete_province_payment_agency = DeleteProvincePaymentAgencyMutation.Field()
+
+    # AgencyFeeConfig CRUD
+    create_agency_fee_config = CreateAgencyFeeConfigMutation.Field()
+    update_agency_fee_config = UpdateAgencyFeeConfigMutation.Field()
+    delete_agency_fee_config = DeleteAgencyFeeConfigMutation.Field()
 
     # Add validation mutations for KoboToolbox data
     validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()

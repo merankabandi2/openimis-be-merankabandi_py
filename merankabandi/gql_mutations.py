@@ -10,7 +10,7 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from merankabandi.apps import MerankabandiConfig
-from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, PaymentAgency, ProvincePaymentAgency, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
+from merankabandi.models import MonetaryTransfer, Section, Indicator, IndicatorAchievement, PaymentAgency, ProvincePaymentAgency, AgencyFeeConfig, PmtFormula, SelectionQuota, PreCollecte, SensitizationTraining, BehaviorChangePromotion, MicroProject
 from location.models import UserDistrict
 from merankabandi.services import (
     MonetaryTransferService, SectionService, IndicatorService,
@@ -659,6 +659,99 @@ class DeleteProvincePaymentAgencyMutation(BaseMutation):
         ProvincePaymentAgency.objects.filter(id__in=ids).delete()
 
     class Input(DeleteProvincePaymentAgencyInputType):
+        pass
+
+
+# ── AgencyFeeConfig CRUD ──────────────────────────────────────────────
+
+class CreateAgencyFeeConfigInputType(OpenIMISMutation.Input):
+    payment_agency_id = graphene.UUID(required=True)
+    benefit_plan_id = graphene.UUID(required=True)
+    province_id = graphene.UUID(required=False)
+    fee_rate = graphene.Decimal(required=True)
+    fee_included = graphene.Boolean(required=False, default_value=False)
+    is_active = graphene.Boolean(required=False, default_value=True)
+
+
+class UpdateAgencyFeeConfigInputType(CreateAgencyFeeConfigInputType):
+    id = graphene.UUID(required=True)
+
+
+class DeleteAgencyFeeConfigInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class CreateAgencyFeeConfigMutation(BaseMutation):
+    _mutation_class = "CreateAgencyFeeConfigMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        province_id = data.pop('province_id', None)
+        if province_id:
+            from location.models import Location
+            data['province'] = Location.objects.get(uuid=province_id)
+        data['payment_agency_id'] = data.pop('payment_agency_id')
+        data['benefit_plan_id'] = data.pop('benefit_plan_id')
+        AgencyFeeConfig.objects.create(**data)
+
+    class Input(CreateAgencyFeeConfigInputType):
+        pass
+
+
+class UpdateAgencyFeeConfigMutation(BaseMutation):
+    _mutation_class = "UpdateAgencyFeeConfigMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        config_id = data.pop('id')
+        province_id = data.pop('province_id', None)
+        config = AgencyFeeConfig.objects.get(id=config_id)
+        if province_id:
+            from location.models import Location
+            data['province'] = Location.objects.get(uuid=province_id)
+        elif 'province_id' in data:
+            data['province'] = None
+        for k, v in data.items():
+            setattr(config, k, v)
+        config.save()
+
+    class Input(UpdateAgencyFeeConfigInputType):
+        pass
+
+
+class DeleteAgencyFeeConfigMutation(BaseMutation):
+    _mutation_class = "DeleteAgencyFeeConfigMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        ids = data.get('ids', [])
+        AgencyFeeConfig.objects.filter(id__in=ids).delete()
+
+    class Input(DeleteAgencyFeeConfigInputType):
         pass
 
 

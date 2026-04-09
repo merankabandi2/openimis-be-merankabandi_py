@@ -9,7 +9,7 @@ from location.models import Location
 from merankabandi.models import (
     BehaviorChangePromotion, MicroProject, MonetaryTransfer, SensitizationTraining,
     Section, Indicator, IndicatorAchievement,
-    PaymentAgency, ProvincePaymentAgency,
+    PaymentAgency, ProvincePaymentAgency, AgencyFeeConfig,
     ResultFrameworkSnapshot, IndicatorCalculationRule, PmtFormula, SelectionQuota,
     PreCollecte,
 )
@@ -322,6 +322,31 @@ class ProvincePaymentAgencyGQLType(DjangoObjectType):
             }),
         }
         connection_class = ExtendedConnection
+
+
+class AgencyFeeConfigGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+    fee_rate_display = graphene.String()
+
+    class Meta:
+        model = AgencyFeeConfig
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "is_active": ["exact"],
+            "fee_included": ["exact"],
+            **prefix_filterset("payment_agency__", {
+                "id": ["exact"],
+                "code": ["exact", "icontains"],
+                "name": ["exact", "icontains"],
+            }),
+            **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("province__", LocationGQLType._meta.filter_fields),
+        }
+        connection_class = ExtendedConnection
+
+    def resolve_fee_rate_display(self, info):
+        return f"{self.fee_rate * 100:.2f}%"
 
 
 class ResultFrameworkSnapshotGQLType(DjangoObjectType):
