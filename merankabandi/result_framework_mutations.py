@@ -138,7 +138,7 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
     )
 
     # Title
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:H1")
     title_cell = ws["A1"]
     period = ""
     if date_from:
@@ -149,14 +149,14 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
     title_cell.font = Font(name="Calibri", bold=True, size=14, color="2E4057")
     title_cell.alignment = Alignment(horizontal="center")
 
-    ws.merge_cells("A2:G2")
+    ws.merge_cells("A2:H2")
     ws["A2"].value = f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
     ws["A2"].font = Font(name="Calibri", italic=True, size=9, color="666666")
     ws["A2"].alignment = Alignment(horizontal="center")
 
     # Headers row
-    headers = ["N°", "Indicateur", "PBC", "Base", "Cible", "Réalisé", "Progression (%)"]
-    col_widths = [6, 55, 12, 12, 12, 12, 16]
+    headers = ["N°", "Indicateur", "PBC", "Base", "Cible", "Réalisé", "Progression (%)", "Observation"]
+    col_widths = [6, 55, 12, 12, 12, 12, 16, 40]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=4, column=col_idx, value=header)
@@ -171,12 +171,12 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
 
     for section in sections_data:
         # Section header row
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=7)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
         cell = ws.cell(row=row, column=1, value=section["name"])
         cell.font = section_font
         cell.fill = section_fill
         cell.alignment = Alignment(horizontal="left")
-        for c in range(1, 8):
+        for c in range(1, 9):
             ws.cell(row=row, column=c).border = thin_border
         row += 1
 
@@ -218,6 +218,15 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
                 prog_cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
             else:
                 prog_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+            # Render breakdowns in Observation column
+            breakdowns = ind.get("breakdowns", [])
+            if breakdowns:
+                obs_text = "\n".join(f"{b['label']}: {b['value']:,}" for b in breakdowns if b.get('value', 0) > 0)
+                obs_cell = ws.cell(row=row, column=8, value=obs_text)
+                obs_cell.font = Font(name="Calibri", size=9)
+                obs_cell.alignment = Alignment(vertical="top", wrap_text=True)
+                obs_cell.border = thin_border
 
             row += 1
 
@@ -271,6 +280,7 @@ class GenerateResultFrameworkDocumentMutation(graphene.Mutation):
                             "target": float(indicator.target) if indicator.target else 0,
                             "include_baseline": is_stock_count,
                             "achieved": result.get("value", 0),
+                            "breakdowns": result.get("breakdowns", []),
                         })
                     sections_data.append(section_entry)
 
