@@ -692,7 +692,8 @@ class ResultFrameworkService:
                     'achieved': achieved_value,
                     'percentage': (achieved_value / target_value * 100) if target_value > 0 else 0,
                     'calculation_type': result.get('calculation_type', 'MANUAL'),
-                    'observation': indicator.observation or ''
+                    'observation': indicator.observation or '',
+                    'breakdowns': result.get('breakdowns', []),
                 }
 
                 # Save IndicatorAchievement record if value was calculated (not manual)
@@ -704,7 +705,8 @@ class ResultFrameworkService:
                         indicator=indicator,
                         date=achievement_date,
                         achieved=Decimal(str(achieved_value)),
-                        comment=f'Auto-generated from snapshot: {name} (Calculation: {result.get("calculation_type")})'
+                        comment=f'Auto-generated from snapshot: {name} (Calculation: {result.get("calculation_type")})',
+                        breakdowns=result.get('breakdowns', []),
                     )
 
                 # Add any additional data from calculation
