@@ -254,9 +254,16 @@ class IndicatorGQLType(DjangoObjectType):
         connection_class = ExtendedConnection
 
 
+class IndicatorBreakdownGQLType(graphene.ObjectType):
+    key = graphene.String()
+    label = graphene.String()
+    value = graphene.Int()
+
+
 class IndicatorAchievementGQLType(DjangoObjectType):
     quarter = graphene.Int()
     year = graphene.Int()
+    breakdowns = graphene.List(IndicatorBreakdownGQLType)
 
     def resolve_quarter(self, info):
         if self.date:
@@ -271,6 +278,13 @@ class IndicatorAchievementGQLType(DjangoObjectType):
         if self.timestamp:
             return self.timestamp.year
         return None
+
+    def resolve_breakdowns(self, info):
+        raw = self.breakdowns or []
+        return [
+            IndicatorBreakdownGQLType(key=b.get('key'), label=b.get('label'), value=b.get('value'))
+            for b in raw
+        ]
 
     class Meta:
         model = IndicatorAchievement
@@ -391,6 +405,17 @@ class IndicatorCalculationResultType(graphene.ObjectType):
     error = graphene.String()
     date = graphene.Date()
     gender_breakdown = graphene.JSONString()
+
+
+class CalculateIndicatorValueResultType(graphene.ObjectType):
+    value = graphene.Float()
+    calculation_type = graphene.String()
+    system_value = graphene.Float()
+    manual_value = graphene.Float()
+    error = graphene.String()
+    date = graphene.Date()
+    gender_breakdown = graphene.JSONString()
+    breakdowns = graphene.List(IndicatorBreakdownGQLType)
 
 
 class PmtFormulaGQLType(DjangoObjectType):

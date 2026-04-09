@@ -46,6 +46,7 @@ from merankabandi.gql_queries import (
     SectionGQLType, IndicatorGQLType, IndicatorAchievementGQLType,
     PaymentAgencyGQLType, ProvincePaymentAgencyGQLType, AgencyFeeConfigGQLType, PaymentGatewayConnectorGQLType,
     PmtFormulaGQLType, SelectionQuotaGQLType, PreCollecteGQLType,
+    CalculateIndicatorValueResultType, IndicatorBreakdownGQLType,
 )
 from merankabandi.payment_schedule_gql import (
     PaymentScheduleQuery,
@@ -323,6 +324,14 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         indicator_id=graphene.Int(description="Filter by indicator ID"),
         date_from=graphene.Date(description="Filter by date from"),
         date_to=graphene.Date(description="Filter by date to"),
+    )
+
+    calculate_indicator_value = graphene.Field(
+        CalculateIndicatorValueResultType,
+        indicator_id=graphene.Int(required=True),
+        date_from=graphene.Date(),
+        date_to=graphene.Date(),
+        location_id=graphene.ID(),
     )
 
     payment_agency = OrderedDjangoFilterConnectionField(
@@ -1131,6 +1140,33 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
             query = query.filter(date__lte=date_to)
 
         return gql_optimizer.query(query, info)
+
+    def resolve_calculate_indicator_value(self, info, indicator_id, date_from=None, date_to=None, location_id=None):
+        from merankabandi.result_framework_service import ResultFrameworkService
+
+        location = None
+        if location_id:
+            location = Location.objects.filter(id=location_id).first()
+
+        service = ResultFrameworkService()
+        result = service.calculate_indicator_value(indicator_id, date_from, date_to, location)
+
+        breakdowns = result.get('breakdowns', [])
+        breakdown_objects = [
+            IndicatorBreakdownGQLType(key=b['key'], label=b['label'], value=b['value'])
+            for b in breakdowns
+        ] if breakdowns else []
+
+        return CalculateIndicatorValueResultType(
+            value=result.get('value', 0),
+            calculation_type=result.get('calculation_type'),
+            system_value=result.get('system_value'),
+            manual_value=result.get('manual_value'),
+            error=result.get('error'),
+            date=result.get('date'),
+            gender_breakdown=result.get('gender_breakdown'),
+            breakdowns=breakdown_objects,
+        )
 
     def resolve_payment_agency(self, info, **kwargs):
         return gql_optimizer.query(PaymentAgency.objects.all(), info)
