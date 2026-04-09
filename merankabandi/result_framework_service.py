@@ -285,7 +285,11 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        breakdowns = self._compute_breakdowns(
+            benefit_plan_codes=config.get('benefit_plan_codes', ['1.1', '1.2', '1.4']),
+            location=location,
+        )
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_women(self, indicator, date_from, date_to, location, config):
         """Count female beneficiaries (Indicator 6)"""
@@ -304,14 +308,19 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        breakdowns = self._compute_breakdowns(
+            benefit_plan_codes=config.get('benefit_plan_codes'),
+            location=location,
+        )
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_unconditional_transfers(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of unconditional transfers — programme 1.2 (Indicator 7)"""
+        codes = config.get('benefit_plan_codes', ['1.2'])
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            benefit_plan__code__in=['1.2'],
+            benefit_plan__code__in=codes,
         )
 
         if date_from:
@@ -322,7 +331,8 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        breakdowns = self._compute_breakdowns(benefit_plan_codes=codes, location=location)
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_employment(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of employment interventions (Indicator 11)"""
@@ -378,12 +388,11 @@ class ResultFrameworkService:
         return self._get_latest_achievement(indicator, date_from, date_to)
 
     def _count_beneficiaries_emergency_transfers(self, indicator, date_from, date_to, location, config):
+        codes = config.get('benefit_plan_codes', ['1.1'])
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__groupindividuals__individual__json_ext__sexe='F',
-            group__groupindividuals__recipient_type='PRIMARY',
-            benefit_plan__code__in=['1.1']  # Adjust based on actual codes
+            benefit_plan__code__in=codes,
         )
 
         if date_from:
@@ -394,7 +403,8 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        breakdowns = self._compute_breakdowns(benefit_plan_codes=codes, location=location)
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_refugees(self, indicator, date_from, date_to, location, config):
         """Count refugee beneficiaries using the menage_refugie flag."""
@@ -412,15 +422,17 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        breakdowns = self._compute_breakdowns(
+            benefit_plan_codes=config.get('benefit_plan_codes'),
+            location=location,
+        )
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_host_communities(self, indicator, date_from, date_to, location, config):
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__groupindividuals__individual__json_ext__sexe='F',
-            group__groupindividuals__recipient_type='PRIMARY',
-            group__location__parent__name__in=HOST_COMMUNES
+            group__location__parent__name__in=HOST_COMMUNES,
         )
 
         if date_from:
@@ -430,8 +442,12 @@ class ResultFrameworkService:
         if location:
             query = query.filter(group__location__parent__parent=location)
 
-        count = query.count()
-        return {'value': count, 'calculation_type': 'SYSTEM'}
+        count = query.distinct().count()
+        breakdowns = self._compute_breakdowns(
+            benefit_plan_codes=config.get('benefit_plan_codes'),
+            location=location,
+        )
+        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_employment_women(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
