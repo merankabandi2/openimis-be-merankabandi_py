@@ -65,9 +65,12 @@ class Command(BaseCommand):
         parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
         parser.add_argument('--fresh-grievances', action='store_true',
                             help='Delete existing grievance tickets and refetch from KoBo')
+        parser.add_argument('--suivi-file', default=None,
+                            help='Path to Fiche de Suivi Excel file for grievance tracking import')
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
+        self._suivi_file = options.get('suivi_file')
         t0 = time.time()
 
         self.stdout.write(self.style.SUCCESS('\n' + '=' * 60))
@@ -118,14 +121,45 @@ class Command(BaseCommand):
         if options['fresh_grievances']:
             self._step('10. Refreshing grievances from KoBo', dry_run, self._refresh_grievances)
 
-        # Step 11: Create indexes
+        # Step 11: Normalize ticket categories
+        self._step('11. Normalizing ticket categories', dry_run,
+                   lambda: call_command('normalize_ticket_categories'))
+
+        # Step 12: Backfill ticket locations
+        self._step('12. Backfilling ticket locations', dry_run,
+                   lambda: call_command('backfill_ticket_locations'))
+
+        # Step 13: Import suivi tracking (if file provided)
+        self._step('13. Importing suivi tracking data', dry_run,
+                   self._import_suivi_tracking)
+
+        # Step 14: Normalize json_ext fields (individuals, groups, beneficiaries)
+        self._step('14. Normalizing json_ext fields', dry_run,
+                   lambda: call_command('normalize_json_ext'))
+
+        # Step 15: Migrate respondent data (group → individual)
+        self._step('15. Migrating respondent data to individuals', dry_run,
+                   lambda: call_command('normalize_json_ext', migrate_respondent=True))
+
+        # Step 16: Seed notification templates
+        self._step('16. Seeding notification templates', dry_run,
+                   lambda: call_command('seed_notification_templates'))
+
+        # Step 17: Seed payment agencies (from PaymentPoint migration)
+        self._step('17. Seeding payment agencies', dry_run, self._seed_payment_agencies)
+
+        # Step 18: Seed analytics dashboards
+        self._step('18. Seeding analytics dashboards', dry_run,
+                   lambda: call_command('seed_analytics_dashboards'))
+
+        # Step 19: Create indexes
         if not options['skip_indexes']:
-            self._step('11. Creating database indexes', dry_run,
+            self._step('19. Creating database indexes', dry_run,
                        lambda: call_command('create_indexes'))
 
-        # Step 12: Create materialized views
+        # Step 20: Create materialized views
         if not options['skip_views']:
-            self._step('12. Creating materialized views', dry_run,
+            self._step('20. Creating materialized views', dry_run,
                        lambda: call_command('manage_views', action='create'))
 
         elapsed = time.time() - t0
@@ -372,7 +406,88 @@ class Command(BaseCommand):
                 updated += 1
         self.stdout.write(f'  Updated {updated} tasks')
 
-    # ── Step 9: Refresh grievances ──
+    # ── Step 13: Import suivi tracking ──
+
+    def _import_suivi_tracking(self):
+        """Import grievance tracking data from Fiche de Suivi Excel."""
+        if not self._suivi_file:
+            self.stdout.write('  Skipped — no --suivi-file provided')
+            self.stdout.write('  Usage: python manage.py setup_fresh_db --suivi-file /path/to/Fiche_de_Suivi.xlsx')
+            return
+        if not os.path.exists(self._suivi_file):
+            self.stdout.write(self.style.WARNING(f'  File not found: {self._suivi_file}'))
+            return
+        call_command('import_suivi_tracking', self._suivi_file)
+
+    # ── Step 17: Seed payment agencies ──
+
+    def _seed_payment_agencies(self):
+        """Ensure payment agencies exist — migrate from PaymentPoint if needed."""
+        from merankabandi.models import PaymentAgency, ProvincePaymentAgency
+        from social_protection.models import BenefitPlan
+        from location.models import Location
+
+        # Default agencies if none exist
+        AGENCIES = [
+            ('LUMICASH', 'LUMICASH', 'StrategyOnlinePaymentPush', True),
+            ('INTERBANK', 'INTERBANK', 'StrategyOnlinePaymentPush', True),
+            ('FINBANK', 'FINBANK', 'StrategyOfflinePayment', True),
+            ('BANCOBU', 'BANCOBU', 'StrategyOfflinePayment', True),
+        ]
+
+        if PaymentAgency.objects.exists():
+            self.stdout.write(f'  Already has {PaymentAgency.objects.count()} agencies — skipping')
+            return
+
+        # Try to migrate from PaymentPoint first
+        try:
+            from payroll.models import PaymentPoint
+            pp_count = PaymentPoint.objects.filter(is_deleted=False).count()
+            if pp_count > 0:
+                created = 0
+                for pp in PaymentPoint.objects.filter(is_deleted=False):
+                    agency, was_created = PaymentAgency.objects.get_or_create(
+                        code=pp.name[:20],
+                        defaults={
+                            'name': pp.name,
+                            'is_active': True,
+                            'payment_gateway': 'StrategyOfflinePayment',
+                        },
+                    )
+                    if was_created:
+                        created += 1
+                self.stdout.write(f'  Migrated {created} agencies from {pp_count} PaymentPoints')
+                return
+        except Exception:
+            pass
+
+        # Fallback: seed defaults
+        created = 0
+        for code, name, gateway, active in AGENCIES:
+            _, was_created = PaymentAgency.objects.get_or_create(
+                code=code,
+                defaults={'name': name, 'payment_gateway': gateway, 'is_active': active},
+            )
+            if was_created:
+                created += 1
+        self.stdout.write(f'  Created {created} default payment agencies')
+
+        # Assign agencies to provinces for BenefitPlan 1.2
+        bp = BenefitPlan.objects.filter(code='1.2', is_deleted=False).first()
+        if bp:
+            lumicash = PaymentAgency.objects.filter(code='LUMICASH').first()
+            if lumicash:
+                provinces = Location.objects.filter(type='D')
+                assigned = 0
+                for prov in provinces:
+                    _, was_created = ProvincePaymentAgency.objects.get_or_create(
+                        province=prov, benefit_plan=bp, payment_agency=lumicash,
+                    )
+                    if was_created:
+                        assigned += 1
+                self.stdout.write(f'  Assigned LUMICASH to {assigned} provinces')
+
+    # ── Step 10: Refresh grievances ──
 
     def _refresh_grievances(self):
         """Delete existing tickets and refetch from KoBo."""
