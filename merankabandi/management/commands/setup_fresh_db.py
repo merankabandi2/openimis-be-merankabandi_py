@@ -497,9 +497,17 @@ class Command(BaseCommand):
     def _refresh_grievances(self):
         """Delete existing tickets and refetch from KoBo."""
         from grievance_social_protection.models import Ticket
+
         count = Ticket.objects.count()
         if count > 0:
-            self.stdout.write(f'  Deleting {count} existing tickets...')
-            Ticket.objects.all().delete()
+            self.stdout.write(f'  Deleting {count} existing tickets (+ related objects)...')
+            # Delete related objects first to avoid FK constraint violations
+            with connection.cursor() as c:
+                c.execute("DELETE FROM grievance_social_protection_comment")
+                c.execute("DELETE FROM merankabandi_grievancetask")
+                c.execute("DELETE FROM merankabandi_grievanceworkflow")
+                c.execute("DELETE FROM merankabandi_replacementrequest")
+                c.execute("DELETE FROM grievance_social_protection_ticket")
+            self.stdout.write(f'  Deleted {count} tickets and related data')
         self.stdout.write('  Pulling fresh grievance data from KoBo...')
         call_command('pullkobodata', 'grievance')
