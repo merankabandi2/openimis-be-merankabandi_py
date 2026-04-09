@@ -355,21 +355,22 @@ class Command(BaseCommand):
 
         # Analyze tables to update statistics
         self.stdout.write('\nAnalyzing tables...')
-            tables = [
-                'individual_group',
-                'individual_individual',
-                'social_protection_groupbeneficiary',
-                'payroll_benefitconsumption',
-                'merankabandi_payment_agency',
-                'grievance_social_protection_ticket',
-                '"tblBill"',
-                '"tblLocations"'
-            ]
+        tables = [
+            'individual_group',
+            'individual_individual',
+            'social_protection_groupbeneficiary',
+            'payroll_benefitconsumption',
+            'merankabandi_payment_agency',
+            'grievance_social_protection_ticket',
+            '"tblBill"',
+            '"tblLocations"',
+        ]
+        with connection.cursor() as cursor:
             for table in tables:
                 try:
                     cursor.execute(f"ANALYZE {table}")
-                    self.stdout.write(f"Analyzed {table}")
+                    self.stdout.write(f"  Analyzed {table}")
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f"Error analyzing {table}: {str(e)}"))
+                    self.stdout.write(self.style.ERROR(f"  Error analyzing {table}: {str(e)}"))
 
         self.stdout.write(self.style.SUCCESS('\nIndex creation complete!'))
