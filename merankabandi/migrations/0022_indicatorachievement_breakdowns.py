@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("merankabandi", "0013_precollecte_pmtformula_selectionquota"),
+        ("merankabandi", "0021_agencyfeeconfig_cps_planning_fields"),
     ]
 
     operations = [
