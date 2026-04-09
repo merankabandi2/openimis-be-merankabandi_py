@@ -15,6 +15,16 @@ from .models import (
 # Refugee collines/camps for refugee/host community separation
 REFUGEE_COLLINES = []
 
+DEMOGRAPHIC_BREAKDOWNS = [
+    {'key': 'women', 'label': 'Femmes'},
+    {'key': 'twa', 'label': 'Ménages Twa'},
+    {'key': 'disabled', 'label': 'Ménages avec handicap'},
+    {'key': 'chronic_illness', 'label': 'Maladies chroniques'},
+    {'key': 'refugees', 'label': 'Ménages réfugiés'},
+    {'key': 'returnees', 'label': 'Retournés/rapatriés'},
+    {'key': 'displaced', 'label': 'Déplacés'},
+]
+
 
 class ResultFrameworkService:
     """Service for result framework calculations and document generation"""
@@ -47,6 +57,69 @@ class ResultFrameworkService:
             'count_climate_resilient_activities': self._count_climate_resilient_activities,
             'calculate_digital_payment_percentage': self._calculate_digital_payment_percentage,
         }
+
+    def _compute_breakdowns(self, benefit_plan_codes=None, location=None):
+        """Compute standard demographic breakdowns from the vulnerable groups materialized view."""
+        from django.db import connection
+
+        conditions = []
+        params = []
+
+        if benefit_plan_codes:
+            placeholders = ', '.join(['%s'] * len(benefit_plan_codes))
+            conditions.append(f"benefit_plan_code IN ({placeholders})")
+            params.extend(benefit_plan_codes)
+
+        if location:
+            conditions.append("province_id = %s")
+            params.append(location.id if hasattr(location, 'id') else location)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        sql = f"""
+            SELECT
+                COALESCE(SUM(twa_households), 0),
+                COALESCE(SUM(disabled_households), 0),
+                COALESCE(SUM(chronic_illness_households), 0),
+                COALESCE(SUM(refugee_households), 0),
+                COALESCE(SUM(returnee_households), 0),
+                COALESCE(SUM(displaced_households), 0)
+            FROM dashboard_vulnerable_groups_summary
+            {where_clause}
+        """
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+        except Exception:
+            row = (0, 0, 0, 0, 0, 0)
+
+        women_count = self._count_women_beneficiaries(benefit_plan_codes, location)
+
+        view_keys = ['twa', 'disabled', 'chronic_illness', 'refugees', 'returnees', 'displaced']
+        values = {'women': women_count}
+        for i, key in enumerate(view_keys):
+            values[key] = row[i] if row else 0
+
+        return [
+            {**bd, 'value': values.get(bd['key'], 0)}
+            for bd in DEMOGRAPHIC_BREAKDOWNS
+        ]
+
+    def _count_women_beneficiaries(self, benefit_plan_codes=None, location=None):
+        """Count female primary recipients for the given benefit plans."""
+        query = GroupBeneficiary.objects.filter(
+            is_deleted=False,
+            status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
+            group__groupindividuals__individual__json_ext__sexe='F',
+            group__groupindividuals__recipient_type='PRIMARY',
+        )
+        if benefit_plan_codes:
+            query = query.filter(benefit_plan__code__in=benefit_plan_codes)
+        if location:
+            query = query.filter(group__location__parent__parent=location)
+        return query.distinct().count()
 
     def calculate_indicator_value(self, indicator_id, date_from=None, date_to=None, location=None):
         """Calculate indicator value based on its configuration"""
