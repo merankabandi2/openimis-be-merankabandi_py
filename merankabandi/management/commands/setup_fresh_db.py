@@ -119,7 +119,7 @@ class Command(BaseCommand):
 
         # Step 10: Pull grievance data from KoBo (always — idempotent, skips existing)
         self._step('10. Pulling grievance data from KoBo', dry_run,
-                   lambda: call_command('pullkobodata'))
+                   lambda: call_command('pullkobodata', 'grievance'))
 
         # Step 10b: Fresh grievances from KoBo (optional — deletes first, then re-pulls)
         if options['fresh_grievances']:
@@ -502,4 +502,4 @@ class Command(BaseCommand):
             self.stdout.write(f'  Deleting {count} existing tickets...')
             Ticket.objects.all().delete()
         self.stdout.write('  Pulling fresh grievance data from KoBo...')
-        call_command('pullkobodata')
+        call_command('pullkobodata', 'grievance')
