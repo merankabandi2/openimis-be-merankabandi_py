@@ -638,6 +638,7 @@ class IndicatorAchievement(models.Model):
     comment = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     date = models.DateField(null=True, blank=True)  # New field to specify the date of the indicator value
+    breakdowns = models.JSONField(default=list, blank=True)
 
     def update(self, *args, user=None, username=None, save=True, **kwargs):
         obj_data = kwargs.pop('data', {})
