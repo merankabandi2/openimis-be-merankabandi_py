@@ -536,21 +536,6 @@ class Command(BaseCommand):
         self.stdout.write("Migrating respondent/head fields from Group → Individual")
         self.stdout.write(f"{'='*60}")
 
-        # Skip if migration was already done (check if any individual has 'ci' from migration)
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT COUNT(*) FROM individual_individual
-                WHERE "isDeleted" = false
-                  AND "Json_ext" IS NOT NULL
-                  AND "Json_ext"::text LIKE '%"ci"%'
-                LIMIT 1
-            """)
-            already_migrated = cursor.fetchone()[0] > 0
-
-        if already_migrated and not dry_run:
-            self.stdout.write("Already migrated (individuals have 'ci' field) — skipping")
-            return
-
         # Count groups with respondent data
         with connection.cursor() as cursor:
             cursor.execute("""
