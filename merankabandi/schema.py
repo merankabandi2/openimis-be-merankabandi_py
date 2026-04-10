@@ -186,6 +186,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         orderBy=graphene.List(of_type=graphene.String),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        modules_contains=graphene.String(description="Filter by module/theme (JSON contains)"),
     )
     behavior_change_promotion = OrderedDjangoFilterConnectionField(
         BehaviorChangePromotionGQLType,
@@ -434,6 +435,9 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         parent_location_level = kwargs.get('parent_location_level')
         if parent_location is not None and parent_location_level is not None:
             queryset = queryset.filter(Query._get_location_filters(parent_location, parent_location_level))
+        modules_contains = kwargs.get('modules_contains')
+        if modules_contains:
+            queryset = queryset.filter(modules__contains=[modules_contains])
         return gql_optimizer.query(queryset, info)
 
     def resolve_behavior_change_promotion(self, info, **kwargs):
