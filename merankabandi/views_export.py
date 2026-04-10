@@ -319,53 +319,49 @@ def export_result_framework(request):
             )
 
         if snapshot and snapshot.data:
-            # Use snapshot data (fast)
+            # Use snapshot data (fast) — serve xlsx if already generated
+            if snapshot.document_path:
+                import os
+                filepath = os.path.join(getattr(settings, 'MEDIA_ROOT', 'file_storage'), snapshot.document_path)
+                if os.path.exists(filepath):
+                    with open(filepath, 'rb') as f:
+                        response = HttpResponse(
+                            f.read(),
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        )
+                    response['Content-Disposition'] = f'attachment; filename="{os.path.basename(filepath)}"'
+                    return response
+
+            # Snapshot exists but no xlsx — generate from snapshot data
             sections_data = snapshot.data.get('sections', [])
             snapshot_date_str = snapshot.snapshot_date.strftime('%d/%m/%Y')
             logger.info(f"Result framework export using snapshot from {snapshot_date_str}")
+
+            wb = _generate_xlsx(sections_data, date_from, date_to, snapshot_date=snapshot_date_str)
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+
+            response = HttpResponse(
+                buf.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )
+            response['Content-Disposition'] = f'attachment; filename="cadre_resultats_{snapshot.snapshot_date.strftime("%Y%m%d")}.xlsx"'
+            return response
         else:
-            # Compute fresh (slow)
-            logger.info("Result framework export: no recent snapshot, computing fresh...")
-            service = ResultFrameworkService()
-            sections_data = []
-            for section in Section.objects.all().prefetch_related('indicators'):
-                section_entry = {'name': section.name, 'indicators': []}
-                for indicator in section.indicators.all():
-                    result = service.calculate_indicator_value(
-                        indicator.id, date_from=date_from, date_to=date_to,
-                    )
-                    is_stock_count = (
-                        float(indicator.baseline or 0) > 0
-                        and 'Pourcentage' not in indicator.name
-                        and 'provinces' not in indicator.name.lower()
-                    )
-                    section_entry['indicators'].append({
-                        'name': indicator.name,
-                        'pbc': indicator.pbc or '',
-                        'baseline': float(indicator.baseline) if indicator.baseline else 0,
-                        'target': float(indicator.target) if indicator.target else 0,
-                        'include_baseline': is_stock_count,
-                        'achieved': result.get('value', 0),
-                        'breakdowns': result.get('breakdowns', []),
-                    })
-                sections_data.append(section_entry)
-            snapshot_date_str = datetime.now().strftime('%d/%m/%Y')
+            # No recent snapshot — trigger async creation, return 202
+            from .tasks import create_result_framework_snapshot
+            from rest_framework.response import Response
 
-        wb = _generate_xlsx(sections_data, date_from, date_to, snapshot_date=snapshot_date_str)
+            user = request.user
+            create_result_framework_snapshot.delay(str(user.id))
+            logger.info(f"No recent snapshot — triggered async creation for user {user}")
 
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-
-        timestamp = datetime.now().strftime('%Y%m%d')
-        filename = f'cadre_resultats_{timestamp}.xlsx'
-
-        response = HttpResponse(
-            buf.getvalue(),
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+            return Response({
+                'status': 'processing',
+                'message': 'Aucun snapshot récent. Le cadre de résultats est en cours de génération. '
+                           'Vous recevrez une notification quand il sera prêt.',
+            }, status=202)
 
     except Exception as e:
         logger.error(f"Result framework export error: {e}", exc_info=True)
