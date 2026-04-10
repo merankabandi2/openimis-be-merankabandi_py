@@ -309,11 +309,11 @@ def export_result_framework(request):
         snapshot_date_str = None
 
         if not force_fresh:
-            # Try to use latest snapshot
-            one_year_ago = timezone.now() - relativedelta(years=1)
+            # Try to use latest snapshot (must be less than 1 month old)
+            one_month_ago = timezone.now() - relativedelta(months=1)
             snapshot = (
                 ResultFrameworkSnapshot.objects
-                .filter(snapshot_date__gte=one_year_ago)
+                .filter(snapshot_date__gte=one_month_ago)
                 .order_by('-snapshot_date')
                 .first()
             )
