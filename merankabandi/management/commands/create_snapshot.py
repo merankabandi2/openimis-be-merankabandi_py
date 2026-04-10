@@ -8,14 +8,14 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = 'Create a result framework snapshot'
+    help = 'Create a result framework snapshot with xlsx export. Suitable for monthly cron.'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--name',
             type=str,
-            required=True,
-            help='Name for the snapshot',
+            default=None,
+            help='Name for the snapshot (default: "Snapshot YYYY-MM-DD")',
         )
         parser.add_argument(
             '--description',
@@ -90,23 +90,43 @@ class Command(BaseCommand):
                     )
                     return
 
+            # Auto-generate name if not provided
+            name = options['name'] or f"Snapshot {datetime.now().strftime('%Y-%m-%d')}"
+
             # Create snapshot
             self.stdout.write('Creating snapshot...')
             service = ResultFrameworkService()
 
             snapshot = service.create_snapshot(
-                name=options['name'],
+                name=name,
                 description=options['description'],
                 user=user,
                 date_from=date_from,
                 date_to=date_to
             )
 
-            # Update status if finalized
-            if options.get('finalize'):
-                snapshot.status = 'FINALIZED'
-                snapshot.save()
-                self.stdout.write('Snapshot status set to FINALIZED')
+            # Generate xlsx
+            self.stdout.write('Generating xlsx...')
+            import os
+            from django.conf import settings
+            from merankabandi.result_framework_mutations import _generate_xlsx
+
+            sections_data = snapshot.data.get('sections', [])
+            snapshot_date_str = snapshot.snapshot_date.strftime('%d/%m/%Y')
+            wb = _generate_xlsx(sections_data, date_from, date_to, snapshot_date=snapshot_date_str)
+
+            doc_dir = os.path.join(getattr(settings, 'MEDIA_ROOT', 'file_storage'), 'result_framework_docs')
+            os.makedirs(doc_dir, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'cadre_resultats_{timestamp}.xlsx'
+            filepath = os.path.join(doc_dir, filename)
+            wb.save(filepath)
+            self.stdout.write(f'Saved xlsx to {filepath}')
+
+            # Finalize snapshot
+            snapshot.document_path = f'result_framework_docs/{filename}'
+            snapshot.status = 'FINALIZED' if options.get('finalize', True) else 'DRAFT'
+            snapshot.save()
 
             # Display summary
             self.stdout.write(
