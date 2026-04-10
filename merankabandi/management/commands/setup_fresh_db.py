@@ -117,14 +117,15 @@ class Command(BaseCommand):
         # Step 9: Backfill grievance task order
         self._step('9. Backfilling grievance task order', dry_run, self._backfill_task_order)
 
-        # Step 10: Pull grievance data from KoBo (always — idempotent, skips existing)
-        self._step('10. Pulling grievance data from KoBo', dry_run,
-                   lambda: call_command('pullkobodata', 'grievance'))
-
-        # Step 10b: Fresh grievances from KoBo (optional — deletes first, then re-pulls)
+        # Step 10: Pull grievance data from KoBo
         if options['fresh_grievances']:
-            self._step('10b. Refreshing grievances from KoBo (fresh)', dry_run,
+            # Fresh mode: delete all, then re-pull
+            self._step('10. Refreshing grievances from KoBo (fresh)', dry_run,
                        self._refresh_grievances)
+        else:
+            # Normal mode: idempotent pull (skips existing)
+            self._step('10. Pulling grievance data from KoBo', dry_run,
+                       lambda: call_command('pullkobodata', 'grievance'))
 
         # Step 11: Normalize ticket categories
         self._step('11. Normalizing ticket categories', dry_run,
