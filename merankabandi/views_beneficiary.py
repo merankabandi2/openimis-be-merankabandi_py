@@ -46,11 +46,18 @@ base_groups AS (
 ),
 
 -- Individuals linked to groups with demographic info
+-- Gender normalization: handles both short codes (M/F) and full French words (Masculin/Féminin)
 individuals_data AS (
     SELECT
         gi.group_id,
         i."UUID" AS individual_id,
-        i."Json_ext"->>(SELECT sex_field FROM constants) AS sex,
+        CASE
+            WHEN UPPER(LEFT(i."Json_ext"->>(SELECT sex_field FROM constants), 1)) = 'M'
+                THEN (SELECT male_value FROM constants)
+            WHEN UPPER(LEFT(i."Json_ext"->>(SELECT sex_field FROM constants), 1)) = 'F'
+                THEN (SELECT female_value FROM constants)
+            ELSE i."Json_ext"->>(SELECT sex_field FROM constants)
+        END AS sex,
         CASE
             WHEN i."Json_ext"->>(SELECT twa_individual_field FROM constants)
                  = (SELECT true_value FROM constants) THEN true
@@ -298,8 +305,8 @@ beneficiary_stats AS (
     SELECT
         COUNT(DISTINCT gb."UUID") AS total_beneficiaries,
         COUNT(DISTINCT gb."UUID") FILTER (WHERE gb.status = c.active_status) AS active_beneficiaries,
-        COUNT(DISTINCT gb."UUID") FILTER (WHERE i."Json_ext"->>'sexe' = c.male_gender) AS male_beneficiaries,
-        COUNT(DISTINCT gb."UUID") FILTER (WHERE i."Json_ext"->>'sexe' = c.female_gender) AS female_beneficiaries,
+        COUNT(DISTINCT gb."UUID") FILTER (WHERE UPPER(LEFT(i."Json_ext"->>'sexe', 1)) = 'M') AS male_beneficiaries,
+        COUNT(DISTINCT gb."UUID") FILTER (WHERE UPPER(LEFT(i."Json_ext"->>'sexe', 1)) = 'F') AS female_beneficiaries,
         COUNT(DISTINCT gb."UUID") FILTER (WHERE (gb."Json_ext" ->> 'menage_mutwa') = c.twa_indicator) AS twa_beneficiaries
     FROM social_protection_groupbeneficiary gb
     CROSS JOIN config c
@@ -318,8 +325,8 @@ household_stats AS (
 individual_demographics AS (
     SELECT
         COUNT(DISTINCT i."UUID") AS total_individuals,
-        COUNT(DISTINCT i."UUID") FILTER (WHERE i."Json_ext"->>'sexe' = c.male_gender) AS total_male,
-        COUNT(DISTINCT i."UUID") FILTER (WHERE i."Json_ext"->>'sexe' = c.female_gender) AS total_female
+        COUNT(DISTINCT i."UUID") FILTER (WHERE UPPER(LEFT(i."Json_ext"->>'sexe', 1)) = 'M') AS total_male,
+        COUNT(DISTINCT i."UUID") FILTER (WHERE UPPER(LEFT(i."Json_ext"->>'sexe', 1)) = 'F') AS total_female
     FROM individual_individual i
     CROSS JOIN config c
     WHERE i."isDeleted" = false

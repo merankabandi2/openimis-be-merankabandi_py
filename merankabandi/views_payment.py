@@ -36,7 +36,7 @@ WITH combined_payments AS (
         'BENEFIT_CONSUMPTION' AS payment_source,
         bc."Amount" AS amount_paid,
         1 AS beneficiary_count,
-        CASE WHEN ind."Json_ext"->>'sexe' = 'F' THEN 1 ELSE 0 END AS female_count,
+        CASE WHEN UPPER(LEFT(ind."Json_ext"->>'sexe', 1)) = 'F' THEN 1 ELSE 0 END AS female_count,
         CASE WHEN grp."Json_ext"->>'menage_mutwa' = 'OUI' THEN 1 ELSE 0 END AS twa_count,
         bc.status AS payment_status,
         p."Json_ext"->>'payment_agency_name' AS payment_point_name
