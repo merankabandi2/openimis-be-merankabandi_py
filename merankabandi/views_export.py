@@ -335,3 +335,169 @@ def export_result_framework(request):
         from rest_framework.response import Response
         from rest_framework import status as rf_status
         return Response({'success': False, 'error': str(e)}, status=rf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ─── Activity Table Exports (xlsx) ───────────────────────────────────────────
+
+def _activity_xlsx(queryset, columns, sheet_title, filename):
+    """Generic xlsx builder for activity tables."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_title
+
+    header_font = Font(name='Calibri', bold=True, size=10, color='FFFFFF')
+    header_fill = PatternFill(start_color='2E4057', end_color='2E4057', fill_type='solid')
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin'),
+    )
+
+    # Headers
+    for col_idx, (label, _, width) in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+        cell.border = thin_border
+        ws.column_dimensions[cell.column_letter].width = width
+
+    # Data rows
+    for row_idx, obj in enumerate(queryset, 2):
+        for col_idx, (_, getter, _) in enumerate(columns, 1):
+            val = getter(obj)
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            cell.border = thin_border
+            cell.font = Font(name='Calibri', size=10)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_sensitization_trainings(request):
+    """Export Sensitization/Formation data as xlsx."""
+    from .models import SensitizationTraining
+
+    qs = SensitizationTraining.objects.select_related(
+        'location', 'location__parent', 'location__parent__parent',
+    ).order_by('-sensitization_date')
+
+    # Apply filters from query params
+    province_id = request.query_params.get('province_id')
+    if province_id:
+        qs = qs.filter(location__parent__parent__id=province_id)
+    category = request.query_params.get('category')
+    if category:
+        qs = qs.filter(category__icontains=category)
+    validation_status = request.query_params.get('validation_status')
+    if validation_status:
+        qs = qs.filter(validation_status=validation_status)
+    facilitator = request.query_params.get('facilitator')
+    if facilitator:
+        qs = qs.filter(facilitator__icontains=facilitator)
+
+    def _get_category_label(obj):
+        labels = dict(SensitizationTraining.THEME_CATEGORIES)
+        return labels.get(obj.category, obj.category or '')
+
+    def _get_modules(obj):
+        if not obj.modules:
+            return ''
+        return ', '.join(obj.modules)
+
+    columns = [
+        ('Date', lambda o: str(o.sensitization_date) if o.sensitization_date else '', 12),
+        ('Province', lambda o: o.location.parent.parent.name if o.location and o.location.parent and o.location.parent.parent else '', 15),
+        ('Commune', lambda o: o.location.parent.name if o.location and o.location.parent else '', 15),
+        ('Colline', lambda o: o.location.name if o.location else '', 15),
+        ('Catégorie', _get_category_label, 30),
+        ('Thèmes', _get_modules, 30),
+        ('Facilitateur', lambda o: o.facilitator or '', 20),
+        ('Hommes', lambda o: o.male_participants, 10),
+        ('Femmes', lambda o: o.female_participants, 10),
+        ('Twa', lambda o: o.twa_participants, 10),
+        ('Observations', lambda o: o.observations or '', 25),
+        ('Statut', lambda o: o.validation_status or '', 12),
+    ]
+
+    timestamp = datetime.now().strftime('%Y%m%d')
+    return _activity_xlsx(qs, columns, 'Sensibilisations', f'sensibilisations_{timestamp}.xlsx')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_micro_projects(request):
+    """Export Micro-projets data as xlsx."""
+    from .models import MicroProject
+
+    qs = MicroProject.objects.select_related(
+        'location', 'location__parent', 'location__parent__parent',
+    ).order_by('-report_date')
+
+    province_id = request.query_params.get('province_id')
+    if province_id:
+        qs = qs.filter(location__parent__parent__id=province_id)
+    validation_status = request.query_params.get('validation_status')
+    if validation_status:
+        qs = qs.filter(validation_status=validation_status)
+
+    columns = [
+        ('Date', lambda o: str(o.report_date) if o.report_date else '', 12),
+        ('Province', lambda o: o.location.parent.parent.name if o.location and o.location.parent and o.location.parent.parent else '', 15),
+        ('Commune', lambda o: o.location.parent.name if o.location and o.location.parent else '', 15),
+        ('Colline', lambda o: o.location.name if o.location else '', 15),
+        ('Type de projet', lambda o: o.project_type or '', 25),
+        ('Hommes', lambda o: o.male_participants, 10),
+        ('Femmes', lambda o: o.female_participants, 10),
+        ('Twa', lambda o: o.twa_participants, 10),
+        ('Observations', lambda o: o.observations or '', 25),
+        ('Statut', lambda o: o.validation_status or '', 12),
+    ]
+
+    timestamp = datetime.now().strftime('%Y%m%d')
+    return _activity_xlsx(qs, columns, 'Micro-projets', f'micro_projets_{timestamp}.xlsx')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_behavior_change_promotions(request):
+    """Export Promotion du changement de comportement data as xlsx."""
+    from .models import BehaviorChangePromotion
+
+    qs = BehaviorChangePromotion.objects.select_related(
+        'location', 'location__parent', 'location__parent__parent',
+    ).order_by('-report_date')
+
+    province_id = request.query_params.get('province_id')
+    if province_id:
+        qs = qs.filter(location__parent__parent__id=province_id)
+    validation_status = request.query_params.get('validation_status')
+    if validation_status:
+        qs = qs.filter(validation_status=validation_status)
+
+    columns = [
+        ('Date', lambda o: str(o.report_date) if o.report_date else '', 12),
+        ('Province', lambda o: o.location.parent.parent.name if o.location and o.location.parent and o.location.parent.parent else '', 15),
+        ('Commune', lambda o: o.location.parent.name if o.location and o.location.parent else '', 15),
+        ('Colline', lambda o: o.location.name if o.location else '', 15),
+        ('Hommes', lambda o: o.male_participants, 10),
+        ('Femmes', lambda o: o.female_participants, 10),
+        ('Twa', lambda o: o.twa_participants, 10),
+        ('Observations', lambda o: o.observations or '', 25),
+        ('Statut', lambda o: o.validation_status or '', 12),
+    ]
+
+    timestamp = datetime.now().strftime('%Y%m%d')
+    return _activity_xlsx(qs, columns, 'Promotions', f'promotions_comportement_{timestamp}.xlsx')
