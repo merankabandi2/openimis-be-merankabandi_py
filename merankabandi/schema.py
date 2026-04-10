@@ -430,18 +430,30 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         queryset = Query._apply_user_location_filter(
             SensitizationTraining.objects.all(), info.context.user
         )
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            queryset = queryset.filter(Query._get_location_filters(parent_location, parent_location_level))
         return gql_optimizer.query(queryset, info)
 
     def resolve_behavior_change_promotion(self, info, **kwargs):
         queryset = Query._apply_user_location_filter(
             BehaviorChangePromotion.objects.all(), info.context.user
         )
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            queryset = queryset.filter(Query._get_location_filters(parent_location, parent_location_level))
         return gql_optimizer.query(queryset, info)
 
     def resolve_micro_project(self, info, **kwargs):
         queryset = Query._apply_user_location_filter(
             MicroProject.objects.all(), info.context.user
         )
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            queryset = queryset.filter(Query._get_location_filters(parent_location, parent_location_level))
         return gql_optimizer.query(queryset, info)
 
     def resolve_monetary_transfer(self, info, **kwargs):
