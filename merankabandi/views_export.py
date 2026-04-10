@@ -441,10 +441,11 @@ def export_sensitization_trainings(request):
 def export_micro_projects(request):
     """Export Micro-projets data as xlsx."""
     from .models import MicroProject
+    from django.db.models import Max
 
     qs = MicroProject.objects.select_related(
         'location', 'location__parent', 'location__parent__parent',
-    ).order_by('-report_date')
+    ).order_by('location__name', '-report_date')
 
     province_id = request.query_params.get('province_id')
     if province_id:
@@ -453,8 +454,14 @@ def export_micro_projects(request):
     if validation_status:
         qs = qs.filter(validation_status=validation_status)
 
+    # Identify latest report per colline
+    latest_dates = {
+        r['location_id']: r['latest_date']
+        for r in qs.values('location_id').annotate(latest_date=Max('report_date'))
+    }
+
     columns = [
-        ('Date', lambda o: str(o.report_date) if o.report_date else '', 12),
+        ('Date du rapport', lambda o: str(o.report_date) if o.report_date else '', 12),
         ('Province', lambda o: o.location.parent.parent.name if o.location and o.location.parent and o.location.parent.parent else '', 15),
         ('Commune', lambda o: o.location.parent.name if o.location and o.location.parent else '', 15),
         ('Colline', lambda o: o.location.name if o.location else '', 15),
@@ -462,23 +469,25 @@ def export_micro_projects(request):
         ('Hommes', lambda o: o.male_participants, 10),
         ('Femmes', lambda o: o.female_participants, 10),
         ('Twa', lambda o: o.twa_participants, 10),
+        ('Dernier', lambda o: 'Oui' if latest_dates.get(o.location_id) == o.report_date else '', 8),
         ('Observations', lambda o: o.observations or '', 25),
         ('Statut', lambda o: o.validation_status or '', 12),
     ]
 
     timestamp = datetime.now().strftime('%Y%m%d')
-    return _activity_xlsx(qs, columns, 'Micro-projets', f'micro_projets_{timestamp}.xlsx')
+    return _activity_xlsx(qs, columns, 'État des micro-projets', f'etat_micro_projets_{timestamp}.xlsx')
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def export_behavior_change_promotions(request):
-    """Export Promotion du changement de comportement data as xlsx."""
+    """Export Suivi de l'adoption MIP/MACH data as xlsx."""
     from .models import BehaviorChangePromotion
+    from django.db.models import Max
 
     qs = BehaviorChangePromotion.objects.select_related(
         'location', 'location__parent', 'location__parent__parent',
-    ).order_by('-report_date')
+    ).order_by('location__name', '-report_date')
 
     province_id = request.query_params.get('province_id')
     if province_id:
@@ -487,17 +496,24 @@ def export_behavior_change_promotions(request):
     if validation_status:
         qs = qs.filter(validation_status=validation_status)
 
+    # Identify latest report per colline
+    latest_dates = {
+        r['location_id']: r['latest_date']
+        for r in qs.values('location_id').annotate(latest_date=Max('report_date'))
+    }
+
     columns = [
-        ('Date', lambda o: str(o.report_date) if o.report_date else '', 12),
+        ('Date du rapport', lambda o: str(o.report_date) if o.report_date else '', 12),
         ('Province', lambda o: o.location.parent.parent.name if o.location and o.location.parent and o.location.parent.parent else '', 15),
         ('Commune', lambda o: o.location.parent.name if o.location and o.location.parent else '', 15),
         ('Colline', lambda o: o.location.name if o.location else '', 15),
-        ('Hommes', lambda o: o.male_participants, 10),
-        ('Femmes', lambda o: o.female_participants, 10),
+        ('Ménages touchés H', lambda o: o.male_participants, 10),
+        ('Ménages touchés F', lambda o: o.female_participants, 10),
         ('Twa', lambda o: o.twa_participants, 10),
+        ('Dernier', lambda o: 'Oui' if latest_dates.get(o.location_id) == o.report_date else '', 8),
         ('Observations', lambda o: o.observations or '', 25),
         ('Statut', lambda o: o.validation_status or '', 12),
     ]
 
     timestamp = datetime.now().strftime('%Y%m%d')
-    return _activity_xlsx(qs, columns, 'Promotions', f'promotions_comportement_{timestamp}.xlsx')
+    return _activity_xlsx(qs, columns, "Suivi de l'adoption MIP/MACH", f'suivi_adoption_{timestamp}.xlsx')

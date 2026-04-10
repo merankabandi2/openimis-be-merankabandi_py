@@ -121,6 +121,124 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
         return query.distinct().count()
 
+    def _count_snapshot_beneficiaries(self, table_name, date_from=None, date_to=None,
+                                       location=None, extra_where='', extra_params=None):
+        """Aggregate snapshot entities using latest-per-colline logic.
+
+        For snapshot entities (BehaviorChangePromotion, MicroProject), the correct
+        count is the sum of the latest report per colline within the period.
+        """
+        from django.db import connection
+
+        conditions = ["validation_status = 'VALIDATED'"]
+        params = []
+
+        if date_from:
+            conditions.append("report_date >= %s")
+            params.append(date_from)
+        if date_to:
+            conditions.append("report_date <= %s")
+            params.append(date_to)
+        if location:
+            conditions.append("""
+                location_id IN (
+                    SELECT l1."LocationId" FROM "tblLocations" l1
+                    JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+                    WHERE l2."ParentLocationId" = %s
+                )
+            """)
+            params.append(location.id if hasattr(location, 'id') else location)
+
+        if extra_where:
+            conditions.append(extra_where)
+        if extra_params:
+            params.extend(extra_params)
+
+        where = ' AND '.join(conditions)
+
+        sql = f"""
+            WITH latest AS (
+                SELECT DISTINCT ON (location_id)
+                    location_id, male_participants, female_participants, twa_participants
+                FROM {table_name}
+                WHERE {where}
+                ORDER BY location_id, report_date DESC
+            )
+            SELECT
+                COALESCE(SUM(male_participants + female_participants), 0),
+                COALESCE(SUM(male_participants), 0),
+                COALESCE(SUM(female_participants), 0),
+                COALESCE(SUM(twa_participants), 0)
+            FROM latest
+        """
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+            return {'total': row[0], 'male': row[1], 'female': row[2], 'twa': row[3]}
+        except Exception as e:
+            return {'total': 0, 'male': 0, 'female': 0, 'twa': 0, 'error': str(e)}
+
+    def _count_snapshot_beneficiaries(self, table_name, date_from=None, date_to=None,
+                                       location=None, extra_where='', extra_params=None):
+        """Aggregate snapshot entities using latest-per-colline logic.
+
+        For snapshot entities (BehaviorChangePromotion, MicroProject), the correct
+        count is the sum of the latest report per colline within the period.
+        """
+        from django.db import connection
+
+        conditions = ["validation_status = 'VALIDATED'"]
+        params = []
+
+        if date_from:
+            conditions.append("report_date >= %s")
+            params.append(date_from)
+        if date_to:
+            conditions.append("report_date <= %s")
+            params.append(date_to)
+        if location:
+            conditions.append("""
+                location_id IN (
+                    SELECT l1."LocationId" FROM "tblLocations" l1
+                    JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+                    WHERE l2."ParentLocationId" = %s
+                )
+            """)
+            params.append(location.id if hasattr(location, 'id') else location)
+
+        if extra_where:
+            conditions.append(extra_where)
+        if extra_params:
+            params.extend(extra_params)
+
+        where = ' AND '.join(conditions)
+
+        sql = f"""
+            WITH latest AS (
+                SELECT DISTINCT ON (location_id)
+                    location_id, male_participants, female_participants, twa_participants
+                FROM {table_name}
+                WHERE {where}
+                ORDER BY location_id, report_date DESC
+            )
+            SELECT
+                COALESCE(SUM(male_participants + female_participants), 0),
+                COALESCE(SUM(male_participants), 0),
+                COALESCE(SUM(female_participants), 0),
+                COALESCE(SUM(twa_participants), 0)
+            FROM latest
+        """
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+            return {'total': row[0], 'male': row[1], 'female': row[2], 'twa': row[3]}
+        except Exception as e:
+            return {'total': 0, 'male': 0, 'female': 0, 'twa': 0, 'error': str(e)}
+
     def calculate_indicator_value(self, indicator_id, date_from=None, date_to=None, location=None):
         """Calculate indicator value based on its configuration"""
         try:
@@ -335,30 +453,16 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_employment(self, indicator, date_from, date_to, location, config):
-        """Count beneficiaries of employment interventions (Indicator 11)"""
-        # Count from training and microproject participants
-        microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-
-        if date_from:
-            # training_query = training_query.filter(sensitization_date__gte=date_from)
-            microproject_query = microproject_query.filter(report_date__gte=date_from)
-        if date_to:
-            # training_query = training_query.filter(sensitization_date__lte=date_to)
-            microproject_query = microproject_query.filter(report_date__lte=date_to)
-        if location:
-            # training_query = training_query.filter(location__parent__parent=location)
-            microproject_query = microproject_query.filter(location__parent__parent=location)
-
-        # Sum participants
-        # training_total = training_query.aggregate(
-        #     total=Sum('male_participants') + Sum('female_participants')
-        # )['total'] or 0
-
-        microproject_total = microproject_query.aggregate(
-            total=Sum('male_participants') + Sum('female_participants')
-        )['total'] or 0
-
-        return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
+        """Count beneficiaries of employment interventions (Indicator 11).
+        MicroProject is a snapshot — use latest-per-colline aggregation.
+        """
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location,
+        )
+        breakdowns = self._compute_breakdowns(
+            benefit_plan_codes=config.get('benefit_plan_codes'), location=location,
+        )
+        return {'value': result['total'], 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_provinces_with_transfers(self, indicator, date_from, date_to, location, config):
         """Count provinces implementing transfers (Indicator 16).
@@ -450,60 +554,37 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_employment_women(self, indicator, date_from, date_to, location, config):
-        # Count from microproject participants
-        microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-
-        if date_from:
-            microproject_query = microproject_query.filter(report_date__gte=date_from)
-        if date_to:
-            microproject_query = microproject_query.filter(report_date__lte=date_to)
-        if location:
-            microproject_query = microproject_query.filter(location__parent__parent=location)
-
-        # Sum participants
-        microproject_total = microproject_query.aggregate(
-            total=Sum('female_participants')
-        )['total'] or 0
-
-        return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
+        """Count female employment beneficiaries — latest per colline."""
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location,
+        )
+        return {'value': result['female'], 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_employment_refugees(self, indicator, date_from, date_to, location, config):
-        # Count from microproject participants
-        microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-
-        if date_from:
-            microproject_query = microproject_query.filter(report_date__gte=date_from)
-        if date_to:
-            microproject_query = microproject_query.filter(report_date__lte=date_to)
-        if location:
-            microproject_query = microproject_query.filter(
-                location__name__in=REFUGEE_COLLINES)
-
-        # Sum participants
-        microproject_total = microproject_query.aggregate(
-            total=Sum('male_participants') + Sum('female_participants')
-        )['total'] or 0
-
-        return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
+        """Count refugee employment beneficiaries — latest per colline in refugee areas."""
+        if not REFUGEE_COLLINES:
+            return {'value': 0, 'calculation_type': 'SYSTEM'}
+        placeholders = ','.join(['%s'] * len(REFUGEE_COLLINES))
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location=None,
+            extra_where=f'location_id IN (SELECT "LocationId" FROM "tblLocations" WHERE "LocationName" IN ({placeholders}))',
+            extra_params=REFUGEE_COLLINES,
+        )
+        return {'value': result['total'], 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_employment_host(self, indicator, date_from, date_to, location, config):
-        # Count from microproject participants
-        microproject_query = MicroProject.objects.filter(validation_status='VALIDATED')
-
-        if date_from:
-            microproject_query = microproject_query.filter(report_date__gte=date_from)
-        if date_to:
-            microproject_query = microproject_query.filter(report_date__lte=date_to)
-        if location:
-            microproject_query = microproject_query.filter(
-                location__parent__name__in=HOST_COMMUNES)
-
-        # Sum participants
-        microproject_total = microproject_query.aggregate(
-            total=Sum('male_participants') + Sum('female_participants')
-        )['total'] or 0
-
-        return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
+        """Count host community employment beneficiaries — latest per colline in host communes."""
+        placeholders = ','.join(['%s'] * len(HOST_COMMUNES))
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location=None,
+            extra_where=f"""location_id IN (
+                SELECT l1."LocationId" FROM "tblLocations" l1
+                JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+                WHERE l2."LocationName" IN ({placeholders})
+            )""",
+            extra_params=HOST_COMMUNES,
+        )
+        return {'value': result['total'], 'calculation_type': 'SYSTEM'}
 
     def _count_farmers_received_services(self, indicator, date_from, date_to, location, config):
         # Count from microproject participants
@@ -524,75 +605,41 @@ class ResultFrameworkService:
         return {'value': microproject_total, 'calculation_type': 'SYSTEM'}
 
     def _calculate_behavior_change_participation(self, indicator, date_from, date_to, location, config):
-        """Calculate percentage of beneficiaries participating in behavior change activities (Indicator 18)"""
-        # Count beneficiaries participating in sensitization trainings
-        training_query = SensitizationTraining.objects.filter(validation_status='VALIDATED')
+        """Calculate percentage of beneficiaries adopting behavior changes (Indicator 18).
+        BCP is a snapshot — use latest per colline for the numerator.
+        """
+        bcp_result = self._count_snapshot_beneficiaries(
+            'merankabandi_behaviorchangepromotion', date_from, date_to, location,
+        )
+        total_participants = bcp_result['total']
 
-        if date_from:
-            training_query = training_query.filter(report_date__gte=date_from)
-        if date_to:
-            training_query = training_query.filter(report_date__lte=date_to)
-        if location:
-            training_query = training_query.filter(location__parent__parent=location)
-
-        # Get total participants
-        total_participants = training_query.aggregate(
-            total=Sum('male_participants') + Sum('female_participants')
-        )['total'] or 0
-
-        # Get total beneficiaries in the area
         beneficiary_query = GroupBeneficiary.objects.filter(
-            is_deleted=False,
-            status__in=['ACTIVE', 'VALIDATED']
+            is_deleted=False, status__in=['ACTIVE', 'VALIDATED']
         )
         if location:
             beneficiary_query = beneficiary_query.filter(group__location__parent__parent=location)
-
         total_beneficiaries = beneficiary_query.count()
 
         if total_beneficiaries > 0:
             percentage = (total_participants / total_beneficiaries) * 100
             return {'value': min(percentage, 100), 'calculation_type': 'SYSTEM'}
-
         return {'value': 0, 'calculation_type': 'SYSTEM'}
 
     def _count_approved_business_plans(self, indicator, date_from, date_to, location, config):
-        """Count beneficiaries with approved business plans (Indicator 20)"""
-        # Count from microprojects with approved status
-        query = MicroProject.objects.filter(
-            validation_status='VALIDATED'
+        """Count beneficiaries with approved business plans (Indicator 20).
+        MicroProject is a snapshot — latest per colline.
+        """
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location,
         )
-
-        if date_from:
-            query = query.filter(report_date__gte=date_from)
-        if date_to:
-            query = query.filter(report_date__lte=date_to)
-        if location:
-            query = query.filter(location__parent__parent=location)
-
-        # Sum all participants
-        total = query.aggregate(
-            total=Sum('male_participants') + Sum('female_participants')
-        )['total'] or 0
-
-        return {'value': total, 'calculation_type': 'MIXED'}
+        return {'value': result['total'], 'calculation_type': 'MIXED'}
 
     def _count_approved_business_plans_women(self, indicator, date_from, date_to, location, config):
-        """Count female beneficiaries with approved business plans (Indicator 21)"""
-        query = MicroProject.objects.filter(
-            validation_status='VALIDATED'
+        """Count female beneficiaries with approved business plans (Indicator 21)."""
+        result = self._count_snapshot_beneficiaries(
+            'merankabandi_microproject', date_from, date_to, location,
         )
-
-        if date_from:
-            query = query.filter(report_date__gte=date_from)
-        if date_to:
-            query = query.filter(report_date__lte=date_to)
-        if location:
-            query = query.filter(location__parent__parent=location)
-
-        total = query.aggregate(total=Sum('female_participants'))['total'] or 0
-
-        return {'value': total, 'calculation_type': 'MIXED'}
+        return {'value': result['female'], 'calculation_type': 'MIXED'}
 
     def _count_approved_business_plans_batwa(self, indicator, date_from, date_to, location, config):
         """Count Batwa beneficiaries with approved business plans (Indicator 22)"""
@@ -601,20 +648,31 @@ class ResultFrameworkService:
         return self._get_latest_achievement(indicator, date_from, date_to)
 
     def _count_climate_resilient_activities(self, indicator, date_from, date_to, location, config):
-        """Count climate-resilient productive activities (Indicator 23)"""
-        query = MicroProject.objects.filter(
-            validation_status='VALIDATED'
-        )
-
+        """Count distinct collines with micro-project activity (Indicator 23).
+        MicroProject is a snapshot — count distinct collines, not total records.
+        """
+        from django.db import connection as db_connection
+        conditions = ["validation_status = 'VALIDATED'"]
+        params = []
         if date_from:
-            query = query.filter(report_date__gte=date_from)
+            conditions.append("report_date >= %s")
+            params.append(date_from)
         if date_to:
-            query = query.filter(report_date__lte=date_to)
+            conditions.append("report_date <= %s")
+            params.append(date_to)
         if location:
-            query = query.filter(location__parent__parent=location)
-
-        count = query.count()
-        return {'value': count, 'calculation_type': 'MIXED'}
+            conditions.append("""location_id IN (
+                SELECT l1."LocationId" FROM "tblLocations" l1
+                JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
+                WHERE l2."ParentLocationId" = %s
+            )""")
+            params.append(location.id if hasattr(location, 'id') else location)
+        where = ' AND '.join(conditions)
+        sql = f"SELECT COUNT(DISTINCT location_id) FROM merankabandi_microproject WHERE {where}"
+        with db_connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            count = cursor.fetchone()[0]
+        return {'value': count or 0, 'calculation_type': 'MIXED'}
 
     def _calculate_digital_payment_percentage(self, indicator, date_from, date_to, location, config):
         """Calculate percentage of beneficiaries receiving digital payments (Indicator 28)"""

@@ -12,52 +12,49 @@ Kept:
 MONITORING_VIEWS = {
     'dashboard_activities_summary': {
         'sql': '''CREATE MATERIALIZED VIEW dashboard_activities_summary AS
-WITH all_activities AS (
-    SELECT
-        'BehaviorChangePromotion'::text AS activity_type,
-        report_date AS activity_date,
-        location_id,
-        validation_status,
-        (male_participants + female_participants + twa_participants) AS total_participants,
-        male_participants,
-        female_participants,
-        twa_participants,
-        0 AS agriculture_beneficiaries,
-        0 AS livestock_beneficiaries,
-        0 AS commerce_services_beneficiaries
-    FROM merankabandi_behaviorchangepromotion
-
-    UNION ALL
-
+WITH
+-- Events: all training sessions (additive — each session is a distinct activity)
+training_events AS (
     SELECT
         'SensitizationTraining'::text AS activity_type,
         sensitization_date AS activity_date,
-        location_id,
-        validation_status,
+        location_id, validation_status,
         (male_participants + female_participants + twa_participants) AS total_participants,
-        male_participants,
-        female_participants,
-        twa_participants,
-        0 AS agriculture_beneficiaries,
-        0 AS livestock_beneficiaries,
-        0 AS commerce_services_beneficiaries
+        male_participants, female_participants, twa_participants,
+        0 AS agriculture_beneficiaries, 0 AS livestock_beneficiaries, 0 AS commerce_services_beneficiaries
     FROM merankabandi_sensitizationtraining
-
-    UNION ALL
-
-    SELECT
+),
+-- Snapshots: latest per colline only (periodic assessment, NOT additive across time)
+latest_bcp AS (
+    SELECT DISTINCT ON (location_id)
+        'BehaviorChangePromotion'::text AS activity_type,
+        report_date AS activity_date,
+        location_id, validation_status,
+        (male_participants + female_participants + twa_participants) AS total_participants,
+        male_participants, female_participants, twa_participants,
+        0 AS agriculture_beneficiaries, 0 AS livestock_beneficiaries, 0 AS commerce_services_beneficiaries
+    FROM merankabandi_behaviorchangepromotion
+    WHERE validation_status = 'VALIDATED'
+    ORDER BY location_id, report_date DESC
+),
+latest_mp AS (
+    SELECT DISTINCT ON (location_id)
         'MicroProject'::text AS activity_type,
         report_date AS activity_date,
-        location_id,
-        validation_status,
+        location_id, validation_status,
         (male_participants + female_participants + twa_participants) AS total_participants,
-        male_participants,
-        female_participants,
-        twa_participants,
-        agriculture_beneficiaries,
-        livestock_beneficiaries,
-        commerce_services_beneficiaries
+        male_participants, female_participants, twa_participants,
+        agriculture_beneficiaries, livestock_beneficiaries, commerce_services_beneficiaries
     FROM merankabandi_microproject
+    WHERE validation_status = 'VALIDATED'
+    ORDER BY location_id, report_date DESC
+),
+all_activities AS (
+    SELECT * FROM training_events
+    UNION ALL
+    SELECT * FROM latest_bcp
+    UNION ALL
+    SELECT * FROM latest_mp
 )
 SELECT
     loc."LocationId" AS location_id,
