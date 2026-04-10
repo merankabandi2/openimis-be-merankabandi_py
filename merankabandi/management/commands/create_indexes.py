@@ -266,13 +266,13 @@ class Command(BaseCommand):
                 'name': 'idx_ticket_json_case_type',
                 'table': 'grievance_social_protection_ticket',
                 'type': 'GIN',
-                'columns': '(("json_ext"->\'case_type\'))'
+                'columns': '(("Json_ext"->\'case_type\'))'
             },
             {
                 'name': 'idx_ticket_json_reporter_anonymous',
                 'table': 'grievance_social_protection_ticket',
                 'type': 'GIN',
-                'columns': '(("json_ext"->\'reporter\'->\'is_anonymous\'))'
+                'columns': '(("Json_ext"->\'reporter\'->\'is_anonymous\'))'
             },
 
             # --- Payroll: payment tracking ---
