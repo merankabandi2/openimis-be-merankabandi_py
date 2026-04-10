@@ -15,9 +15,11 @@ from django.http import HttpResponse, FileResponse, HttpResponseForbidden, HttpR
 from django.template.loader import render_to_string
 
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
+from oauth2_provider.contrib.rest_framework import OAuth2Authentication
 from rest_framework.response import Response
 
 from oauth2_provider.contrib.rest_framework import TokenHasScope
@@ -378,6 +380,7 @@ def generate_location_cards_view(request, location_id):
 
 
 @api_view(['GET'])
+@authentication_classes([OAuth2Authentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
@@ -405,6 +408,7 @@ def beneficiary_photo_view(request, type, id):
 
 
 @api_view(['GET'])
+@authentication_classes([OAuth2Authentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def beneficiary_photos_view(request, socialid):
     types = ['photo', 'photo_ci1', 'photo_ci2']
