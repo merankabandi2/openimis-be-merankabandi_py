@@ -65,6 +65,7 @@ class Command(BaseCommand):
         parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
         parser.add_argument('--fresh-grievances', action='store_true',
                             help='Delete existing grievance tickets and refetch from KoBo')
+        parser.add_argument('--skip-kobo', action='store_true', help='Skip KoBo data pull')
         parser.add_argument('--suivi-file', default=None,
                             help='Path to Fiche de Suivi Excel file for grievance tracking import')
 
@@ -118,12 +119,13 @@ class Command(BaseCommand):
         self._step('9. Backfilling grievance task order', dry_run, self._backfill_task_order)
 
         # Step 10: Pull grievance data from KoBo
-        if options['fresh_grievances']:
-            # Fresh mode: delete all, then re-pull
+        if options['skip_kobo']:
+            self.stdout.write('\n10. Pulling grievance data from KoBo...')
+            self.stdout.write('  Skipped (--skip-kobo)')
+        elif options['fresh_grievances']:
             self._step('10. Refreshing grievances from KoBo (fresh)', dry_run,
                        self._refresh_grievances)
         else:
-            # Normal mode: idempotent pull (skips existing)
             self._step('10. Pulling grievance data from KoBo', dry_run,
                        lambda: call_command('pullkobodata', 'grievance'))
 
