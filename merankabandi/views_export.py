@@ -288,39 +288,76 @@ def export_subcomponents_report(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def export_result_framework(request):
-    """Export the Result Framework as a styled xlsx, streamed directly."""
-    from .models import Section
+    """Export the Result Framework as a styled xlsx.
+
+    Uses the latest snapshot if available and less than 1 year old.
+    Otherwise computes fresh data (slow). The snapshot date is included
+    in the export filename and title.
+    """
+    from .models import ResultFrameworkSnapshot, Section
     from .result_framework_service import ResultFrameworkService
     from .result_framework_mutations import _generate_xlsx
+    from django.utils import timezone
+    from dateutil.relativedelta import relativedelta
 
     date_from = request.query_params.get('date_from')
     date_to = request.query_params.get('date_to')
+    force_fresh = request.query_params.get('fresh', '').lower() in ('1', 'true')
 
     try:
-        service = ResultFrameworkService()
-        sections_data = []
-        for section in Section.objects.all().prefetch_related('indicators'):
-            section_entry = {'name': section.name, 'indicators': []}
-            for indicator in section.indicators.all():
-                result = service.calculate_indicator_value(
-                    indicator.id, date_from=date_from, date_to=date_to,
-                )
-                section_entry['indicators'].append({
-                    'name': indicator.name,
-                    'pbc': indicator.pbc or '',
-                    'baseline': float(indicator.baseline) if indicator.baseline else 0,
-                    'target': float(indicator.target) if indicator.target else 0,
-                    'achieved': result.get('value', 0),
-                })
-            sections_data.append(section_entry)
+        snapshot = None
+        snapshot_date_str = None
 
-        wb = _generate_xlsx(sections_data, date_from, date_to)
+        if not force_fresh:
+            # Try to use latest snapshot
+            one_year_ago = timezone.now() - relativedelta(years=1)
+            snapshot = (
+                ResultFrameworkSnapshot.objects
+                .filter(snapshot_date__gte=one_year_ago)
+                .order_by('-snapshot_date')
+                .first()
+            )
+
+        if snapshot and snapshot.data:
+            # Use snapshot data (fast)
+            sections_data = snapshot.data.get('sections', [])
+            snapshot_date_str = snapshot.snapshot_date.strftime('%d/%m/%Y')
+            logger.info(f"Result framework export using snapshot from {snapshot_date_str}")
+        else:
+            # Compute fresh (slow)
+            logger.info("Result framework export: no recent snapshot, computing fresh...")
+            service = ResultFrameworkService()
+            sections_data = []
+            for section in Section.objects.all().prefetch_related('indicators'):
+                section_entry = {'name': section.name, 'indicators': []}
+                for indicator in section.indicators.all():
+                    result = service.calculate_indicator_value(
+                        indicator.id, date_from=date_from, date_to=date_to,
+                    )
+                    is_stock_count = (
+                        float(indicator.baseline or 0) > 0
+                        and 'Pourcentage' not in indicator.name
+                        and 'provinces' not in indicator.name.lower()
+                    )
+                    section_entry['indicators'].append({
+                        'name': indicator.name,
+                        'pbc': indicator.pbc or '',
+                        'baseline': float(indicator.baseline) if indicator.baseline else 0,
+                        'target': float(indicator.target) if indicator.target else 0,
+                        'include_baseline': is_stock_count,
+                        'achieved': result.get('value', 0),
+                        'breakdowns': result.get('breakdowns', []),
+                    })
+                sections_data.append(section_entry)
+            snapshot_date_str = datetime.now().strftime('%d/%m/%Y')
+
+        wb = _generate_xlsx(sections_data, date_from, date_to, snapshot_date=snapshot_date_str)
 
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime('%Y%m%d')
         filename = f'cadre_resultats_{timestamp}.xlsx'
 
         response = HttpResponse(
@@ -331,7 +368,7 @@ def export_result_framework(request):
         return response
 
     except Exception as e:
-        logger.error(f"Result framework export error: {e}")
+        logger.error(f"Result framework export error: {e}", exc_info=True)
         from rest_framework.response import Response
         from rest_framework import status as rf_status
         return Response({'success': False, 'error': str(e)}, status=rf_status.HTTP_500_INTERNAL_SERVER_ERROR)

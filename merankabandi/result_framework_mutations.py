@@ -118,7 +118,7 @@ class UpdateIndicatorAchievementMutation(OpenIMISMutation):
             }
 
 
-def _generate_xlsx(sections_data, date_from=None, date_to=None):
+def _generate_xlsx(sections_data, date_from=None, date_to=None, snapshot_date=None):
     """Generate an xlsx workbook from result framework data."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -150,7 +150,10 @@ def _generate_xlsx(sections_data, date_from=None, date_to=None):
     title_cell.alignment = Alignment(horizontal="center")
 
     ws.merge_cells("A2:H2")
-    ws["A2"].value = f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+    subtitle = f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+    if snapshot_date:
+        subtitle += f" — Données du {snapshot_date}"
+    ws["A2"].value = subtitle
     ws["A2"].font = Font(name="Calibri", italic=True, size=9, color="666666")
     ws["A2"].alignment = Alignment(horizontal="center")
 
