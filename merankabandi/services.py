@@ -431,10 +431,15 @@ class PaymentAccountAttributionService:
         Returns:
             QuerySet: Filtered queryset of beneficiaries
         """
+        # Use string values for status to support both upstream and fork versions
+        # of BeneficiaryStatus (fork adds VALIDATED, upstream doesn't have it)
+        valid_statuses = ['ACTIVE']
+        if hasattr(BeneficiaryStatus, 'VALIDATED'):
+            valid_statuses.append('VALIDATED')
         queryset = GroupBeneficiary.objects.filter(
             json_ext__moyen_telecom__msisdn__isnull=False,
             json_ext__moyen_telecom__status='SUCCESS',
-            status__in=[BeneficiaryStatus.ACTIVE, BeneficiaryStatus.VALIDATED]
+            status__in=valid_statuses
         ).exclude(
             # Exclude only ACCEPTED accounts (allow REJECTED to be reprocessed)
             Q(json_ext__moyen_paiement__status__isnull=False) & Q(json_ext__moyen_paiement__status='ACCEPTED')
