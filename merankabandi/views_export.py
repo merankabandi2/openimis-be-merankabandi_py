@@ -514,7 +514,7 @@ def export_micro_projects(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def export_behavior_change_promotions(request):
-    """Export Suivi de l'adoption MIP/MACH data as xlsx."""
+    """Export Suivi de l'adoption MACH data as xlsx."""
     from .models import BehaviorChangePromotion
     from django.db.models import Max
 
@@ -549,4 +549,4 @@ def export_behavior_change_promotions(request):
     ]
 
     timestamp = datetime.now().strftime('%Y%m%d')
-    return _activity_xlsx(qs, columns, "Suivi de l'adoption MIP/MACH", f'suivi_adoption_{timestamp}.xlsx')
+    return _activity_xlsx(qs, columns, "Suivi de l'adoption MACH", f'suivi_adoption_{timestamp}.xlsx')
