@@ -156,10 +156,8 @@ demo_per_plan AS (
 ),
 
 -- DEMOGRAPHICS: All-plans with location ROLLUP
--- Computed separately because COUNT(DISTINCT individual_id) across plans
--- cannot be derived from per-plan counts (individuals may appear in multiple plans)
--- NOTE: Only groups that have at least one beneficiary record are included,
--- so total_individuals counts members of beneficiary households only.
+-- total_individuals = individuals from beneficiary households only (for MÉNAGES BÉNÉFICIAIRES)
+-- Beneficiary counts require a GroupBeneficiary record (INNER JOIN).
 demo_all_plans AS (
     SELECT
         bg.province_id, bg.province,
@@ -191,6 +189,21 @@ demo_all_plans AS (
         (bg.commune_id, bg.commune),
         (bg.colline_id, bg.colline)
     ), c.all_plans_uuid, c.all_value, c.all_plans_label
+),
+
+-- ALL collected individuals/households (regardless of beneficiary status)
+-- Used for the INDIVIDUS card on the dashboard
+collected_all AS (
+    SELECT
+        bg.province_id, bg.commune_id, bg.colline_id,
+        COUNT(DISTINCT id.individual_id) AS collected_individuals,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.male_value) AS collected_male,
+        COUNT(DISTINCT id.individual_id) FILTER (WHERE id.sex = c.female_value) AS collected_female,
+        COUNT(DISTINCT bg.group_id) AS collected_households
+    FROM base_groups bg
+    CROSS JOIN constants c
+    LEFT JOIN individuals_data id ON id.group_id = bg.group_id
+    GROUP BY ROLLUP(bg.province_id, bg.commune_id, bg.colline_id)
 ),
 
 demographics AS (
@@ -271,6 +284,11 @@ SELECT
     0 AS total_grievances,
     0 AS resolved_grievances,
 
+    COALESCE(ca.collected_individuals, 0) AS collected_individuals,
+    COALESCE(ca.collected_male, 0) AS collected_male,
+    COALESCE(ca.collected_female, 0) AS collected_female,
+    COALESCE(ca.collected_households, 0) AS collected_households,
+
     apc.active_provinces,
     CURRENT_TIMESTAMP AS last_updated
 FROM demographics d
@@ -279,7 +297,11 @@ LEFT JOIN payments p ON
     d.colline_id IS NOT DISTINCT FROM p.colline_id
     AND d.commune_id IS NOT DISTINCT FROM p.commune_id
     AND d.province_id IS NOT DISTINCT FROM p.province_id
-    AND d.benefit_plan_id IS NOT DISTINCT FROM p.benefit_plan_id''',
+    AND d.benefit_plan_id IS NOT DISTINCT FROM p.benefit_plan_id
+LEFT JOIN collected_all ca ON
+    d.colline_id IS NOT DISTINCT FROM ca.colline_id
+    AND d.commune_id IS NOT DISTINCT FROM ca.commune_id
+    AND d.province_id IS NOT DISTINCT FROM ca.province_id''',
         'indexes': [
             """CREATE INDEX idx_individual_summary_location ON dashboard_individual_summary USING btree (province_id, commune_id, colline_id);""",
             """CREATE INDEX idx_individual_summary_plan_location ON dashboard_individual_summary USING btree (benefit_plan_id, colline_id);""",

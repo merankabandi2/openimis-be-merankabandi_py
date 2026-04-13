@@ -361,13 +361,15 @@ class DashboardService:
 
     @classmethod
     def _breakdown_global(cls) -> Dict[str, Any]:
-        # Use dashboard_individual_summary (ALL plans, global rollup) to get
-        # individual counts scoped to beneficiary households only,
-        # not all individuals in the system.
+        # Use dashboard_individual_summary (ALL plans, global rollup).
+        # total_individuals = members of beneficiary households (for MÉNAGES BÉNÉFICIAIRES)
+        # collected_individuals = ALL collected individuals (for INDIVIDUS card)
         query = """
         SELECT total_male, total_female, total_twa, total_individuals,
                male_beneficiaries, female_beneficiaries, twa_beneficiaries,
-               total_beneficiaries, total_households
+               total_beneficiaries, total_households,
+               collected_individuals, collected_male, collected_female,
+               collected_households
         FROM dashboard_individual_summary
         WHERE benefit_plan_code = 'ALL'
           AND province_id IS NULL AND commune_id IS NULL AND colline_id IS NULL
@@ -382,7 +384,9 @@ class DashboardService:
             query_fallback = """
             SELECT total_male, total_female, total_twa, total_individuals,
                    male_beneficiaries, female_beneficiaries, twa_beneficiaries,
-                   total_beneficiaries, total_households
+                   total_beneficiaries, total_households,
+                   0 AS collected_individuals, 0 AS collected_male,
+                   0 AS collected_female, 0 AS collected_households
             FROM dashboard_master_summary LIMIT 1
             """
             with connection.cursor() as cursor:
@@ -452,6 +456,12 @@ class DashboardService:
         t_ben = cls._safe_int(r.get('twa_beneficiaries'))
         households = cls._safe_int(r.get('total_households'))
 
+        # Collected = ALL individuals/households (for INDIVIDUS / MÉNAGES COLLECTÉS cards)
+        collected_total = cls._safe_int(r.get('collected_individuals')) or total
+        collected_male = cls._safe_int(r.get('collected_male')) or male
+        collected_female = cls._safe_int(r.get('collected_female')) or female
+        collected_households = cls._safe_int(r.get('collected_households')) or households
+
         return {
             'gender_breakdown': {
                 'male': male, 'female': female, 'twa': twa, 'total': total,
@@ -462,10 +472,14 @@ class DashboardService:
                 'male_beneficiaries_percentage': pct(m_ben, total_ben),
                 'female_beneficiaries_percentage': pct(f_ben, total_ben),
                 'twa_beneficiaries_percentage': pct(t_ben, total_ben),
+                'collected_total': collected_total,
+                'collected_male': collected_male,
+                'collected_female': collected_female,
             },
             'household_breakdown': {
                 'total_households': households,
                 'total_beneficiaries': total_ben,
+                'collected_households': collected_households,
             },
             'status_breakdown': [],
             'age_breakdown': [],
