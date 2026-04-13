@@ -89,6 +89,7 @@ class MerankabandiConfig(AppConfig):
                 ('PENDING_VERIFICATION', 'PENDING_VERIFICATION'),
             ]
 
+
     @staticmethod
     def __patch_calculation_gql_type():
         """Add missing supportsAdvancedCriteria field to upstream CalculationRulesGQLType."""

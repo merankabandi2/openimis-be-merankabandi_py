@@ -71,6 +71,7 @@ from payment_cycle.models import PaymentCycle
 from payment_cycle.apps import PaymentCycleConfig
 from payroll.apps import PayrollConfig
 from payroll.gql_queries import BenefitsSummaryGQLType
+from merankabandi.gql_payroll import MeraPayrollGQLType
 from social_protection.gql_queries import GroupBeneficiaryGQLType
 from social_protection.apps import SocialProtectionConfig
 from grievance_social_protection.models import Ticket
@@ -1208,6 +1209,16 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
 
     def resolve_agency_fee_config(self, info, **kwargs):
         return gql_optimizer.query(AgencyFeeConfig.objects.all(), info)
+
+    # Extended payroll type with meraLocation resolved from json_ext
+    mera_payroll = OrderedDjangoFilterConnectionField(
+        MeraPayrollGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
+
+    def resolve_mera_payroll(self, info, **kwargs):
+        from payroll.models import Payroll
+        return gql_optimizer.query(Payroll.objects.filter(is_deleted=False), info)
 
     def resolve_location_by_benefit_plan(self, info, **kwargs):
         def _build_filters(info, **kwargs):

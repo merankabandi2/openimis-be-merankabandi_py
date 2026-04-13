@@ -1205,11 +1205,11 @@ class DashboardService:
         """
         Compute per-vague payment round progress.
         Vagues are province-level targeting rounds derived from SelectionQuota.
-        Progress = MIN(max reconciled round) across all communes in the vague's provinces.
+        Progress = MAX(round_number) from CommunePaymentSchedule across communes
+        in the vague's provinces. Only counts regular rounds (round_number > 0).
         """
         from merankabandi.models import SelectionQuota, CommunePaymentSchedule, CommunePaymentScheduleStatus
         from social_protection.models import BenefitPlan
-        from location.models import Location
         from django.db.models import Max
 
         benefit_plan_id = (filters or {}).get('benefit_plan_id')
@@ -1241,15 +1241,13 @@ class DashboardService:
         if not vague_provinces:
             return []
 
-        # Step 2: For each vague, compute progress
+        # Step 2: For each vague, compute progress from CPS (regular rounds only)
         vagues = []
         for vague_num in sorted(vague_provinces.keys()):
             provinces = vague_provinces[vague_num]
             province_ids = list(provinces.keys())
             province_names = list(provinces.values())
 
-            # Only count communes that have SelectionQuota entries for this vague
-            # (not all communes in the province — some may not be in the programme yet)
             quota_commune_ids = list(
                 SelectionQuota.objects.filter(
                     benefit_plan=bp,
@@ -1272,6 +1270,7 @@ class DashboardService:
                 benefit_plan=bp,
                 commune_id__in=quota_commune_ids,
                 is_retry=False,
+                round_number__gt=0,
                 status__in=[
                     CommunePaymentScheduleStatus.RECONCILED,
                     CommunePaymentScheduleStatus.APPROVED,
@@ -1284,8 +1283,10 @@ class DashboardService:
             if not commune_progress:
                 completed = 0
             else:
-                # MAX — all communes in a province are paid together per cycle
-                completed = max(cp['max_round'] for cp in commune_progress)
+                completed = min(
+                    max(cp['max_round'] for cp in commune_progress),
+                    max_rounds,
+                )
 
             vagues.append({
                 'vague_number': vague_num,
