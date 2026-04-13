@@ -379,9 +379,13 @@ def generate_location_cards_view(request, location_id):
         return HttpResponse(f"Error generating cards: {str(e)}", status=500)
 
 
+# TODO: REACTIVATE AUTH — temporarily disabled for payment agency cycle (April 2026)
+# @api_view(['GET'])
+# @authentication_classes([OAuth2Authentication, SessionAuthentication])
+# @permission_classes([IsAuthenticated])
 @api_view(['GET'])
-@authentication_classes([OAuth2Authentication, SessionAuthentication])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([])
 def beneficiary_photo_view(request, type, id):
     individual = Individual.objects.get(id=id)
     household = individual.groupindividuals.get().group
@@ -394,22 +398,27 @@ def beneficiary_photo_view(request, type, id):
             '-', ''))
     clean_path = f"{type}_repondant_{str(household.code)}.jpg"
 
-    if not has_image_access_permission(request.user, clean_path):
-        return HttpResponseForbidden("Access denied")
+    # TODO: REACTIVATE — permission check disabled for payment agency cycle
+    # if not has_image_access_permission(request.user, clean_path):
+    #     return HttpResponseForbidden("Access denied")
 
     # Construct the full file path
     file_path = os.path.join(base_dir, clean_path)
 
     if not os.path.exists(file_path):
-        return HttpResponseForbidden("File not found")
+        return HttpResponseNotFound("File not found")
 
     # Serve the file
     return FileResponse(open(file_path, 'rb'))
 
 
+# TODO: REACTIVATE AUTH — temporarily disabled for payment agency cycle (April 2026)
+# @api_view(['GET'])
+# @authentication_classes([OAuth2Authentication, SessionAuthentication])
+# @permission_classes([IsAuthenticated])
 @api_view(['GET'])
-@authentication_classes([OAuth2Authentication, SessionAuthentication])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([])
 def beneficiary_photos_view(request, socialid):
     types = ['photo', 'photo_ci1', 'photo_ci2']
 
@@ -429,13 +438,13 @@ def beneficiary_photos_view(request, socialid):
         for photo_type in types:
             clean_path = f"{photo_type}_repondant_{str(household.code)}.jpg"
 
-            # Check permissions for each photo
-            if not has_image_access_permission(request.user, clean_path):
-                response_data['photos'].append({
-                    'type': photo_type,
-                    'error': 'Access denied'
-                })
-                continue
+            # TODO: REACTIVATE — permission check disabled for payment agency cycle
+            # if not has_image_access_permission(request.user, clean_path):
+            #     response_data['photos'].append({
+            #         'type': photo_type,
+            #         'error': 'Access denied'
+            #     })
+            #     continue
 
             # Construct the full file path
             file_path = os.path.join(base_dir, clean_path)
