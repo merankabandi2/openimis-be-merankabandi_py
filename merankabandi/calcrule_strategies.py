@@ -103,7 +103,137 @@ class MeraAmountMixin:
         return result
 
 
-class MeraGroupBenefitPackageStrategy(MeraAmountMixin, GroupBenefitPackageStrategy):
+class _JsonExtBenefitMixin:
+    """Override create_and_save_business_entities_batch to include json_ext on BenefitConsumption.
+
+    The installed upstream strategy constructs BenefitConsumption without json_ext.
+    This mixin duplicates the parent method but adds json_ext to the constructor.
+    """
+
+    @classmethod
+    def create_and_save_business_entities_batch(cls, batch_bill_results, batch_benefit_results, payroll_id, user):
+        from datetime import datetime as py_datetime
+        import uuid as uuid_module
+        from invoice.models import Bill, BillItem
+        from payroll.models import (
+            BenefitConsumption, BenefitAttachment,
+            PayrollBenefitConsumption,
+        )
+        from payroll.services import PayrollService, BenefitConsumptionService
+        from invoice.services import BillService
+
+        now = py_datetime.now()
+
+        if len(batch_bill_results) != len(batch_benefit_results):
+            raise ValueError(
+                f"Mismatch between bill and benefit batch sizes for payroll {payroll_id}"
+            )
+
+        bill_instances = []
+        bill_item_instances = []
+        benefit_instances = []
+        attachment_instances = []
+        payroll_benefit_instances = []
+
+        for bill_result, benefit_result in zip(batch_bill_results, batch_benefit_results):
+            bill_data = bill_result['bill_data']
+            bill_line_items = bill_result['bill_data_line']
+            benefit_data = benefit_result['benefit_data']
+
+            if not benefit_data.get('individual_id'):
+                continue
+
+            bill_uuid = uuid_module.uuid4()
+            benefit_uuid = uuid_module.uuid4()
+
+            bill = cls._stamp_audit(Bill(
+                id=bill_uuid,
+                subject_type_id=bill_data.get('subject_type_id'),
+                subject_id=bill_data.get('subject_id'),
+                thirdparty_type_id=bill_data.get('thirdparty_type_id'),
+                thirdparty_id=bill_data.get('thirdparty_id'),
+                code=bill_data.get('code', ''),
+                code_tp=bill_data.get('code_tp'),
+                code_ext=bill_data.get('code_ext'),
+                date_due=bill_data.get('date_due'),
+                date_bill=bill_data.get('date_bill'),
+                date_valid_from=bill_data.get('date_valid_from'),
+                date_valid_to=bill_data.get('date_valid_to'),
+                currency_tp_code=bill_data.get('currency_tp_code'),
+                currency_code=bill_data.get('currency_code'),
+                status=bill_data.get('status', Bill.Status.VALIDATED),
+                terms=bill_data.get('terms'),
+                note=bill_data.get('note'),
+                amount_net=cls._sum_line_items(bill_line_items, 'amount_total'),
+                amount_total=cls._sum_line_items(bill_line_items, 'amount_total'),
+                amount_discount=cls._sum_line_items(bill_line_items, 'discount'),
+            ), user, now)
+            bill_instances.append(bill)
+
+            for line_item_data in bill_line_items:
+                bill_item = cls._stamp_audit(BillItem(
+                    bill_id=bill_uuid,
+                    line_type_id=line_item_data.get('line_type_id'),
+                    line_id=line_item_data.get('line_id'),
+                    code=line_item_data.get('code', ''),
+                    quantity=line_item_data.get('quantity', 1),
+                    unit_price=line_item_data.get('unit_price', 0),
+                    amount_total=line_item_data.get('amount_total', 0),
+                    amount_net=line_item_data.get('amount_total', 0),
+                    discount=line_item_data.get('discount', 0),
+                    deduction=line_item_data.get('deduction', 0),
+                    date_valid_from=line_item_data.get('date_valid_from'),
+                    date_valid_to=line_item_data.get('date_valid_to'),
+                ), user, now)
+                bill_item_instances.append(bill_item)
+
+            benefit = cls._stamp_audit(BenefitConsumption(
+                id=benefit_uuid,
+                individual_id=benefit_data.get('individual_id'),
+                code=benefit_data.get('code', ''),
+                date_due=benefit_data.get('date_due'),
+                amount=benefit_data.get('amount'),
+                type=benefit_data.get('type'),
+                status=benefit_data.get('status'),
+                json_ext=benefit_data.get('json_ext'),
+                date_valid_from=benefit_data.get('date_valid_from'),
+                date_valid_to=benefit_data.get('date_valid_to'),
+            ), user, now)
+            benefit_instances.append(benefit)
+
+            attachment = cls._stamp_audit(BenefitAttachment(
+                benefit_id=benefit_uuid,
+                bill_id=bill_uuid,
+            ), user, now)
+            attachment_instances.append(attachment)
+
+            if payroll_id:
+                pbc = cls._stamp_audit(PayrollBenefitConsumption(
+                    payroll_id=payroll_id,
+                    benefit_id=benefit_uuid,
+                ), user, now)
+                payroll_benefit_instances.append(pbc)
+
+        try:
+            BillService.bulk_create_bills(bill_instances)
+            BillService.bulk_create_bill_items(bill_item_instances)
+
+            benefit_service = BenefitConsumptionService(user)
+            benefit_service.bulk_create(benefit_instances)
+            benefit_service.bulk_create_attachments(attachment_instances)
+
+            if payroll_benefit_instances:
+                payroll_service = PayrollService(user=user)
+                payroll_service.bulk_attach_benefits(payroll_benefit_instances)
+        except Exception:
+            logger.error(
+                f"Failed to bulk create entities for payroll {payroll_id}",
+                exc_info=True,
+            )
+            raise
+
+
+class MeraGroupBenefitPackageStrategy(_JsonExtBenefitMixin, MeraAmountMixin, GroupBenefitPackageStrategy):
     CONVERTER_BENEFIT = MeraGroupToBenefitConverter
 
     @classmethod
@@ -138,5 +268,5 @@ class MeraGroupBenefitPackageStrategy(MeraAmountMixin, GroupBenefitPackageStrate
         return super().calculate(calculation, payment_plan, **kwargs)
 
 
-class MeraIndividualBenefitPackageStrategy(MeraAmountMixin, IndividualBenefitPackageStrategy):
+class MeraIndividualBenefitPackageStrategy(_JsonExtBenefitMixin, MeraAmountMixin, IndividualBenefitPackageStrategy):
     CONVERTER_BENEFIT = MeraBeneficiaryToBenefitConverter
