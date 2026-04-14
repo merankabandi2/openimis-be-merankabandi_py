@@ -615,11 +615,31 @@ class PaymentScheduleService:
                 f"- Tranche {schedule.round_number}"
             )
 
+            # Resolve payment agency from commune → province → ProvincePaymentAgency
+            province = schedule.commune.parent
+            agency = None
+            agency_code = None
+            resolved_method = payment_method
+            if province:
+                from merankabandi.models import ProvincePaymentAgency
+                # Try specific plan first, then any plan
+                ppa = ProvincePaymentAgency.objects.filter(
+                    province=province, benefit_plan=schedule.benefit_plan,
+                ).select_related('payment_agency').first()
+                if not ppa:
+                    ppa = ProvincePaymentAgency.objects.filter(
+                        province=province, benefit_plan__isnull=True,
+                    ).select_related('payment_agency').first()
+                if ppa:
+                    agency = ppa.payment_agency
+                    agency_code = agency.code
+                    resolved_method = agency.payment_gateway or payment_method
+
             payroll_data = {
                 'name': payroll_name,
                 'payment_plan_id': str(payment_plan_id),
                 'status': PayrollStatus.GENERATING,
-                'payment_method': payment_method,
+                'payment_method': resolved_method,
                 'payment_cycle_id': str(payment_cycle.id),
                 'json_ext': {
                     'filter_criteria': {
@@ -630,6 +650,8 @@ class PaymentScheduleService:
                     'commune_id': str(schedule.commune.uuid),
                     'round_number': schedule.round_number,
                     'topup_amount': float(schedule.topup_amount),
+                    'agency_code': agency_code,
+                    'payment_agency_name': agency_code,
                 },
             }
 

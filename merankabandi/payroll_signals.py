@@ -96,45 +96,63 @@ def intercept_payroll_for_verification(**kwargs):
     1. Changes payroll status from PENDING_APPROVAL to PENDING_VERIFICATION
     2. Updates the task source to 'payroll_verification' so the FE renders the
        verification UI instead of the approval UI
+
+    Uses raw UPDATE to avoid HistoryBusinessModel.save() side-effects that could
+    break the upstream create() transaction.
     """
     from payroll.models import Payroll
     from tasks_management.models import Task
     from django.contrib.contenttypes.models import ContentType
 
-    # Extract payroll_id from signal data
-    obj_data = _extract_signal_data(kwargs)
-    payroll_id = obj_data.get('id')
-    if not payroll_id:
-        return
-
     try:
-        payroll = Payroll.objects.get(id=payroll_id)
-    except Payroll.DoesNotExist:
-        return
+        # Extract payroll_id from signal data
+        # create_accept_payroll_task(self, payroll_id, obj_data) → signal data is
+        # [func_args, func_kwargs] where func_args = (payroll_id, obj_data)
+        raw = kwargs.get('data', {})
+        if isinstance(raw, (list, tuple)) and raw and raw[0]:
+            args = raw[0]
+            # First arg is payroll_id (UUID or str), second is obj_data (dict)
+            payroll_id = args[0] if args else None
+            obj_data = args[1] if len(args) > 1 else {}
+        else:
+            obj_data = raw if isinstance(raw, dict) else {}
+            payroll_id = obj_data.get('id')
+        if not payroll_id:
+            return
 
-    # Only intercept if payroll was just set to PENDING_APPROVAL by upstream
-    if payroll.status != 'PENDING_APPROVAL':
-        return
+        # Check if this payroll already went through verification (has a resolved verification task)
+        payroll_ct = ContentType.objects.get_for_model(Payroll)
+        already_verified = Task.objects.filter(
+            entity_type=payroll_ct,
+            entity_id=str(payroll_id),
+            source='payroll_verification',
+        ).exists()
+        if already_verified:
+            # This is step 2 (approval after verification) — don't intercept
+            return
 
-    # Downgrade to PENDING_VERIFICATION
-    payroll.status = 'PENDING_VERIFICATION'
-    payroll.save(username='admin')
-    logger.info(f"Payroll {payroll_id} status changed to PENDING_VERIFICATION (Mera workflow)")
+        updated = Payroll.objects.filter(
+            id=payroll_id, status='PENDING_APPROVAL',
+        ).update(status='PENDING_VERIFICATION')
 
-    # Update the task that was just created to use verification source
-    payroll_ct = ContentType.objects.get_for_model(Payroll)
-    task = Task.objects.filter(
-        entity_type=payroll_ct,
-        entity_id=str(payroll_id),
-        source='payroll',
-    ).order_by('-date_created').first()
+        if not updated:
+            return
 
-    if task:
-        task.source = 'payroll_verification'
-        # Keep business_event as payroll.accept_payroll so upstream handler
-        # transitions to APPROVE_FOR_PAYMENT when task is resolved
-        task.save(username='admin')
-        logger.info(f"Task {task.id} source changed to payroll_verification")
+        logger.info(f"Payroll {payroll_id} status changed to PENDING_VERIFICATION (Mera workflow)")
+
+        # Update the task that was just created to use verification source
+        Task.objects.filter(
+            entity_type=payroll_ct,
+            entity_id=str(payroll_id),
+            source='payroll',
+        ).order_by('-date_created').update(
+            source='payroll_verification',
+            business_event='merankabandi.verify_payroll',
+        )
+        logger.info(f"Payroll {payroll_id} task updated to payroll_verification")
+
+    except Exception as e:
+        logger.error(f"Error in intercept_payroll_for_verification: {e}", exc_info=True)
 
 
 def on_verification_task_completed(**kwargs):
@@ -162,22 +180,57 @@ def on_verification_task_completed(**kwargs):
 
         if task_status == Task.Status.COMPLETED:
             # Verification approved → move to PENDING_APPROVAL
-            payroll.status = 'PENDING_APPROVAL'
-            payroll.save(username=user.username)
+            Payroll.objects.filter(id=payroll.id).update(status='PENDING_APPROVAL')
             logger.info(f"Payroll {payroll.id} verified → PENDING_APPROVAL")
 
-            # Create the approval task
+            # Create the approval task (source='payroll', event='payroll.accept_payroll')
             svc = PayrollService(user)
             svc.create_accept_payroll_task(payroll.id, {'id': str(payroll.id)})
 
         elif task_status == Task.Status.FAILED:
             # Verification rejected
-            payroll.status = 'REJECTED'
-            payroll.save(username=user.username)
+            Payroll.objects.filter(id=payroll.id).update(status='REJECTED')
             logger.info(f"Payroll {payroll.id} verification rejected → REJECTED")
 
     except Exception as exc:
         logger.error("Error in on_verification_task_completed", exc_info=exc)
+
+
+def on_approval_task_completed(**kwargs):
+    """Fallback for approval task when no payment strategy is registered.
+
+    The upstream handler calls strategy.accept_payroll() which sets APPROVE_FOR_PAYMENT,
+    but if no strategy exists for the payment method, the status stays PENDING_APPROVAL.
+    This handler catches that case.
+    """
+    from payroll.models import Payroll
+    from payroll.apps import PayrollConfig
+    from tasks_management.models import Task
+
+    try:
+        result = kwargs.get('result', None)
+        if not result or not result.get('success'):
+            return
+
+        task = result['data']['task']
+        if task.get('business_event') != PayrollConfig.payroll_accept_event:
+            return
+
+        task_status = task['status']
+        if task_status != Task.Status.COMPLETED:
+            return
+
+        payroll = Payroll.objects.filter(id=task['entity_id']).first()
+        if not payroll:
+            return
+
+        # Only act if upstream handler didn't change the status
+        if payroll.status == 'PENDING_APPROVAL':
+            Payroll.objects.filter(id=payroll.id).update(status='APPROVE_FOR_PAYMENT')
+            logger.info(f"Payroll {payroll.id} approved → APPROVE_FOR_PAYMENT (fallback)")
+
+    except Exception as exc:
+        logger.error("Error in on_approval_task_completed", exc_info=exc)
 
 
 def sync_payment_schedule_on_payroll_change(**kwargs):
@@ -185,8 +238,24 @@ def sync_payment_schedule_on_payroll_change(**kwargs):
     from merankabandi.models import CommunePaymentSchedule
     from payroll.models import Payroll, BenefitConsumption
 
-    obj_data = _extract_signal_data(kwargs)
-    payroll_id = obj_data.get('id')
+    try:
+        # Signal data varies by source:
+        # - payroll_service.create_task: data = [(payroll_id, obj_data), {}]
+        # - payroll_service.close_payroll: data = [(obj_data_dict,), {}]
+        raw = kwargs.get('data', {})
+        if isinstance(raw, (list, tuple)) and raw and raw[0]:
+            first_arg = raw[0][0] if raw[0] else None
+            if isinstance(first_arg, dict):
+                payroll_id = first_arg.get('id')
+            else:
+                payroll_id = first_arg  # UUID from create_task
+        elif isinstance(raw, dict):
+            payroll_id = raw.get('id')
+        else:
+            return
+    except Exception:
+        return
+
     if not payroll_id:
         return
 

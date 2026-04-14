@@ -678,12 +678,20 @@ class PaymentApiService:
                     Q(payment_cycle__code__iexact=payment_cycle)
                 )
 
-            # Filter by commune if specified
+            # Filter by commune if specified (via json_ext.commune_id / location_uuid)
             if commune:
-                payroll_query = payroll_query.filter(
-                    Q(location__name__iexact=commune) |
-                    Q(location__code__iexact=commune)
-                )
+                from location.models import Location
+                commune_uuids = [
+                    str(u) for u in Location.objects.filter(
+                        Q(name__iexact=commune) | Q(code__iexact=commune),
+                        type='W',
+                    ).values_list('uuid', flat=True)
+                ]
+                if commune_uuids:
+                    payroll_query = payroll_query.filter(
+                        Q(json_ext__commune_id__in=commune_uuids) |
+                        Q(json_ext__location_uuid__in=commune_uuids)
+                    )
 
             # Filter by programme if specified
             if programme:

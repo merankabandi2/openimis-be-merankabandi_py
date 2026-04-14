@@ -119,11 +119,17 @@ def bind_service_signals():
         ServiceSignalBindType.AFTER,
     )
 
-    # Mera verification task completion → transition to PENDING_APPROVAL
-    from merankabandi.payroll_signals import on_verification_task_completed
+    # Mera verification task completion → transition to PENDING_APPROVAL + create approval task
+    from merankabandi.payroll_signals import on_verification_task_completed, on_approval_task_completed
     bind_service_signal(
-        'task_service.resolve_task',
+        'task_service.complete_task',
         on_verification_task_completed,
+        ServiceSignalBindType.AFTER,
+    )
+    # Fallback for approval when no payment strategy sets APPROVE_FOR_PAYMENT
+    bind_service_signal(
+        'task_service.complete_task',
+        on_approval_task_completed,
         ServiceSignalBindType.AFTER,
     )
 
