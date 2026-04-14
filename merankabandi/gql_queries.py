@@ -11,7 +11,7 @@ from merankabandi.models import (
     Section, Indicator, IndicatorAchievement,
     PaymentAgency, ProvincePaymentAgency, AgencyFeeConfig,
     ResultFrameworkSnapshot, IndicatorCalculationRule, PmtFormula, SelectionQuota,
-    PreCollecte,
+    PreCollecte, CommunePaymentSchedule,
 )
 
 from social_protection.gql_queries import BenefitPlanGQLType
@@ -487,6 +487,25 @@ class BenefitPlanLocationGQLType(LocationGQLType):
             "name": ["exact", "istartswith", "icontains", "iexact", "ne"],
             "type": ["exact"],
             "parent__id": ["exact", "in"],
+        }
+        connection_class = ExtendedConnection
+
+
+class CommunePaymentScheduleGQLType(DjangoObjectType):
+    uuid = graphene.String(source='id')
+
+    class Meta:
+        model = CommunePaymentSchedule
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "payment_cycle__id": ["exact"],
+            "benefit_plan__id": ["exact"],
+            "commune__id": ["exact"],
+            "commune__parent__id": ["exact"],
+            "status": ["exact", "in"],
+            "round_number": ["exact"],
+            "is_retry": ["exact"],
         }
         connection_class = ExtendedConnection
 

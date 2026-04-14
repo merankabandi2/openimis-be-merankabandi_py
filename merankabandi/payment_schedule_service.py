@@ -470,10 +470,25 @@ class PaymentScheduleService:
                 is_retry=False,
             ).first()
             if existing:
+                # Refresh beneficiary count for existing entry
+                colline_ids = list(
+                    Location.objects.filter(parent=commune, type='V')
+                    .values_list('uuid', flat=True)
+                )
+                ben_count = GroupBeneficiary.objects.filter(
+                    benefit_plan=benefit_plan,
+                    status=BeneficiaryStatus.ACTIVE,
+                    is_deleted=False,
+                    group__location__uuid__in=colline_ids,
+                ).count()
+                if existing.total_beneficiaries != ben_count:
+                    existing.total_beneficiaries = ben_count
+                    existing.save()
                 result['skipped'].append({
                     'commune_id': str(commune.uuid),
                     'commune_name': commune.name,
                     'reason': 'already_exists',
+                    'beneficiary_count': ben_count,
                 })
                 continue
 
@@ -500,24 +515,25 @@ class PaymentScheduleService:
                 'schedule_id': str(schedule.id),
             }
 
+            # Count eligible beneficiaries (always, even if blocked)
+            colline_ids = list(
+                Location.objects.filter(parent=commune, type='V')
+                .values_list('uuid', flat=True)
+            )
+            ben_count = GroupBeneficiary.objects.filter(
+                benefit_plan=benefit_plan,
+                status=BeneficiaryStatus.ACTIVE,
+                is_deleted=False,
+                group__location__uuid__in=colline_ids,
+            ).count()
+            schedule.total_beneficiaries = ben_count
+            schedule.save()
+            entry['beneficiary_count'] = ben_count
+
             if is_blocked:
                 entry['block_reason'] = errors[0]
                 result['blocked'].append(entry)
             else:
-                # Count eligible beneficiaries
-                colline_ids = list(
-                    Location.objects.filter(parent=commune, type='V')
-                    .values_list('uuid', flat=True)
-                )
-                ben_count = GroupBeneficiary.objects.filter(
-                    benefit_plan=benefit_plan,
-                    status=BeneficiaryStatus.ACTIVE,
-                    is_deleted=False,
-                    group__location__uuid__in=colline_ids,
-                ).count()
-                schedule.total_beneficiaries = ben_count
-                schedule.save()
-                entry['beneficiary_count'] = ben_count
                 result['created'].append(entry)
 
         return result
@@ -534,10 +550,12 @@ class PaymentScheduleService:
 
     @transaction.atomic
     def batch_generate_payrolls(self, payment_cycle, payment_plan_id,
-                                payment_method='ONLINE'):
+                                payment_method='ONLINE', schedule_ids=None):
         """
-        Batch-create payrolls for all PLANNING schedules in this cycle
+        Batch-create payrolls for PLANNING schedules in this cycle
         that are not blocked and have a date_valid_from set.
+
+        If schedule_ids is provided, only process those specific schedules.
 
         Returns: {generated: N, skipped: [{commune, reason}]}
         """
@@ -546,6 +564,9 @@ class PaymentScheduleService:
             status=CommunePaymentScheduleStatus.PLANNING,
             is_retry=False,
         ).select_related('commune', 'benefit_plan')
+
+        if schedule_ids:
+            schedules = schedules.filter(id__in=schedule_ids)
 
         result = {'generated': 0, 'skipped': []}
 
@@ -605,6 +626,7 @@ class PaymentScheduleService:
                         'location_ids': [str(u) for u in colline_uuids],
                     },
                     'payment_schedule_id': str(schedule.id),
+                    'location_uuid': str(schedule.commune.uuid),
                     'commune_id': str(schedule.commune.uuid),
                     'round_number': schedule.round_number,
                     'topup_amount': float(schedule.topup_amount),
@@ -619,13 +641,19 @@ class PaymentScheduleService:
                 # Set validity dates from schedule
                 payroll.date_valid_from = schedule.date_valid_from
                 payroll.date_valid_to = payment_cycle.end_date
-                payroll.save()
+                payroll.save(username=self.user.login_name)
 
                 schedule.payroll = payroll
                 schedule.status = CommunePaymentScheduleStatus.GENERATING
                 schedule.save()
                 result['generated'] += 1
             else:
+                # Link payroll even on failure (it may have been created before the error)
+                failed_payroll = Payroll.objects.filter(
+                    name=payroll_name, payment_cycle=payment_cycle,
+                ).order_by('-date_created').first()
+                if failed_payroll:
+                    schedule.payroll = failed_payroll
                 schedule.status = CommunePaymentScheduleStatus.FAILED
                 schedule.save()
                 result['skipped'].append({

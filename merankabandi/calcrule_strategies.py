@@ -106,6 +106,37 @@ class MeraAmountMixin:
 class MeraGroupBenefitPackageStrategy(MeraAmountMixin, GroupBenefitPackageStrategy):
     CONVERTER_BENEFIT = MeraGroupToBenefitConverter
 
+    @classmethod
+    def calculate(cls, calculation, payment_plan, **kwargs):
+        """Override to fix queryset: upstream PayrollService passes Beneficiary
+        (individual) queryset, but GROUP plans need GroupBeneficiary."""
+        from django.db.models import Q
+        from social_protection.models import GroupBeneficiary, BeneficiaryStatus
+
+        beneficiaries_qs = kwargs.get('beneficiaries_queryset', None)
+
+        # Check if upstream passed the wrong model (Beneficiary instead of GroupBeneficiary)
+        if beneficiaries_qs is not None and beneficiaries_qs.model != GroupBeneficiary:
+            # Rebuild from GroupBeneficiary with same benefit_plan filter
+            beneficiaries_qs = GroupBeneficiary.objects.filter(
+                benefit_plan=payment_plan.benefit_plan,
+                status=BeneficiaryStatus.ACTIVE,
+                is_deleted=False,
+            )
+            # Re-apply location filter from payroll json_ext
+            payroll = kwargs.get('payroll')
+            if payroll:
+                ext = payroll.json_ext if isinstance(payroll.json_ext, dict) else {}
+                location_ids = ext.get('filter_criteria', {}).get('location_ids', [])
+                if location_ids:
+                    beneficiaries_qs = beneficiaries_qs.filter(
+                        Q(group__location__uuid__in=location_ids)
+                        | Q(group__location__parent__uuid__in=location_ids)
+                    )
+            kwargs['beneficiaries_queryset'] = beneficiaries_qs
+
+        return super().calculate(calculation, payment_plan, **kwargs)
+
 
 class MeraIndividualBenefitPackageStrategy(MeraAmountMixin, IndividualBenefitPackageStrategy):
     CONVERTER_BENEFIT = MeraBeneficiaryToBenefitConverter

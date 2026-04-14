@@ -48,7 +48,7 @@ class MeraPayrollGQLType(DjangoObjectType):
 
     def resolve_mera_location(self, info):
         ext = self.json_ext if isinstance(self.json_ext, dict) else {}
-        loc_uuid = ext.get('location_uuid')
+        loc_uuid = ext.get('location_uuid') or ext.get('commune_id')
         if not loc_uuid:
             return None
         try:

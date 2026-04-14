@@ -10,6 +10,17 @@ from django.utils.translation import gettext as _
 logger = logging.getLogger(__name__)
 
 
+def _extract_signal_data(kwargs):
+    """Extract the obj_data dict from signal kwargs.
+
+    Signal data is [func_args, func_kwargs] where func_args[0] is the obj_data dict.
+    """
+    raw = kwargs.get('data', {})
+    if isinstance(raw, (list, tuple)):
+        return raw[0][0] if raw and raw[0] else {}
+    return raw
+
+
 def validate_commune_reconciliation(**kwargs):
     """Block payroll creation if same commune + payment_plan has unreconciled benefits.
 
@@ -21,7 +32,7 @@ def validate_commune_reconciliation(**kwargs):
     )
     from location.models import Location
 
-    obj_data = kwargs.get('data', {})
+    obj_data = _extract_signal_data(kwargs)
 
     # Skip for rattrapage (catch-up payments for rejected benefits)
     if obj_data.get('from_failed_invoices_payroll_id'):
@@ -75,12 +86,106 @@ def validate_commune_reconciliation(**kwargs):
             )
 
 
+def intercept_payroll_for_verification(**kwargs):
+    """After upstream creates the approval task, downgrade to PENDING_VERIFICATION.
+
+    Mera workflow: GENERATING → PENDING_VERIFICATION → PENDING_APPROVAL → APPROVE_FOR_PAYMENT
+    Upstream only does: GENERATING → PENDING_APPROVAL
+
+    This AFTER signal on payroll_service.create_task:
+    1. Changes payroll status from PENDING_APPROVAL to PENDING_VERIFICATION
+    2. Updates the task source to 'payroll_verification' so the FE renders the
+       verification UI instead of the approval UI
+    """
+    from payroll.models import Payroll
+    from tasks_management.models import Task
+    from django.contrib.contenttypes.models import ContentType
+
+    # Extract payroll_id from signal data
+    obj_data = _extract_signal_data(kwargs)
+    payroll_id = obj_data.get('id')
+    if not payroll_id:
+        return
+
+    try:
+        payroll = Payroll.objects.get(id=payroll_id)
+    except Payroll.DoesNotExist:
+        return
+
+    # Only intercept if payroll was just set to PENDING_APPROVAL by upstream
+    if payroll.status != 'PENDING_APPROVAL':
+        return
+
+    # Downgrade to PENDING_VERIFICATION
+    payroll.status = 'PENDING_VERIFICATION'
+    payroll.save(username='admin')
+    logger.info(f"Payroll {payroll_id} status changed to PENDING_VERIFICATION (Mera workflow)")
+
+    # Update the task that was just created to use verification source
+    payroll_ct = ContentType.objects.get_for_model(Payroll)
+    task = Task.objects.filter(
+        entity_type=payroll_ct,
+        entity_id=str(payroll_id),
+        source='payroll',
+    ).order_by('-date_created').first()
+
+    if task:
+        task.source = 'payroll_verification'
+        # Keep business_event as payroll.accept_payroll so upstream handler
+        # transitions to APPROVE_FOR_PAYMENT when task is resolved
+        task.save(username='admin')
+        logger.info(f"Task {task.id} source changed to payroll_verification")
+
+
+def on_verification_task_completed(**kwargs):
+    """When verification task is approved, transition to PENDING_APPROVAL and create approval task.
+
+    Mera workflow: PENDING_VERIFICATION → (verify) → PENDING_APPROVAL → (approve) → APPROVE_FOR_PAYMENT
+    """
+    from payroll.models import Payroll
+    from payroll.services import PayrollService
+    from tasks_management.models import Task
+    from core.models import User
+
+    try:
+        result = kwargs.get('result', None)
+        if not result or not result.get('success'):
+            return
+
+        task = result['data']['task']
+        if task.get('business_event') != 'merankabandi.verify_payroll':
+            return
+
+        task_status = task['status']
+        payroll = Payroll.objects.get(id=task['entity_id'])
+        user = User.objects.get(id=result['data']['user']['id'])
+
+        if task_status == Task.Status.COMPLETED:
+            # Verification approved → move to PENDING_APPROVAL
+            payroll.status = 'PENDING_APPROVAL'
+            payroll.save(username=user.username)
+            logger.info(f"Payroll {payroll.id} verified → PENDING_APPROVAL")
+
+            # Create the approval task
+            svc = PayrollService(user)
+            svc.create_accept_payroll_task(payroll.id, {'id': str(payroll.id)})
+
+        elif task_status == Task.Status.FAILED:
+            # Verification rejected
+            payroll.status = 'REJECTED'
+            payroll.save(username=user.username)
+            logger.info(f"Payroll {payroll.id} verification rejected → REJECTED")
+
+    except Exception as exc:
+        logger.error("Error in on_verification_task_completed", exc_info=exc)
+
+
 def sync_payment_schedule_on_payroll_change(**kwargs):
     """Auto-sync CommunePaymentSchedule when payroll status changes."""
     from merankabandi.models import CommunePaymentSchedule
     from payroll.models import Payroll, BenefitConsumption
 
-    obj_data = kwargs.get('data', {})
+    obj_data = _extract_signal_data(kwargs)
     payroll_id = obj_data.get('id')
     if not payroll_id:
         return

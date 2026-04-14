@@ -4,10 +4,13 @@ GraphQL mutations and queries for commune payment schedule tracking.
 import graphene
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ValidationError
+from graphene_django.filter import DjangoFilterConnectionField
 
+from core import prefix_filterset
 from core.gql.gql_mutations.base_mutation import BaseMutation
 from core.schema import OpenIMISMutation
 
+from merankabandi.gql_queries import CommunePaymentScheduleGQLType
 from merankabandi.models import (
     CommunePaymentSchedule,
     CommunePaymentScheduleStatus,
@@ -63,6 +66,11 @@ class PaymentScheduleValidationType(graphene.ObjectType):
 # ─── Queries ─────────────────────────────────────────────────────
 
 class PaymentScheduleQuery(graphene.ObjectType):
+    commune_payment_schedule = DjangoFilterConnectionField(
+        CommunePaymentScheduleGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        max_limit=300,
+    )
     commune_payment_status = graphene.Field(
         CommunePaymentStatusType,
         benefit_plan_id=graphene.UUID(required=True),
@@ -236,6 +244,8 @@ class InitializeCycleCommunesMutation(BaseMutation):
         province_ids = graphene.List(graphene.UUID, required=True)
         topup_active = graphene.Boolean(required=False)
         topup_amount = graphene.Int(required=False)
+        payment_plan_id = graphene.String(required=False)
+        vagues = graphene.List(graphene.Int, required=False)
 
     @classmethod
     def _validate_mutation(cls, user, **data):
@@ -251,12 +261,16 @@ class InitializeCycleCommunesMutation(BaseMutation):
         from payment_cycle.models import PaymentCycle
         cycle = PaymentCycle.objects.get(id=data['payment_cycle_id'])
 
-        # Save topup config to cycle json_ext
+        # Save config to cycle json_ext
         ext = cycle.json_ext or {}
         ext['topup_active'] = data.get('topup_active', False)
         ext['topup_amount'] = data.get('topup_amount', 0)
         ext['benefit_plan_id'] = str(data['benefit_plan_id'])
         ext['province_ids'] = [str(p) for p in data['province_ids']]
+        if data.get('payment_plan_id'):
+            ext['payment_plan_id'] = data['payment_plan_id']
+        if data.get('vagues'):
+            ext['vagues'] = data['vagues']
         PaymentCycle.objects.filter(id=cycle.id).update(json_ext=ext)
 
         service = PaymentScheduleService(user)
@@ -310,6 +324,7 @@ class BatchGeneratePayrollsMutation(BaseMutation):
         payment_cycle_id = graphene.UUID(required=True)
         payment_plan_id = graphene.UUID(required=True)
         payment_method = graphene.String(required=False)
+        schedule_ids = graphene.List(graphene.UUID, required=False)
 
     @classmethod
     def _validate_mutation(cls, user, **data):
@@ -324,10 +339,13 @@ class BatchGeneratePayrollsMutation(BaseMutation):
         from payment_cycle.models import PaymentCycle
         cycle = PaymentCycle.objects.get(id=data['payment_cycle_id'])
 
+        schedule_ids = [str(s) for s in data['schedule_ids']] if data.get('schedule_ids') else None
+
         service = PaymentScheduleService(user)
         result = service.batch_generate_payrolls(
             cycle,
             str(data['payment_plan_id']),
             data.get('payment_method', 'ONLINE'),
+            schedule_ids=schedule_ids,
         )
         return result

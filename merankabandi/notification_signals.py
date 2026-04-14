@@ -53,7 +53,7 @@ def on_payroll_created(**kwargs):
         event_code="payroll.pending_approval",
         actor=user,
         entity=payroll,
-        entity_url=f"/payroll/{payroll.id}",
+        entity_url=f"/payrolls/payroll/{payroll.id}",
         recipients=recipients,
         context={
             "payroll_name": payroll.name or str(payroll.id),
@@ -109,7 +109,7 @@ def on_task_completed(**kwargs):
             event_code=event_code,
             actor=user,
             entity=task.entity if task.entity else task,
-            entity_url=f"/payroll/{task.entity_id}" if task.entity_id else "",
+            entity_url=f"/payrolls/payroll/{task.entity_id}" if task.entity_id else "",
             recipients=RecipientResolver.by_assignment(source_user) if source_user else [],
             context={
                 "payroll_name": str(task.entity_id or ""),

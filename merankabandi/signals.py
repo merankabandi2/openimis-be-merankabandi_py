@@ -111,8 +111,29 @@ def bind_service_signals():
         ServiceSignalBindType.AFTER,
     )
 
+    # Mera verification workflow — intercept PENDING_APPROVAL → PENDING_VERIFICATION
+    from merankabandi.payroll_signals import intercept_payroll_for_verification
+    bind_service_signal(
+        'payroll_service.create_task',
+        intercept_payroll_for_verification,
+        ServiceSignalBindType.AFTER,
+    )
+
+    # Mera verification task completion → transition to PENDING_APPROVAL
+    from merankabandi.payroll_signals import on_verification_task_completed
+    bind_service_signal(
+        'task_service.resolve_task',
+        on_verification_task_completed,
+        ServiceSignalBindType.AFTER,
+    )
+
     # Payment schedule sync — auto-update CommunePaymentSchedule when payroll changes
     from merankabandi.payroll_signals import sync_payment_schedule_on_payroll_change
+    bind_service_signal(
+        'payroll_service.create_task',
+        sync_payment_schedule_on_payroll_change,
+        ServiceSignalBindType.AFTER,
+    )
     bind_service_signal(
         'payroll_service.close_payroll',
         sync_payment_schedule_on_payroll_change,
