@@ -119,7 +119,6 @@ class PaymentScheduleService:
 
     # ─── Create ──────────────────────────────────────────────────
 
-    @transaction.atomic
     def create_payment_round(self, benefit_plan_id, commune_id,
                              payment_plan_id, payment_point_id=None,
                              payment_cycle_id=None, payment_method='ONLINE',
