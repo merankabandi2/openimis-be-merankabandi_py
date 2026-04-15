@@ -577,16 +577,13 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
 
     def get_date_effective_demandee(self, obj):
         """Get payment request date from the payroll's configured payment date."""
-        # Use payroll date_valid_from (configured commune payment date)
         try:
             pbc = obj.payrollbenefitconsumption_set.select_related('payroll').first()
             if pbc and pbc.payroll and pbc.payroll.date_valid_from:
-                return pbc.payroll.date_valid_from.isoformat() if hasattr(
-                    pbc.payroll.date_valid_from, 'isoformat'
-                ) else str(pbc.payroll.date_valid_from)
+                d = pbc.payroll.date_valid_from
+                return d.date().isoformat() if hasattr(d, 'date') else str(d)[:10]
         except Exception:
             pass
-        # Fallback to creation date
         return obj.date_created.date().isoformat() if obj.date_created else None
 
 
