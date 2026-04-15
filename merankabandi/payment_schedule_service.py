@@ -659,6 +659,8 @@ class PaymentScheduleService:
                 'status': PayrollStatus.GENERATING,
                 'payment_method': resolved_method,
                 'payment_cycle_id': str(payment_cycle.id),
+                'date_valid_from': schedule.date_valid_from,
+                'date_valid_to': payment_cycle.end_date,
                 'json_ext': {
                     'filter_criteria': {
                         'location_ids': [str(u) for u in colline_uuids],
@@ -678,11 +680,6 @@ class PaymentScheduleService:
 
             if payroll_result.get('success'):
                 payroll = Payroll.objects.get(id=payroll_result['data']['id'])
-                # Set validity dates from schedule
-                payroll.date_valid_from = schedule.date_valid_from
-                payroll.date_valid_to = payment_cycle.end_date
-                payroll.save(username=self.user.login_name)
-
                 schedule.payroll = payroll
                 schedule.status = CommunePaymentScheduleStatus.GENERATING
                 schedule.save()
