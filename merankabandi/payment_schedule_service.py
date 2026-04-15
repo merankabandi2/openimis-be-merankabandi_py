@@ -170,21 +170,41 @@ class PaymentScheduleService:
             total_amount=amount * beneficiary_count,
         )
 
+        # Resolve payment agency from commune → province → ProvincePaymentAgency
+        province = commune.parent
+        agency_code = None
+        resolved_method = payment_method
+        if province:
+            from merankabandi.models import ProvincePaymentAgency
+            ppa = ProvincePaymentAgency.objects.filter(
+                province=province, benefit_plan=benefit_plan,
+            ).select_related('payment_agency').first()
+            if not ppa:
+                ppa = ProvincePaymentAgency.objects.filter(
+                    province=province, benefit_plan__isnull=True,
+                ).select_related('payment_agency').first()
+            if ppa:
+                agency_code = ppa.payment_agency.code
+                resolved_method = ppa.payment_agency.payment_gateway or payment_method
+
         # Create payroll via upstream service
         payroll_name = f"{benefit_plan.code} - {commune.name} - Tranche {next_round}"
         payroll_data = {
             'name': payroll_name,
             'payment_plan_id': str(payment_plan_id),
             'status': PayrollStatus.GENERATING,
-            'payment_method': payment_method,
+            'payment_method': resolved_method,
             'json_ext': {
                 'filter_criteria': {
                     'location_ids': [str(u) for u in colline_uuids],
                 },
                 'payment_schedule_id': str(schedule.id),
+                'location_uuid': str(commune_id),
                 'commune_id': str(commune_id),
                 'round_number': next_round,
                 'is_retry': False,
+                'agency_code': agency_code,
+                'payment_agency_name': agency_code,
             },
         }
         if payment_point_id:
@@ -548,7 +568,6 @@ class PaymentScheduleService:
         ).update(date_valid_from=date_valid_from)
         return updated
 
-    @transaction.atomic
     def batch_generate_payrolls(self, payment_cycle, payment_plan_id,
                                 payment_method='ONLINE', schedule_ids=None):
         """
