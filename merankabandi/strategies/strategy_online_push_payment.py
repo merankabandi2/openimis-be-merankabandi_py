@@ -63,58 +63,85 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
 
     @classmethod
     def _send_payment_data_to_gateway(cls, payroll, user):
+        """Dispatch IBB payments in parallel batches, persist results at the end.
+
+        DB writes happen ONLY in the main thread after all I/O completes —
+        this avoids opening a Django ORM connection from each worker thread,
+        which under load exhausts Postgres' max_connections ("too many
+        clients already").
+        """
         from payroll.models import BenefitConsumptionStatus
         benefits = cls.get_benefits_attached_to_payroll(payroll, BenefitConsumptionStatus.ACCEPTED)
         payment_gateway_connector = cls.PAYMENT_GATEWAY
-        benefits_to_approve = []
 
-        # Process benefits in batches with parallel requests
-        # Adjust based on server capacity and payment gateway limits
         batch_size = 10
         total_benefits = len(benefits)
 
-        def send_single_payment(benefit):
-            """Helper function to send a single payment"""
+        # Each entry: code -> {'success': bool, 'data': dict|None, 'error': str|None}
+        results = {}
+
+        def send_single(benefit):
             try:
-                success = payment_gateway_connector.send_payment(
+                return benefit.code, payment_gateway_connector.send_payment(
                     benefit.code,
                     benefit.amount,
-                    phone_number=benefit.json_ext.get('phoneNumber', ''),
-                    username=user.login_name
+                    phone_number=(benefit.json_ext or {}).get('phoneNumber', ''),
+                    username=user.login_name,
                 )
-                return (benefit, success)
             except Exception as e:
-                logger.error(f"Error sending payment for benefit ({benefit.code}): {e}")
-                return (benefit, False)
+                logger.error("Error sending payment for benefit %s: %s", benefit.code, e)
+                return benefit.code, {'success': False, 'data': None, 'error': str(e)}
 
-        # Process benefits in batches
         for i in range(0, total_benefits, batch_size):
             batch = benefits[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (total_benefits + batch_size - 1) // batch_size
             logger.info(
-                f"Processing batch {i // batch_size + 1} of {(total_benefits + batch_size - 1) // batch_size} ({len(batch)}/{total_benefits} benefits)")
+                "Processing batch %d of %d (%d/%d benefits)",
+                batch_num, total_batches, len(batch), total_benefits,
+            )
 
-            # Refresh token once before processing the entire batch
-            # This ensures all parallel requests in the batch use the same valid token
             if hasattr(payment_gateway_connector, '_refresh_token_if_needed'):
                 payment_gateway_connector._refresh_token_if_needed()
-                logger.info(f"Token refreshed for batch {i // batch_size + 1}")
+                logger.info("Token refreshed for batch %d", batch_num)
 
-            # Use ThreadPoolExecutor to parallelize requests within the batch
             with ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as executor:
-                # Submit all payment requests in the batch
-                future_to_benefit = {executor.submit(send_single_payment, benefit): benefit for benefit in batch}
+                future_map = {executor.submit(send_single, b): b for b in batch}
+                for future in as_completed(future_map):
+                    code, result = future.result()
+                    results[code] = result
 
-                # Collect results as they complete
-                for future in as_completed(future_to_benefit):
-                    benefit, success = future.result()
-                    if success:
-                        benefits_to_approve.append(benefit)
-                    else:
-                        # Handle the case where a benefit payment is rejected
-                        logger.info(f"Payment for benefit ({benefit.code}) was rejected.")
+        # Persist results on the main thread — single Django ORM connection,
+        # one autocommit per save. No atomic wrapping: an IBB call already
+        # happened, so a save failure on one benefit must not roll back saves
+        # for benefits whose payments did succeed.
+        benefits_to_approve = []
+        for benefit in benefits:
+            result = results.get(benefit.code)
+            if result is None:
+                continue
+            ibb_data = result.get('data')
+            if ibb_data:
+                if benefit.json_ext is None:
+                    benefit.json_ext = {}
+                benefit.json_ext['payment_request'] = ibb_data
+            if result['success']:
+                if ibb_data:
+                    benefit.receipt = ibb_data.get('ibbTransactionID')
+                benefits_to_approve.append(benefit)
+            try:
+                benefit.save(username=user.login_name)
+            except Exception as e:
+                logger.error("Failed to persist benefit %s: %s", benefit.code, e)
 
         if benefits_to_approve:
             cls.approve_for_payment_benefit_consumption(benefits_to_approve, user)
+
+        success_count = sum(1 for r in results.values() if r.get('success'))
+        logger.info(
+            "Payroll %s: dispatched %d benefits, %d succeeded, %d failed",
+            payroll.id, len(results), success_count, len(results) - success_count,
+        )
 
     @classmethod
     def _process_accepted_payroll(cls, payroll, user, **kwargs):
