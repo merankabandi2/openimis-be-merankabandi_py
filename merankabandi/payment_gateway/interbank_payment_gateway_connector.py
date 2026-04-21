@@ -17,11 +17,15 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         self.token = None
         self.token_expiry = 0
         self._token_lock = threading.Lock()
-        # NOTE: requests.Session is thread-safe for concurrent POSTs.
-        # The previous _session_lock serialized every request and defeated
-        # the ThreadPoolExecutor parallelism — measured ~3s/payment instead of
-        # ~3s/batch-of-10. Lock kept ONLY around mutations to session.headers
-        # (which happens during token refresh).
+        # IBB does NOT support concurrent requests per partner credential.
+        # Two simultaneous POSTs with the same token cause IBB's session
+        # state machine to reject all but one with statusCode "65203" /
+        # "La session n'existe pas". The December commit ef90f15 ("revert
+        # to sequential") added this lock for that exact reason — it
+        # serializes POSTs so only one is in flight at a time.
+        # Keep this lock until IBB allows concurrent calls or we get per-
+        # process partner credentials.
+        self._session_lock = threading.Lock()
 
     def _refresh_token_if_needed(self):
         """
@@ -163,8 +167,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         max_retries = 1
         for attempt in range(max_retries + 1):
             try:
-                # requests.Session is thread-safe for POSTs; no lock needed.
-                response = self.session.post(url, json=payload, timeout=self.config.timeout)
+                # _session_lock serializes POSTs — IBB rejects concurrent
+                # in-flight requests on the same partner credential with 65203.
+                # See lock declaration in __init__ for context.
+                with self._session_lock:
+                    response = self.session.post(url, json=payload, timeout=self.config.timeout)
 
                 if response.status_code in (401, 403) and attempt < max_retries:
                     logger.warning(
@@ -178,10 +185,17 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 response.raise_for_status()
                 data = response.json()
 
-                if data.get('statusCode') == "401" and attempt < max_retries:
+                # Body-level session errors. IBB returns HTTP 200 with one of
+                # these in the body when the token is no longer valid:
+                #   "401"   — newer IBB error code
+                #   "65203" — legacy IBB error ("La session n'existe pas")
+                # Both indicate "session does not exist" — typically because
+                # another partner client (concurrent task / pod) issued a new
+                # token, invalidating ours. Force-refresh and retry once.
+                if data.get('statusCode') in ("401", "65203") and attempt < max_retries:
                     logger.warning(
-                        "Body-level 401 on payment %s — refreshing token and retrying",
-                        invoice_id,
+                        "Body-level session error %s on payment %s — refreshing token and retrying",
+                        data.get('statusCode'), invoice_id,
                     )
                     self._force_refresh_token()
                     time.sleep(0.2)
@@ -224,9 +238,11 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             # Ensure we have a valid token
             self._refresh_token_if_needed()
 
-            response = self.session.get(url, timeout=self.config.timeout)
-            response.raise_for_status()
-            data = response.json()
+            # _session_lock — see __init__ for IBB single-in-flight constraint.
+            with self._session_lock:
+                response = self.session.get(url, timeout=self.config.timeout)
+                response.raise_for_status()
+                data = response.json()
 
             if data.get('status') == "200":
                 from payroll.models import BenefitConsumptionStatus
