@@ -94,6 +94,9 @@ class BurundiPMTScoringService:
         Sets pmt_score, pmt_score_urban, pmt_score_rural, selection_status on each beneficiary.
         """
         formula = cls._load_formula(benefit_plan)
+        # Username required by HistoryBusinessModel.save(); default to 'system'
+        # when not provided (background jobs / shell).
+        username = kwargs.get('username', 'system')
 
         beneficiaries_qs = kwargs.get(
             'beneficiaries_queryset',
@@ -109,13 +112,28 @@ class BurundiPMTScoringService:
             milieu = data.get('type_milieu_residence', 'MILIEU_RESIDENCE_RURAL')
             score = score_urban if milieu == 'MILIEU_RESIDENCE_URBAIN' else score_rural
 
+            # Write to GroupBeneficiary.json_ext (consumers: WizardBeneficiaryList FE)
             if not beneficiary.json_ext:
                 beneficiary.json_ext = {}
             beneficiary.json_ext['pmt_score'] = score
             beneficiary.json_ext['pmt_score_urban'] = score_urban
             beneficiary.json_ext['pmt_score_rural'] = score_rural
             beneficiary.json_ext['selection_status'] = 'PMT_SCORED'
-            beneficiary.save()
+            beneficiary.save(username=username)
+
+            # Also write to Group.json_ext (consumers: apply_quota_selection,
+            # WizardSummaryPanel, WizardValidationPanel). Group is the source of
+            # truth for the selection state machine per the UI contract.
+            if hasattr(beneficiary, 'group') and beneficiary.group:
+                grp = beneficiary.group
+                grp_ext = grp.json_ext or {}
+                grp_ext['pmt_score'] = score
+                grp_ext['pmt_score_urban'] = score_urban
+                grp_ext['pmt_score_rural'] = score_rural
+                grp_ext['selection_status'] = 'PMT_SCORED'
+                grp.json_ext = grp_ext
+                grp.save(username=username)
+
             updated_count += 1
 
         logger.info("PMT scoring completed: %d beneficiaries in plan %s", updated_count, benefit_plan.code)

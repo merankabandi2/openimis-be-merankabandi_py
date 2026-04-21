@@ -8,16 +8,18 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentGatewayConnector:
-    def __init__(self, paymentpoint, pool_connections=30, pool_maxsize=30):
+    def __init__(self, source, pool_connections=30, pool_maxsize=30):
         """
-        Initialize payment gateway connector with configurable connection pool
+        Initialize payment gateway connector with configurable connection pool.
 
         Args:
-            paymentpoint: Payment point configuration
-            pool_connections: Number of connection pools to cache (default: 30)
-            pool_maxsize: Maximum number of connections in each pool (default: 30)
+            source: Either a ``merankabandi.PaymentAgency`` (preferred) or a
+                ``payroll.PaymentPoint`` (legacy). PaymentGatewayConfig duck-types
+                the source to extract gateway_key + overlay config.
+            pool_connections: Number of connection pools to cache (default: 30).
+            pool_maxsize: Maximum number of connections in each pool (default: 30).
         """
-        self.config = PaymentGatewayConfig(paymentpoint)
+        self.config = PaymentGatewayConfig(source)
         self.session = requests.Session()
 
         # Configure connection pool for high-concurrency parallel requests

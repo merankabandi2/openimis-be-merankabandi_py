@@ -12,8 +12,8 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
     Connector for IBB M+ API Integration
     Thread-safe implementation for parallel payment processing
     """
-    def __init__(self, paymentpoint):
-        super().__init__(paymentpoint)
+    def __init__(self, source):
+        super().__init__(source)
         self.token = None
         self.token_expiry = 0
         self._token_lock = threading.Lock()

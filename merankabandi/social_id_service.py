@@ -20,12 +20,15 @@ def generate_social_id(precollecte_instance):
     year = datetime.date.today().year
     yy = str(year)[-2:]
 
-    # Get province code from location hierarchy (colline -> commune -> province)
-    location = precollecte_instance.location
-    province = location
-    while province and province.parent:
-        province = province.parent
-    province_code = province.code[-2:] if province else "00"
+    # Walk up the location hierarchy until we reach the Province (type='D').
+    # Hierarchy in Burundi is: Country 'R' (code=BUR) → Province 'D' → Commune 'W' → Colline 'V'.
+    # Previous code walked all the way to the country root, producing 'UR' from 'BUR'
+    # for every social_id. The spec (and legacy kobo_phone_pmt_15.php5) expects the
+    # province D-level code (numeric, e.g. '04' for Ruyigi). Stop the walk at type='D'.
+    node = precollecte_instance.location
+    while node and node.type != 'D':
+        node = node.parent
+    province_code = node.code[-2:] if node and node.code else "00"
 
     rr = str(precollecte_instance.targeting_round).zfill(2)
     prefix = f"{yy}{province_code}{rr}"

@@ -3,17 +3,63 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from payroll.strategies.strategy_online_payment import StrategyOnlinePayment
 from merankabandi.payment_gateway.payment_gateway_config import PaymentGatewayConfig
+from merankabandi.payment_gateway.source_resolver import resolve_gateway_source
 
 logger = logging.getLogger(__name__)
 
 
 class StrategyOnlinePaymentPush(StrategyOnlinePayment):
+    # Initial source supplied by the upstream task (typically payroll.payment_point).
+    # May be None for Mera-flow payrolls; in that case we re-resolve in
+    # make_payment_for_payroll once we have payroll context.
+    _initial_source = None
 
     @classmethod
-    def initialize_payment_gateway(cls, paymentpoint):
-        gateway_config = PaymentGatewayConfig(paymentpoint)
-        payment_gateway_connector_class = gateway_config.get_payment_gateway_connector()
-        cls.PAYMENT_GATEWAY = payment_gateway_connector_class(paymentpoint)
+    def initialize_payment_gateway(cls, source):
+        """Lazy-init: stash the source so we can re-resolve from payroll context.
+
+        The upstream task at payroll/tasks.py:34 calls
+        ``strategy.initialize_payment_gateway(payroll.payment_point)`` — for
+        Mera payrolls that's None, so building the connector here would crash.
+        We defer the real init to ``make_payment_for_payroll`` where the
+        payroll object is available and we can resolve a PaymentAgency.
+        """
+        cls._initial_source = source
+        if source is None:
+            cls.PAYMENT_GATEWAY = None
+            return
+        try:
+            gateway_config = PaymentGatewayConfig(source)
+            connector_cls = gateway_config.get_payment_gateway_connector()
+            cls.PAYMENT_GATEWAY = connector_cls(source)
+        except (ValueError, ImportError) as exc:
+            # Don't fail the task setup; let make_payment_for_payroll re-resolve.
+            logger.info(
+                "Eager gateway init failed for source=%r (%s); will re-resolve "
+                "from payroll context",
+                source, exc,
+            )
+            cls.PAYMENT_GATEWAY = None
+
+    @classmethod
+    def make_payment_for_payroll(cls, payroll, user, **kwargs):
+        # Re-resolve the gateway from payroll context. For Mera-flow payrolls
+        # (PaymentAgency in json_ext, no payment_point) this is the only path
+        # that produces a usable connector.
+        if cls.PAYMENT_GATEWAY is None or resolve_gateway_source(payroll) is not cls._initial_source:
+            source = resolve_gateway_source(payroll)
+            if source is None:
+                logger.error(
+                    "Cannot dispatch payments for payroll %s: no PaymentAgency "
+                    "(json_ext.agency_code=%r) and no payment_point.",
+                    payroll.id, (payroll.json_ext or {}).get('agency_code'),
+                )
+                return
+            gateway_config = PaymentGatewayConfig(source)
+            connector_cls = gateway_config.get_payment_gateway_connector()
+            cls.PAYMENT_GATEWAY = connector_cls(source)
+
+        cls._send_payment_data_to_gateway(payroll, user)
 
     @classmethod
     def _send_payment_data_to_gateway(cls, payroll, user):

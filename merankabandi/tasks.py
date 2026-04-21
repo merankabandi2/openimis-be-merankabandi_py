@@ -11,6 +11,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+
+
 @shared_task
 def create_result_framework_snapshot(user_id, name=None):
     """Create a result framework snapshot asynchronously, generate xlsx, notify user."""
@@ -92,6 +94,8 @@ def send_partial_reconciliation(payroll_id, user_id):
     from payroll.models import Payroll, BenefitConsumptionStatus
     from payroll.payments_registry import PaymentMethodStorage
 
+    from merankabandi.payment_gateway.source_resolver import resolve_gateway_source
+
     payroll = Payroll.objects.get(id=payroll_id)
     user = User.objects.get(id=user_id)
     strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
@@ -99,7 +103,16 @@ def send_partial_reconciliation(payroll_id, user_id):
     if not strategy:
         raise ValueError(f"No payment strategy for method '{payroll.payment_method}'")
 
-    strategy.initialize_payment_gateway(payroll.payment_point)
+    source = resolve_gateway_source(payroll)
+    if source is None:
+        logger.error(
+            "Cannot reconcile payroll %s: no PaymentAgency (json_ext.agency_code=%r) "
+            "and no payment_point.",
+            payroll_id, (payroll.json_ext or {}).get('agency_code'),
+        )
+        return
+
+    strategy.initialize_payment_gateway(source)
     benefits = strategy.get_benefits_attached_to_payroll(payroll, BenefitConsumptionStatus.ACCEPTED)
     gateway = strategy.PAYMENT_GATEWAY
     to_reconcile = []

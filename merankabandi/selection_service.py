@@ -12,14 +12,14 @@ class SelectionService:
     """Service for managing the selection lifecycle on Group.json_ext"""
 
     @classmethod
-    def _update_selection_status(cls, group, status, extra_fields=None):
+    def _update_selection_status(cls, group, status, extra_fields=None, username='system'):
         """Update selection_status in Group.json_ext and append to selection_history."""
         ext = group.json_ext or {}
         ext['selection_status'] = status
         if extra_fields:
             ext.update(extra_fields)
         group.json_ext = ext
-        group.save()
+        group.save(username=username)
 
     @classmethod
     @register_service_signal('selection_service.apply_quota_selection')
@@ -42,10 +42,15 @@ class SelectionService:
 
         for quota in quotas:
             colline = quota.location
+            # Scope by benefit_plan via GroupBeneficiary join — prevents
+            # cross-program state leakage when multiple programs target the
+            # same colline.
             groups = Group.objects.filter(
                 location=colline,
                 json_ext__selection_status='PMT_SCORED',
-            ).order_by('json_ext__pmt_score')
+                groupbeneficiary__benefit_plan=benefit_plan,
+                groupbeneficiary__is_deleted=False,
+            ).distinct().order_by('json_ext__pmt_score')
 
             for i, group in enumerate(groups):
                 ext = group.json_ext or {}
@@ -76,7 +81,7 @@ class SelectionService:
         }
 
     @classmethod
-    def apply_criteria_selection(cls, benefit_plan_id):
+    def apply_criteria_selection(cls, benefit_plan_id, username='system'):
         """
         Apply advanced_criteria from BenefitPlan.json_ext to SURVEYED groups.
         Matching = SELECTED, non-matching = NOT_SELECTED.
@@ -97,16 +102,16 @@ class SelectionService:
         for group in groups:
             ext = group.json_ext or {}
             if cls._matches_criteria(ext, potential_criteria):
-                cls._update_selection_status(group, 'SELECTED')
+                cls._update_selection_status(group, 'SELECTED', username=username)
                 selected += 1
             else:
-                cls._update_selection_status(group, 'NOT_SELECTED')
+                cls._update_selection_status(group, 'NOT_SELECTED', username=username)
                 not_selected += 1
 
         return {"selected": selected, "not_selected": not_selected}
 
     @classmethod
-    def select_all(cls, benefit_plan_id):
+    def select_all(cls, benefit_plan_id, username='system'):
         """Mark all SURVEYED groups as SELECTED (for programs without filtering)."""
         groups = Group.objects.filter(
             json_ext__selection_status='SURVEYED',
@@ -115,7 +120,7 @@ class SelectionService:
         ).distinct()
         count = 0
         for group in groups:
-            cls._update_selection_status(group, 'SELECTED')
+            cls._update_selection_status(group, 'SELECTED', username=username)
             count += 1
         return {"selected": count}
 
@@ -123,8 +128,18 @@ class SelectionService:
     @register_service_signal('selection_service.promote_to_beneficiary')
     def promote_to_beneficiary(cls, benefit_plan_id, username):
         """
-        Create GroupBeneficiary records for COMMUNITY_VALIDATED groups.
-        If no community validation required, promote SELECTED groups directly.
+        Activate GroupBeneficiary records for COMMUNITY_VALIDATED groups.
+
+        Contract:
+        - Groups already have a GroupBeneficiary(POTENTIAL) row (created at
+          import_households_to_benefit_plan time, or at selection start).
+        - Promotion transitions the status POTENTIAL → ACTIVE for groups whose
+          selection_status is COMMUNITY_VALIDATED (or SELECTED when community
+          validation is disabled).
+        - If a Group has no GroupBeneficiary yet, one is created directly at
+          ACTIVE — this preserves the prior contract for plans that populate
+          GroupBeneficiary late.
+        - A selection_history entry is appended on the Group for traceability.
         """
         benefit_plan = BenefitPlan.objects.get(id=benefit_plan_id)
         targeting = (benefit_plan.json_ext or {}).get('targeting', {})
@@ -132,32 +147,40 @@ class SelectionService:
 
         source_status = 'COMMUNITY_VALIDATED' if require_cv else 'SELECTED'
 
-        groups = Group.objects.filter(
+        groups = list(Group.objects.filter(
             json_ext__selection_status=source_status,
             groupbeneficiary__benefit_plan=benefit_plan,
             groupbeneficiary__is_deleted=False,
-        ).distinct()
+        ).distinct())
 
-        # Collect existing group ids to skip duplicates
-        existing_group_ids = set(
-            GroupBeneficiary.objects.filter(
+        existing_gbs = {
+            gb.group_id: gb
+            for gb in GroupBeneficiary.objects.filter(
                 benefit_plan=benefit_plan, is_deleted=False
-            ).values_list('group_id', flat=True)
-        )
+            )
+        }
 
-        beneficiaries_to_create = []
+        activated = 0
+        created = 0
         groups_to_update = []
 
         for group in groups:
-            if group.id in existing_group_ids:
-                continue
-            beneficiaries_to_create.append(
-                GroupBeneficiary(
+            gb = existing_gbs.get(group.id)
+            if gb is None:
+                # Edge case: Group without upfront GroupBeneficiary — create one
+                # directly at ACTIVE so summary counts reflect promotion.
+                new_gb = GroupBeneficiary(
                     group=group,
                     benefit_plan=benefit_plan,
-                    status=BeneficiaryStatus.POTENTIAL,
+                    status=BeneficiaryStatus.ACTIVE,
+                    date_valid_from=datetime.date.today(),
                 )
-            )
+                new_gb.save(username=username)
+                created += 1
+            elif gb.status != BeneficiaryStatus.ACTIVE:
+                gb.status = BeneficiaryStatus.ACTIVE
+                gb.save(username=username)
+                activated += 1
 
             ext = group.json_ext or {}
             history = ext.get('selection_history', [])
@@ -165,27 +188,28 @@ class SelectionService:
                 'benefit_plan_id': str(benefit_plan.id),
                 'benefit_plan_name': benefit_plan.name,
                 'round': targeting.get('targeting_round', 1),
-                'status': 'BENEFICIARY',
+                'status': 'BENEFICIARY_ACTIVE',
                 'date': datetime.date.today().isoformat(),
                 'pmt_score': ext.get('pmt_score'),
             })
             ext['selection_history'] = history
+            ext['selection_status'] = 'ENROLLED'
             group.json_ext = ext
             groups_to_update.append(group)
 
-        if beneficiaries_to_create:
-            GroupBeneficiary.objects.bulk_create(beneficiaries_to_create, batch_size=500)
         if groups_to_update:
             Group.objects.bulk_update(groups_to_update, ['json_ext'], batch_size=500)
 
-        created = len(beneficiaries_to_create)
+        total = activated + created
         logger.info(
-            "Promoted %d groups to beneficiary for plan %s", created, benefit_plan.code
+            "Promoted %d groups (activated=%d, created=%d) for plan %s",
+            total, activated, created, benefit_plan.code,
         )
         return {
             "created": created,
+            "activated": activated,
             "program_name": benefit_plan.name or benefit_plan.code,
-            "promoted_count": created,
+            "promoted_count": total,
         }
 
     @classmethod
@@ -196,14 +220,18 @@ class SelectionService:
         """
         if not isinstance(count, int) or count < 1 or count > 1000:
             raise ValueError("count must be an integer between 1 and 1000")
+        # Scope by benefit_plan so promoting a colline in one program does not
+        # flip Group state for a different program sharing the colline.
         groups = Group.objects.filter(
             location_id=colline_id,
             json_ext__selection_status='WAITING_LIST',
-        ).order_by('json_ext__selection_rank')[:count]
+            groupbeneficiary__benefit_plan_id=benefit_plan_id,
+            groupbeneficiary__is_deleted=False,
+        ).distinct().order_by('json_ext__selection_rank')[:count]
 
         promoted = 0
         for group in groups:
-            cls._update_selection_status(group, 'COMMUNITY_VALIDATED')
+            cls._update_selection_status(group, 'COMMUNITY_VALIDATED', username=username)
             promoted += 1
 
         return {"promoted": promoted}

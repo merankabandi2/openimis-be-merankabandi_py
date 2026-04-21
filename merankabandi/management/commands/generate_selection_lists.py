@@ -28,29 +28,29 @@ class Command(BaseCommand):
         fmt = options['format']
         os.makedirs(output_dir, exist_ok=True)
 
-        # Also include groups linked via json_ext that aren't yet GroupBeneficiary
-        # (pre-beneficiary selection phase: groups with selection_status in json_ext)
-        from django.db.models import Q
+        # Groups for this plan — scope through GroupBeneficiary (the contract:
+        # selection only runs on groups already linked to the plan via
+        # import_households or equivalent).
         all_groups = Group.objects.filter(
-            Q(groupbeneficiary__benefit_plan=benefit_plan) |
-            Q(json_ext__has_key='selection_status')
-        ).distinct().select_related('head')
+            groupbeneficiary__benefit_plan=benefit_plan,
+            groupbeneficiary__is_deleted=False,
+        ).distinct().select_related('location')
 
         if options['location_id']:
-            all_groups = all_groups.filter(
-                head__json_ext__location_id=options['location_id']
-            )
+            all_groups = all_groups.filter(location_id=options['location_id'])
 
-        # Group by colline (location from head individual json_ext)
+        # Group by colline (Group.location is the colline)
         collines = {}
         for group in all_groups:
             json_ext = group.json_ext or {}
-            location_name = json_ext.get('colline_name', 'Unknown')
+            location_name = group.location.name if group.location else (
+                json_ext.get('colline_name', 'Unknown')
+            )
             if location_name not in collines:
                 collines[location_name] = []
             collines[location_name].append({
                 'social_id': json_ext.get('social_id', '-'),
-                'head_name': f"{json_ext.get('nom', '')} {json_ext.get('prenom', '')}".strip() or str(group.head) if group.head else '-',
+                'head_name': json_ext.get('head') or f"{json_ext.get('nom', '')} {json_ext.get('prenom', '')}".strip() or group.code,
                 'pmt_score': json_ext.get('pmt_score', '-'),
                 'status': json_ext.get('selection_status', '-'),
             })

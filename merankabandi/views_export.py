@@ -73,31 +73,41 @@ def _dictfetchall(cursor):
 
 
 def _query_beneficiary_data(filters):
-    """Query dashboard_beneficiary_summary for location-level aggregates."""
-    conditions = ['"isDeleted" = false']
+    """Query dashboard_individual_summary for location-level aggregates.
+
+    The view was renamed from dashboard_beneficiary_summary to
+    dashboard_individual_summary; column names also changed to the
+    total_*/male_beneficiaries/etc naming scheme used by the current view.
+    Host-community membership is determined by commune name (HOST_COMMUNES)
+    since the view does not carry a community_type column.
+    """
+    conditions = []
     params = []
 
     if filters.get('benefit_plan_code'):
         conditions.append('benefit_plan_code = %s')
         params.append(filters['benefit_plan_code'])
 
+    host_placeholders = ','.join(['%s'] * len(HOST_COMMUNES))
+
     if filters.get('exclude_host'):
-        placeholders = ','.join(['%s'] * len(HOST_COMMUNES))
-        conditions.append(f"(community_type IS NULL OR community_type != 'HOST')")
+        conditions.append(f"(commune IS NULL OR commune NOT IN ({host_placeholders}))")
+        params.extend(HOST_COMMUNES)
 
     if filters.get('host_only'):
-        conditions.append("community_type = 'HOST'")
+        conditions.append(f"commune IN ({host_placeholders})")
+        params.extend(HOST_COMMUNES)
 
-    where = ' AND '.join(conditions)
+    where = ' AND '.join(conditions) if conditions else 'TRUE'
 
     query = f"""
         SELECT
             province, commune, colline,
-            SUM(beneficiary_count) AS total,
-            SUM(male_count) AS male,
-            SUM(female_count) AS female,
-            SUM(twa_count) AS twa
-        FROM dashboard_beneficiary_summary
+            SUM(total_beneficiaries) AS total,
+            SUM(male_beneficiaries) AS male,
+            SUM(female_beneficiaries) AS female,
+            SUM(twa_beneficiaries) AS twa
+        FROM dashboard_individual_summary
         WHERE {where}
         GROUP BY province, commune, colline
         ORDER BY province, commune, colline

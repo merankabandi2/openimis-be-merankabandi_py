@@ -118,7 +118,7 @@ class DeleteMonetaryTransferMutation(BaseHistoryModelDeleteMutationMixin, BaseMu
         if ids:
             with transaction.atomic():
                 for id in ids:
-                    service.delete({'id': id, 'user': user})
+                    service.delete({'id': id})
 
     class Input(DeleteMonetaryTransferInputType):
         pass
@@ -206,7 +206,10 @@ class DeleteSectionMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
         if ids:
             with transaction.atomic():
                 for id in ids:
-                    service.delete({'id': id, 'user': user})
+                    # BaseService already holds `user` as self.user and forwards
+                    # obj_data as **kwargs to validate_delete — do not pass
+                    # user again here, it would collide with the positional arg.
+                    service.delete({'id': id})
 
     class Input(DeleteSectionInputType):
         pass
@@ -259,7 +262,9 @@ class TriggerPMTCalculationMutation(BaseMutation):
     def _mutate(cls, user, **data):
         from merankabandi.pmt_scoring_service import BurundiPMTScoringService
         benefit_plan = BenefitPlan.objects.get(id=data['benefit_plan_id'])
-        BurundiPMTScoringService.score_beneficiaries(benefit_plan=benefit_plan)
+        BurundiPMTScoringService.score_beneficiaries(
+            benefit_plan=benefit_plan, username=user.username,
+        )
 
 # Indicator mutations
 
@@ -349,7 +354,7 @@ class DeleteIndicatorMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation)
         if ids:
             with transaction.atomic():
                 for id in ids:
-                    service.delete({'id': id, 'user': user})
+                    service.delete({'id': id})
 
     class Input(DeleteIndicatorInputType):
         pass
@@ -440,7 +445,7 @@ class DeleteIndicatorAchievementMutation(BaseHistoryModelDeleteMutationMixin, Ba
         if ids:
             with transaction.atomic():
                 for id in ids:
-                    service.delete({'id': id, 'user': user})
+                    service.delete({'id': id})
 
     class Input(DeleteIndicatorAchievementInputType):
         pass
