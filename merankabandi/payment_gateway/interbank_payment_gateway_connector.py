@@ -4,7 +4,27 @@ import requests
 import time
 import threading
 
+from django.core.exceptions import ValidationError
+
 logger = logging.getLogger(__name__)
+
+
+def _safe_save(benefit, username, context):
+    """Save a benefit, swallowing 'no changes in fields' (idempotent no-op).
+
+    HistoryModel.save() raises ValidationError when nothing is dirty — usually
+    a re-run of reconcile on a benefit whose json_ext already has the same data.
+    That's harmless, log and move on so the task doesn't crash.
+    """
+    try:
+        benefit.save(username=username)
+    except ValidationError as exc:
+        msg = str(exc)
+        if 'no changes in fields' in msg:
+            logger.debug("Skipping save for %s (%s): no changes", benefit.code, context)
+            return
+        logger.error("Save failed for %s (%s): %s", benefit.code, context, exc)
+        raise
 
 
 class IBBPaymentGatewayConnector(PaymentGatewayConnector):
@@ -244,30 +264,37 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
                 response.raise_for_status()
                 data = response.json()
 
+            # Re-assign json_ext as a new dict (don't mutate in place) so
+            # django-dirtyfields tracks the change. HistoryModel.save() raises
+            # "no changes in fields" otherwise when the benefit already has
+            # payment_reconciliation from a previous attempt.
+            existing = dict(benefit.json_ext or {})
+
             if data.get('status') == "200":
                 from payroll.models import BenefitConsumptionStatus
-                # Verify the transaction amount
                 tx_amount = float(data.get('amount', 0))
                 expected_amount = float(amount)
 
-                if abs(tx_amount - expected_amount) < 0.01:  # Allow small rounding differences
+                if abs(tx_amount - expected_amount) < 0.01:
                     ibbTransactionId = data.get('ibbTransactionId')
                     if ibbTransactionId and benefit.receipt != ibbTransactionId:
                         benefit.receipt = ibbTransactionId
-                    benefit.json_ext['payment_reconciliation'] = data
+                    existing['payment_reconciliation'] = data
+                    benefit.json_ext = existing
                     benefit.status = BenefitConsumptionStatus.RECONCILED
-                    benefit.save(username=username)
+                    _safe_save(benefit, username, "reconcile-success")
                     return True
                 else:
-                    logger.error(f"Amount mismatch: expected {expected_amount}, got {tx_amount}")
-                    benefit.json_ext['payment_reconciliation'] = data
-                    benefit.json_ext['payment_reconciliation']["error_message"] = f"Amount mismatch: expected {expected_amount}, got {tx_amount}"
-                    benefit.save(username=username)
+                    logger.error(f"Amount mismatch for {invoice_id}: expected {expected_amount}, got {tx_amount}")
+                    existing['payment_reconciliation'] = {**data, "error_message": f"Amount mismatch: expected {expected_amount}, got {tx_amount}"}
+                    benefit.json_ext = existing
+                    _safe_save(benefit, username, "reconcile-amount-mismatch")
                     return False
             else:
-                logger.error(f"Transaction lookup failed with status: {data.get('status')}")
-                benefit.json_ext['payment_reconciliation'] = data
-                benefit.save(username=username)
+                logger.error(f"Transaction lookup failed for {invoice_id} with body status: {data.get('status')}")
+                existing['payment_reconciliation'] = data
+                benefit.json_ext = existing
+                _safe_save(benefit, username, "reconcile-not-found")
                 return False
 
         except requests.exceptions.RequestException as e:

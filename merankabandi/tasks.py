@@ -117,17 +117,26 @@ def send_partial_reconciliation(payroll_id, user_id):
     gateway = strategy.PAYMENT_GATEWAY
     to_reconcile = []
 
+    from merankabandi.payment_gateway.interbank_payment_gateway_connector import _safe_save
+
     for benefit in benefits:
-        result = gateway.reconcile(benefit.code, benefit.amount)
-        if benefit.json_ext is None:
-            benefit.json_ext = {}
+        try:
+            result = gateway.reconcile(benefit.code, benefit.amount)
+        except Exception as exc:
+            logger.error("reconcile raised for %s: %s", benefit.code, exc)
+            continue
+
+        # Re-assign json_ext as a new dict so django-dirtyfields detects the change
+        existing = dict(benefit.json_ext or {})
         if result:
-            benefit.json_ext['output_gateway'] = result
-            benefit.json_ext['gateway_reconciliation_success'] = True
+            existing['output_gateway'] = result
+            existing['gateway_reconciliation_success'] = True
+            benefit.json_ext = existing
             to_reconcile.append(benefit)
         else:
-            benefit.json_ext['gateway_reconciliation_success'] = False
-            benefit.save(username=user.login_name)
+            existing['gateway_reconciliation_success'] = False
+            benefit.json_ext = existing
+            _safe_save(benefit, user.login_name, "partial-reconcile-failed")
 
     if to_reconcile:
         strategy.reconcile_benefit_consumption(to_reconcile, user)
