@@ -145,3 +145,86 @@ def send_partial_reconciliation(payroll_id, user_id):
         "Partial reconciliation for payroll %s: %d/%d benefits reconciled",
         payroll_id, len(to_reconcile), benefits.count(),
     )
+
+
+@shared_task
+def send_full_reconciliation(payroll_id, user_id):
+    """Reconcile APPROVE_FOR_PAYMENT benefits in a payroll via the payment gateway.
+
+    Mera-specific mirror of ``payroll.tasks.send_request_to_reconcile`` (upstream).
+    The upstream task is broken for Mera-flow payrolls because it passes
+    ``payroll.payment_point`` directly into ``initialize_payment_gateway`` —
+    ``payment_point`` is ``None`` for Mera payrolls (PaymentAgency lives in
+    ``json_ext.agency_code``), so ``PaymentGatewayConfig(None)`` can't resolve
+    a connector class and the task crashes before touching benefits.
+
+    We resolve the source through ``resolve_gateway_source(payroll)`` so both
+    legacy PaymentPoint and Mera-flow PaymentAgency payrolls route correctly.
+    """
+    from core.models import User
+    from payroll.models import Payroll, BenefitConsumptionStatus, PayrollStatus
+    from payroll.payments_registry import PaymentMethodStorage
+
+    from merankabandi.payment_gateway.source_resolver import resolve_gateway_source
+
+    payroll = Payroll.objects.get(id=payroll_id)
+    user = User.objects.get(id=user_id)
+    strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
+
+    if not strategy:
+        raise ValueError(f"No payment strategy for method '{payroll.payment_method}'")
+
+    source = resolve_gateway_source(payroll)
+    if source is None:
+        logger.error(
+            "Cannot full-reconcile payroll %s: no PaymentAgency (json_ext.agency_code=%r) "
+            "and no payment_point.",
+            payroll_id, (payroll.json_ext or {}).get('agency_code'),
+        )
+        return
+
+    strategy.initialize_payment_gateway(source)
+    benefits = strategy.get_benefits_attached_to_payroll(
+        payroll, BenefitConsumptionStatus.APPROVE_FOR_PAYMENT
+    )
+    gateway = strategy.PAYMENT_GATEWAY
+    to_reconcile = []
+
+    from merankabandi.payment_gateway.interbank_payment_gateway_connector import _safe_save
+
+    for benefit in benefits:
+        try:
+            # Pass username — the IBB connector's reconcile() calls _safe_save
+            # on the success path, which needs a valid username for the
+            # HistoryModel audit save.
+            result = gateway.reconcile(benefit.code, benefit.amount, username=user.login_name)
+        except Exception as exc:
+            logger.error("reconcile raised for %s: %s", benefit.code, exc)
+            continue
+
+        # Re-assign json_ext as a new dict so django-dirtyfields detects the change
+        existing = dict(benefit.json_ext or {})
+        if result:
+            existing['output_gateway'] = result
+            existing['gateway_reconciliation_success'] = True
+            benefit.json_ext = existing
+            to_reconcile.append(benefit)
+        else:
+            existing['gateway_reconciliation_success'] = False
+            benefit.json_ext = existing
+            _safe_save(benefit, user.login_name, "full-reconcile-failed")
+
+    if to_reconcile:
+        strategy.reconcile_benefit_consumption(to_reconcile, user)
+
+    reconciled = len(to_reconcile)
+    total = benefits.count()
+    if total > 0 and reconciled == total:
+        # Everything landed — advance payroll status (mirrors upstream behavior,
+        # but only after we know the benefit-level work succeeded).
+        strategy.change_status_of_payroll(payroll, PayrollStatus.RECONCILED, user)
+
+    logger.info(
+        "Full reconciliation for payroll %s: %d/%d benefits reconciled",
+        payroll_id, reconciled, total,
+    )

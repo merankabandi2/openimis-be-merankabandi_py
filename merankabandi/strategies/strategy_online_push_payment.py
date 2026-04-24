@@ -120,14 +120,22 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
             result = results.get(benefit.code)
             if result is None:
                 continue
-            ibb_data = result.get('data')
-            if ibb_data:
+            gateway_data = result.get('data')
+            if gateway_data:
                 if benefit.json_ext is None:
                     benefit.json_ext = {}
-                benefit.json_ext['payment_request'] = ibb_data
+                benefit.json_ext['payment_request'] = gateway_data
             if result['success']:
-                if ibb_data:
-                    benefit.receipt = ibb_data.get('ibbTransactionID')
+                if gateway_data:
+                    # Gateway-agnostic receipt extraction: IBB stores the
+                    # provider-side transaction id under 'ibbTransactionID',
+                    # Lumicash under 'TransCode'. Both are the lookup key
+                    # used later by reconcile(), so whichever the connector
+                    # returns becomes benefit.receipt.
+                    benefit.receipt = (
+                        gateway_data.get('ibbTransactionID')
+                        or gateway_data.get('TransCode')
+                    )
                 benefits_to_approve.append(benefit)
             try:
                 benefit.save(username=user.login_name)
@@ -149,6 +157,19 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
         from payroll.tasks import send_requests_to_gateway_payment
         cls.change_status_of_payroll(payroll, PayrollStatus.APPROVE_FOR_PAYMENT, user)
         send_requests_to_gateway_payment.delay(payroll.id, user.id)
+
+    @classmethod
+    def reconcile_payroll(cls, payroll, user):
+        """Route full reconciliation through the Mera-flow task.
+
+        Upstream's ``payroll.tasks.send_request_to_reconcile`` passes
+        ``payroll.payment_point`` directly to ``initialize_payment_gateway`` —
+        None for Mera payrolls (agency lives in ``json_ext.agency_code``),
+        so that path crashes before any benefit work. We substitute our task
+        which routes through ``resolve_gateway_source``.
+        """
+        from merankabandi.tasks import send_full_reconciliation
+        send_full_reconciliation.delay(payroll.id, user.id)
 
     @classmethod
     def reconcile_benefit_consumption(cls, benefits, user):
