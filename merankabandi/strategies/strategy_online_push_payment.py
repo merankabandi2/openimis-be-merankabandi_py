@@ -82,10 +82,18 @@ class StrategyOnlinePaymentPush(StrategyOnlinePayment):
 
         def send_single(benefit):
             try:
+                je = benefit.json_ext or {}
+                # Agency fee handling: the connector adds fee_amount on top of
+                # benefit.amount only when fee_included is True (program pays
+                # the fee). fee_amount and fee_included come from json_ext,
+                # populated by the calc rule from AgencyFeeConfig.
+                # benefit.amount itself stays at the NET value for reporting.
                 return benefit.code, payment_gateway_connector.send_payment(
                     benefit.code,
                     benefit.amount,
-                    phone_number=(benefit.json_ext or {}).get('phoneNumber', ''),
+                    phone_number=je.get('phoneNumber', ''),
+                    fee_amount=je.get('fee_amount', 0),
+                    fee_included=je.get('fee_included', False),
                     username=user.login_name,
                 )
             except Exception as e:

@@ -64,6 +64,12 @@ class LumicashPaymentGatewayConnector(PaymentGatewayConnector):
             phone_number: Recipient's phone number.
 
         Optional kwargs:
+            fee_amount: Agency fee the program pays on top of ``amount`` so the
+                beneficiary nets the full ``amount`` after Lumicash deducts its
+                fee. The connector sends ``TransAmount = amount + fee_amount``
+                to Lumicash. ``benefit.amount`` itself stays at the net value
+                so reporting and dashboards reflect what the beneficiary
+                actually receives. If absent or 0, the gross equals the net.
             content: Payment content/description shown to the recipient.
             description: Free-text description, stored with the transaction.
 
@@ -82,16 +88,28 @@ class LumicashPaymentGatewayConnector(PaymentGatewayConnector):
             logger.error("Phone number is required for Lumicash payment %s", invoice_id)
             return {'success': False, 'data': None, 'error': 'phone_number_missing'}
 
+        # Agency fee uplift: ``benefit.amount`` is the net amount the
+        # beneficiary should receive; ``fee_amount`` (from json_ext, passed
+        # by the strategy) is the agency fee from AgencyFeeConfig. We add
+        # it to the transfer ONLY when ``fee_included`` is True, meaning the
+        # program covers the fee on top of the net. When False, the fee is
+        # informational and the beneficiary would absorb it from the gross
+        # the gateway deducts.
+        fee_amount = float(kwargs.get('fee_amount') or 0)
+        fee_included = bool(kwargs.get('fee_included', False))
+        transfer_amount = float(amount) + (fee_amount if fee_included else 0)
+
         request_id = self._generate_request_id(invoice_id)
         request_date = self._generate_request_date()
-        signature = self._generate_signature(request_date, amount, phone_number, request_id)
+        # Signature must be over the actual TransAmount we send, not the net.
+        signature = self._generate_signature(request_date, transfer_amount, phone_number, request_id)
 
         payload = {
             "RequestId": request_id,
             "RequestDate": request_date,
             "PartnerCode": self.config.partner_code,
             "DesMobile": phone_number,
-            "TransAmount": int(amount),
+            "TransAmount": int(transfer_amount),
             "Content": kwargs.get('content', f"Payment for invoice {invoice_id}"),
             "Description": kwargs.get('description', ''),
             "Signature": signature,

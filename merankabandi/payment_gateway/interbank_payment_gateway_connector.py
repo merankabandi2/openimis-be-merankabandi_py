@@ -164,6 +164,14 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
         Required kwargs:
             phone_number: Recipient's phone number.
 
+        Optional kwargs:
+            fee_amount: Agency fee the program pays on top of ``amount`` so
+                the beneficiary nets the full ``amount`` after IBB deducts
+                its fee. The gross sent to IBB is ``amount + fee_amount``.
+                ``benefit.amount`` itself stays at the net value so reporting
+                reflects what beneficiaries actually receive. Absent or 0 →
+                gross equals net.
+
         Returns:
             {'success': bool, 'data': <ibb response dict or None>, 'error': str|None}
         """
@@ -172,11 +180,20 @@ class IBBPaymentGatewayConnector(PaymentGatewayConnector):
             logger.error("Phone number is required for IBB payment %s", invoice_id)
             return {'success': False, 'data': None, 'error': 'phone_number_missing'}
 
+        # Agency fee uplift: ``benefit.amount`` = net amount to beneficiary;
+        # ``fee_amount`` (from json_ext, passed by the strategy) = the agency
+        # fee from AgencyFeeConfig. We add it to the transfer ONLY when
+        # ``fee_included`` is True (the program covers the fee). When False,
+        # the fee is informational only.
+        fee_amount = float(kwargs.get('fee_amount') or 0)
+        fee_included = bool(kwargs.get('fee_included', False))
+        transfer_amount = float(amount) + (fee_amount if fee_included else 0)
+
         payload = {
             "msisdn": phone_number,
             "transactionID": str(invoice_id),
             "partner": self.config.partner_name,
-            "amount": int(amount),
+            "amount": int(transfer_amount),
             "pin": self.config.partner_pin,
         }
         url = f'{self.config.gateway_base_url}/ipg/Ibb/IoService/inBoundTransfer'

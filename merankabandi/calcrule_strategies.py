@@ -79,7 +79,13 @@ class MeraAmountMixin:
         if amount is not None:
             base_amount = Decimal(str(amount))
             total_amount = base_amount + topup
-            if not fee_included and fee_rate:
+            # Always compute fee_amount when an active AgencyFeeConfig sets a
+            # fee_rate. The fee is recorded for audit/reporting; it is NOT
+            # added into ``benefit.amount`` (which stays at the net amount
+            # the beneficiary should receive). Whether the fee is paid on top
+            # at transfer time is controlled by ``fee_included`` and applied
+            # downstream in the gateway connector.
+            if fee_rate:
                 fee_amount = total_amount * fee_rate
 
             kwargs['amount'] = float(total_amount)
