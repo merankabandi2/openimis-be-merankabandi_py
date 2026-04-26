@@ -228,3 +228,46 @@ def send_full_reconciliation(payroll_id, user_id):
         "Full reconciliation for payroll %s: %d/%d benefits reconciled",
         payroll_id, reconciled, total,
     )
+
+
+# ── Recovery flows from the payroll detail page ───────────────────────────
+# Three button actions on a payroll that's stuck mid-pipeline:
+#   PARTIAL:       partial reconcile (zombie ACCEPTED → RECONCILED via trxLookUp)
+#   PARTIAL_RETRY: partial reconcile, then resend ACCEPTED benefits to gateway
+#   FULL:          partial reconcile, retry payment, then full reconcile
+#                  (APPROVE_FOR_PAYMENT → RECONCILED via trxLookUp)
+# Each step is run synchronously in this task so the worker logs a single
+# coherent flow per click.
+RECOVERY_MODE_PARTIAL = 'partial'
+RECOVERY_MODE_PARTIAL_RETRY = 'partial_retry'
+RECOVERY_MODE_FULL = 'full'
+
+
+@shared_task
+def run_payroll_recovery_flow(payroll_id, user_id, mode):
+    """Run a recovery sequence on a payroll.
+
+    Args:
+        payroll_id: Payroll UUID.
+        user_id: User UUID for audit/save.
+        mode: one of 'partial', 'partial_retry', 'full'.
+    """
+    from payroll.tasks import send_requests_to_gateway_payment
+
+    if mode not in (RECOVERY_MODE_PARTIAL, RECOVERY_MODE_PARTIAL_RETRY, RECOVERY_MODE_FULL):
+        raise ValueError(f"unknown recovery mode: {mode!r}")
+
+    logger.info("Recovery flow start: payroll=%s mode=%s", payroll_id, mode)
+
+    # All modes start with partial reconciliation.
+    send_partial_reconciliation(payroll_id, user_id)
+
+    # PARTIAL_RETRY and FULL also resend ACCEPTED benefits.
+    if mode in (RECOVERY_MODE_PARTIAL_RETRY, RECOVERY_MODE_FULL):
+        send_requests_to_gateway_payment(payroll_id, user_id)
+
+    # FULL also runs full reconciliation on APPROVE_FOR_PAYMENT.
+    if mode == RECOVERY_MODE_FULL:
+        send_full_reconciliation(payroll_id, user_id)
+
+    logger.info("Recovery flow done: payroll=%s mode=%s", payroll_id, mode)

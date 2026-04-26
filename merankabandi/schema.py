@@ -28,6 +28,7 @@ from merankabandi.gql_mutations import (
     CreatePaymentAgencyMutation, UpdatePaymentAgencyMutation, DeletePaymentAgencyMutation,
     CreateProvincePaymentAgencyMutation, UpdateProvincePaymentAgencyMutation, DeleteProvincePaymentAgencyMutation,
     CreateAgencyFeeConfigMutation, UpdateAgencyFeeConfigMutation, DeleteAgencyFeeConfigMutation,
+    RunPayrollRecoveryFlowMutation,
     CreateTicketCommentMutation,
     CreateTicketWithExtMutation, UpdateTicketWithExtMutation,
     ValidateSensitizationTrainingMutation, ValidateBehaviorChangeMutation, ValidateMicroProjectMutation,
@@ -1409,6 +1410,9 @@ class Mutation(DashboardMutations, graphene.ObjectType):
     create_agency_fee_config = CreateAgencyFeeConfigMutation.Field()
     update_agency_fee_config = UpdateAgencyFeeConfigMutation.Field()
     delete_agency_fee_config = DeleteAgencyFeeConfigMutation.Field()
+
+    # Payroll recovery flow buttons (partial / partial+retry / full)
+    run_payroll_recovery_flow = RunPayrollRecoveryFlowMutation.Field()
 
     # Add validation mutations for KoboToolbox data
     validate_sensitization_training = ValidateSensitizationTrainingMutation.Field()

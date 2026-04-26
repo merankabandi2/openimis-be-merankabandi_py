@@ -1533,3 +1533,46 @@ class UpdateTicketWithExtMutation(BaseMutation):
 
     class Input(UpdateTicketWithExtInputType):
         pass
+
+
+# ── Payroll recovery flow ─────────────────────────────────────────────────
+# Single mutation behind the three buttons on the payroll detail page.
+# Dispatches the orchestration task ``run_payroll_recovery_flow`` which runs
+# partial reconciliation (zombie recovery), then optionally retry payment,
+# then optionally full reconciliation — depending on ``mode``.
+
+VALID_RECOVERY_MODES = {'partial', 'partial_retry', 'full'}
+
+
+class RunPayrollRecoveryFlowInputType(OpenIMISMutation.Input):
+    payroll_id = graphene.UUID(required=True)
+    mode = graphene.String(required=True)
+
+
+class RunPayrollRecoveryFlowMutation(BaseMutation):
+    _mutation_class = "RunPayrollRecoveryFlowMutation"
+    _mutation_module = MerankabandiConfig.name
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id:
+            raise ValidationError(_("mutation.authentication_required"))
+        if data.get('mode') not in VALID_RECOVERY_MODES:
+            raise ValidationError(
+                f"Invalid mode {data.get('mode')!r}; expected one of {sorted(VALID_RECOVERY_MODES)}"
+            )
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        data.pop('client_mutation_id', None)
+        data.pop('client_mutation_label', None)
+        # Lazy import to avoid Celery autodiscovery collisions at module load.
+        from merankabandi.tasks import run_payroll_recovery_flow
+        run_payroll_recovery_flow.delay(
+            str(data['payroll_id']),
+            str(user.id),
+            data['mode'],
+        )
+
+    class Input(RunPayrollRecoveryFlowInputType):
+        pass
