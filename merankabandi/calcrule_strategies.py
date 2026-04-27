@@ -30,7 +30,17 @@ class MeraAmountMixin:
         from merankabandi.payment_schedule_service import PaymentScheduleService
 
         amount = kwargs.get('amount', None)
-        entity = kwargs.get('entity')
+        # MRO ordering: this mixin runs BEFORE the parent strategy, so the
+        # parent hasn't yet added 'entity' to kwargs. The parent's caller
+        # always supplies either 'group' (GroupBenefitPackageStrategy) or
+        # 'beneficiary' (IndividualBenefitPackageStrategy), and the parent
+        # then maps that to 'entity'. We replicate that fallback chain here
+        # so the fee lookup works regardless of which strategy invoked us.
+        entity = (
+            kwargs.get('entity')
+            or kwargs.get('group')
+            or kwargs.get('beneficiary')
+        )
         payment_cycle = kwargs.get('payment_cycle')
 
         # Try to resolve the CommunePaymentSchedule for this payroll
@@ -73,7 +83,14 @@ class MeraAmountMixin:
                         fee_rate = fee_config.fee_rate
                         fee_included = fee_config.fee_included
             except Exception as e:
-                logger.debug(f"Fee lookup failed: {e}")
+                # Surface as warning, not debug — silent failures here cause
+                # systematic underpayment (the beneficiary nets less than the
+                # program intends) and the bug went undetected on Bisoro T9
+                # 2026-04-27 because the message was at debug level.
+                logger.warning(
+                    "Fee lookup failed for entity=%r benefit_plan=%r: %s",
+                    entity, getattr(payment_plan, 'benefit_plan', None), e,
+                )
 
         # Adjust amount
         if amount is not None:
