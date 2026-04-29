@@ -572,8 +572,28 @@ class IndividualPaymentRequestSerializer(serializers.ModelSerializer):
         return ""
 
     def get_montant(self, obj):
-        """Get payment amount"""
-        return str(obj.amount) if obj.amount else "0"
+        """Gross amount the agency should transfer.
+
+        BenefitConsumption.amount is the net amount the beneficiary receives.
+        json_ext.fee_amount is the agency fee (from AgencyFeeConfig).
+        json_ext.fee_included controls whether the program covers the fee:
+          - True:  gross = amount + fee_amount (program pays fee on top)
+          - False: gross = amount (beneficiary absorbs the fee deducted by gateway)
+        Mirrors the IBB and Lumicash gateway connectors' transfer-time logic so
+        the agency reading this API gets the same gross figure they'd receive
+        via the gateway path.
+        """
+        base = float(obj.amount) if obj.amount else 0.0
+        fee = 0.0
+        fee_included = False
+        if obj.json_ext and isinstance(obj.json_ext, dict):
+            try:
+                fee = float(obj.json_ext.get('fee_amount') or 0)
+            except (TypeError, ValueError):
+                fee = 0.0
+            fee_included = bool(obj.json_ext.get('fee_included', False))
+        total = base + (fee if fee_included else 0)
+        return str(int(total)) if total == int(total) else str(total)
 
     def get_date_effective_demandee(self, obj):
         """Get payment request date from the payroll's configured payment date."""

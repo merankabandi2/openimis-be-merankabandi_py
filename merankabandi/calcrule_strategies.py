@@ -8,7 +8,7 @@ Override amount calculation to include:
   - Fee from AgencyFeeConfig
 """
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from calcrule_social_protection.strategies.benefit_package_group_strategy import GroupBenefitPackageStrategy
 from calcrule_social_protection.strategies.benefit_package_individual_strategy import IndividualBenefitPackageStrategy
@@ -103,7 +103,12 @@ class MeraAmountMixin:
             # at transfer time is controlled by ``fee_included`` and applied
             # downstream in the gateway connector.
             if fee_rate:
-                fee_amount = total_amount * fee_rate
+                # Round to whole BIF here so the fee_amount stored in json_ext
+                # is the exact integer the agency will be billed (no .976 tails
+                # leaking into payment APIs / gateway transfers).
+                fee_amount = (total_amount * fee_rate).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP
+                )
 
             kwargs['amount'] = float(total_amount)
 

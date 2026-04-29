@@ -904,8 +904,8 @@ class AgencyFeeConfig(models.Model):
         help_text="Province-level override (type D). NULL = default for this agency+plan."
     )
     fee_rate = models.DecimalField(
-        max_digits=6, decimal_places=4,
-        help_text="Fee rate as decimal (e.g. 0.0550 for 5.5%)"
+        max_digits=8, decimal_places=6,
+        help_text="Fee rate as decimal (e.g. 0.020833 for ~2.0833%). 6dp lets us encode rates derived from integer-BIF fees on a 72K base (e.g. 1500/72000 = 0.020833)."
     )
     fee_included = models.BooleanField(
         default=False,
