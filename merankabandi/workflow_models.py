@@ -193,7 +193,7 @@ class ReplacementRequest(models.Model):
         blank=True,
         related_name='replacement_requests'
     )
-    replaced_social_id = models.CharField(max_length=20, null=True, blank=True)
+    replaced_social_id = models.CharField(max_length=255, null=True, blank=True)
     replaced_individual = models.ForeignKey(
         'individual.Individual',
         on_delete=models.SET_NULL,
@@ -207,7 +207,7 @@ class ReplacementRequest(models.Model):
     new_prenom = models.CharField(max_length=255, null=True, blank=True)
     new_date_naissance = models.DateField(null=True, blank=True)
     new_sexe = models.CharField(max_length=10, null=True, blank=True)
-    new_telephone = models.CharField(max_length=20, null=True, blank=True)
+    new_telephone = models.CharField(max_length=50, null=True, blank=True)
     new_cni = models.CharField(max_length=50, null=True, blank=True)
     new_individual = models.ForeignKey(
         'individual.Individual',
