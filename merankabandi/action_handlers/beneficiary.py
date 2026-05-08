@@ -48,7 +48,10 @@ class BeneficiaryReplaceHandler(BaseActionHandler):
         return ['confirmation']
 
     def execute(self, task, ticket, user, data=None):
+        from individual.models import GroupIndividual
         from merankabandi.workflow_models import ReplacementRequest
+
+        data = data or {}
         replacement = ReplacementRequest.objects.filter(
             ticket=ticket, status=ReplacementRequest.STATUS_APPROVED,
         ).first()
@@ -64,20 +67,51 @@ class BeneficiaryReplaceHandler(BaseActionHandler):
         if not replacement:
             return {'error': 'No replacement request found'}
 
-        # If create_replacement_request matched an existing household member,
-        # link to them instead of creating a duplicate. The match was already
-        # written to replacement.new_individual_id by the previous step.
-        matched_existing = (replacement.json_ext or {}).get('matched_existing')
-        if replacement.new_individual_id:
-            return {
-                'replacement_id': str(replacement.id),
-                'new_individual_id': str(replacement.new_individual_id),
-                'new_nom': replacement.new_nom,
-                'new_prenom': replacement.new_prenom,
-                'matched_existing': matched_existing,
-                'status': 'matched_existing_member',
-            }
+        # Operator override: clear the auto-match if they decided this is a new person
+        if data.get('override_match'):
+            replacement.new_individual_id = None
+            ext = replacement.json_ext or {}
+            if 'matched_existing' in ext:
+                ext['match_overridden'] = ext.pop('matched_existing')
+                ext['override_by'] = user.username if user and hasattr(user, 'username') else None
+            replacement.json_ext = ext
+            replacement.save()
 
+        # Find the previous primary recipient (the replaced individual) on the household
+        verify_task = task.workflow.tasks.filter(
+            step_template__action_type='verify_social_id', status='COMPLETED',
+        ).first()
+        old_individual_id = (verify_task.result or {}).get('individual_id') if verify_task else None
+        old_gi = None
+        if old_individual_id:
+            old_gi = GroupIndividual.objects.filter(
+                individual_id=old_individual_id, is_deleted=False,
+            ).first()
+
+        # Case A: matched existing household member — promote to PRIMARY, demote old
+        if replacement.new_individual_id:
+            new_gi = GroupIndividual.objects.filter(
+                individual_id=replacement.new_individual_id, is_deleted=False,
+            ).first()
+            if new_gi:
+                if old_gi and old_gi.id != new_gi.id and old_gi.recipient_type == 'PRIMARY':
+                    old_gi.recipient_type = None
+                    old_gi.save(username=user.username if user and hasattr(user, 'username') else 'Admin')
+                if new_gi.recipient_type != 'PRIMARY':
+                    new_gi.recipient_type = 'PRIMARY'
+                    new_gi.save(username=user.username if user and hasattr(user, 'username') else 'Admin')
+                return {
+                    'replacement_id': str(replacement.id),
+                    'new_individual_id': str(replacement.new_individual_id),
+                    'new_nom': replacement.new_nom,
+                    'new_prenom': replacement.new_prenom,
+                    'old_individual_id': old_individual_id,
+                    'demoted_old': bool(old_gi and old_gi.id != new_gi.id),
+                    'promoted_new': True,
+                    'status': 'matched_existing_promoted',
+                }
+
+        # Case B: no match (or override) — return pending so a manual creation can follow
         return {
             'replacement_id': str(replacement.id),
             'new_nom': replacement.new_nom, 'new_prenom': replacement.new_prenom,
