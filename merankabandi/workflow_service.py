@@ -346,8 +346,11 @@ class WorkflowService:
 
     @classmethod
     def _progress_workflow(cls, workflow):
+        from merankabandi.action_handlers import get_handler
+
         tasks = workflow.tasks.order_by('step_template__order')
         all_done = True
+        task_to_auto_execute = None
 
         for task in tasks:
             if task.status in (GrievanceTask.STATUS_COMPLETED, GrievanceTask.STATUS_SKIPPED):
@@ -368,6 +371,7 @@ class WorkflowService:
                 task.status = GrievanceTask.STATUS_IN_PROGRESS
                 task.started_at = timezone.now()
                 task.save()
+                task_to_auto_execute = task
                 break
 
         if all_done:
@@ -375,9 +379,29 @@ class WorkflowService:
             workflow.completed_at = timezone.now()
             workflow.save()
             cls._check_ticket_completion(workflow.ticket)
-        elif workflow.status == GrievanceWorkflow.STATUS_PENDING:
+            return
+
+        if workflow.status == GrievanceWorkflow.STATUS_PENDING:
             workflow.status = GrievanceWorkflow.STATUS_IN_PROGRESS
             workflow.save()
+
+        # Auto-execute the active task if its handler is automated and has all
+        # required data (no user input needed). The handler may complete the
+        # task, which recursively progresses to the next task — possibly itself
+        # automated, forming a chain that runs until a manual step is reached.
+        if task_to_auto_execute is not None:
+            handler = get_handler(task_to_auto_execute.step_template.action_type)
+            if handler.is_automated():
+                # Use the user assigned to the task (if any), else fall back to
+                # ticket creator. The handler doesn't need a real session.
+                exec_user = task_to_auto_execute.assigned_user or workflow.ticket.user_created
+                try:
+                    cls.complete_task(task_to_auto_execute, exec_user, result={})
+                except Exception as e:
+                    logger.warning(
+                        f"Auto-execution failed for task {task_to_auto_execute.id} "
+                        f"({task_to_auto_execute.step_template.action_type}): {e}"
+                    )
 
     @classmethod
     def _assign_user(cls, task):
