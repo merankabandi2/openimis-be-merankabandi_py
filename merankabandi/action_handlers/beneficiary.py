@@ -63,6 +63,21 @@ class BeneficiaryReplaceHandler(BaseActionHandler):
                 replacement = pending
         if not replacement:
             return {'error': 'No replacement request found'}
+
+        # If create_replacement_request matched an existing household member,
+        # link to them instead of creating a duplicate. The match was already
+        # written to replacement.new_individual_id by the previous step.
+        matched_existing = (replacement.json_ext or {}).get('matched_existing')
+        if replacement.new_individual_id:
+            return {
+                'replacement_id': str(replacement.id),
+                'new_individual_id': str(replacement.new_individual_id),
+                'new_nom': replacement.new_nom,
+                'new_prenom': replacement.new_prenom,
+                'matched_existing': matched_existing,
+                'status': 'matched_existing_member',
+            }
+
         return {
             'replacement_id': str(replacement.id),
             'new_nom': replacement.new_nom, 'new_prenom': replacement.new_prenom,
@@ -84,6 +99,17 @@ class CreateReplacementRequestHandler(BaseActionHandler):
         existing = ReplacementRequest.objects.filter(ticket=ticket).first()
         if existing:
             return {'replacement_id': str(existing.id), 'status': existing.status}
+
+        # Dedup: try to match the new recipient against existing household members
+        # (handles name-order swaps "Minani Jean" vs "Jean Minani" and minor typos).
+        match_info = _match_existing_household_member(
+            replaced_social_id=replacement_data.get('replaced_social_id', ''),
+            new_recipient=new_recipient,
+        )
+
+        rr_json_ext = {'attachments': replacement_data.get('attachments')}
+        if match_info:
+            rr_json_ext['matched_existing'] = match_info
         rr = ReplacementRequest.objects.create(
             ticket=ticket, task=task,
             replaced_social_id=replacement_data.get('replaced_social_id', ''),
@@ -95,6 +121,80 @@ class CreateReplacementRequestHandler(BaseActionHandler):
             new_sexe=new_recipient.get('sexe', ''),
             new_telephone=new_recipient.get('telephone'),
             new_cni=new_recipient.get('cni', ''),
-            json_ext={'attachments': replacement_data.get('attachments')},
+            new_individual_id=match_info['individual_id'] if match_info else None,
+            json_ext=rr_json_ext,
         )
-        return {'replacement_id': str(rr.id), 'status': rr.status}
+        result = {'replacement_id': str(rr.id), 'status': rr.status}
+        if match_info:
+            result['matched_existing'] = match_info
+        return result
+
+
+def _normalize_name(s):
+    """Lowercase, strip diacritics, collapse whitespace for fuzzy matching."""
+    import unicodedata, re
+    if not s:
+        return ''
+    nfkd = unicodedata.normalize('NFKD', str(s))
+    no_diacritics = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r'\s+', ' ', no_diacritics.lower().strip())
+
+
+def _match_existing_household_member(replaced_social_id, new_recipient):
+    """Look up the household and try to match new_recipient against existing members.
+
+    Returns {individual_id, first_name, last_name, score, match_type} or None.
+    Uses normalized name comparison with fuzzy similarity to handle typos.
+    Tries both name orders (first/last and last/first) since KoBo collectors
+    sometimes swap them.
+    """
+    from individual.models import Group, GroupIndividual
+    from difflib import SequenceMatcher
+
+    if not replaced_social_id:
+        return None
+
+    group = (
+        Group.objects.filter(code=replaced_social_id, is_deleted=False).first()
+        or Group.objects.filter(json_ext__contains={'social_id': replaced_social_id}, is_deleted=False).first()
+    )
+    if not group:
+        return None
+
+    new_first = _normalize_name(new_recipient.get('prenom', ''))
+    new_last = _normalize_name(new_recipient.get('nom', ''))
+    if not new_first and not new_last:
+        return None
+
+    new_combined = f'{new_first} {new_last}'.strip()
+    new_swapped = f'{new_last} {new_first}'.strip()
+
+    best = None  # (score, match_type, gi)
+    threshold = 0.85
+    for gi in GroupIndividual.objects.filter(group=group, is_deleted=False).select_related('individual'):
+        ind = gi.individual
+        if not ind:
+            continue
+        e_first = _normalize_name(ind.first_name)
+        e_last = _normalize_name(ind.last_name)
+        e_combined = f'{e_first} {e_last}'.strip()
+
+        scores = [
+            (SequenceMatcher(None, new_combined, e_combined).ratio(), 'exact_order'),
+            (SequenceMatcher(None, new_swapped, e_combined).ratio(), 'swapped_order'),
+        ]
+        score, match_type = max(scores)
+        if score >= threshold and (best is None or score > best[0]):
+            best = (score, match_type, gi)
+
+    if not best:
+        return None
+    score, match_type, gi = best
+    return {
+        'individual_id': str(gi.individual.id),
+        'first_name': gi.individual.first_name,
+        'last_name': gi.individual.last_name,
+        'role': gi.role,
+        'score': round(score, 3),
+        'match_type': match_type,
+    }
