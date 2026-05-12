@@ -12,9 +12,6 @@ from .models import (
     MicroProject, HOST_COMMUNES
 )
 
-# Refugee collines/camps for refugee/host community separation
-REFUGEE_COLLINES = []
-
 DEMOGRAPHIC_BREAKDOWNS = [
     {'key': 'women', 'label': 'Femmes'},
     {'key': 'twa', 'label': 'Ménages Twa'},
@@ -180,65 +177,6 @@ class ResultFrameworkService:
         except Exception as e:
             return {'total': 0, 'male': 0, 'female': 0, 'twa': 0, 'error': str(e)}
 
-    def _count_snapshot_beneficiaries(self, table_name, date_from=None, date_to=None,
-                                       location=None, extra_where='', extra_params=None):
-        """Aggregate snapshot entities using latest-per-colline logic.
-
-        For snapshot entities (BehaviorChangePromotion, MicroProject), the correct
-        count is the sum of the latest report per colline within the period.
-        """
-        from django.db import connection
-
-        conditions = ["validation_status = 'VALIDATED'"]
-        params = []
-
-        if date_from:
-            conditions.append("report_date >= %s")
-            params.append(date_from)
-        if date_to:
-            conditions.append("report_date <= %s")
-            params.append(date_to)
-        if location:
-            conditions.append("""
-                location_id IN (
-                    SELECT l1."LocationId" FROM "tblLocations" l1
-                    JOIN "tblLocations" l2 ON l1."ParentLocationId" = l2."LocationId"
-                    WHERE l2."ParentLocationId" = %s
-                )
-            """)
-            params.append(location.id if hasattr(location, 'id') else location)
-
-        if extra_where:
-            conditions.append(extra_where)
-        if extra_params:
-            params.extend(extra_params)
-
-        where = ' AND '.join(conditions)
-
-        sql = f"""
-            WITH latest AS (
-                SELECT DISTINCT ON (location_id)
-                    location_id, male_participants, female_participants, twa_participants
-                FROM {table_name}
-                WHERE {where}
-                ORDER BY location_id, report_date DESC
-            )
-            SELECT
-                COALESCE(SUM(male_participants + female_participants), 0),
-                COALESCE(SUM(male_participants), 0),
-                COALESCE(SUM(female_participants), 0),
-                COALESCE(SUM(twa_participants), 0)
-            FROM latest
-        """
-
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params)
-                row = cursor.fetchone()
-            return {'total': row[0], 'male': row[1], 'female': row[2], 'twa': row[3]}
-        except Exception as e:
-            return {'total': 0, 'male': 0, 'female': 0, 'twa': 0, 'error': str(e)}
-
     def calculate_indicator_value(self, indicator_id, date_from=None, date_to=None, location=None):
         """Calculate indicator value based on its configuration"""
         try:
@@ -335,14 +273,18 @@ class ResultFrameworkService:
     def _count_households_refugees(self, indicator, date_from, date_to, location, config):
         """Count refugee households (Indicator 2).
 
-        Filter by the menage_refugie flag in json_ext rather than excluding
-        host communes, which was incorrectly returning the total household
-        count minus host-commune households.
+        Refugees are identified as distinct Groups that have at least one
+        GroupBeneficiary on benefit plan 1.4 (Refugies). Plan 1.4 is the
+        authoritative source now that it carries refugee data — the prior
+        ``Group.json_ext.menage_refugie='OUI'`` flag is left in place on
+        existing records but is no longer the count source (it had ~188
+        stray rows not enrolled in plan 1.4 that inflated the count).
         """
         query = Group.objects.filter(
             is_deleted=False,
-            json_ext__menage_refugie='OUI',
-        )
+            groupbeneficiary__benefit_plan__code='1.4',
+            groupbeneficiary__is_deleted=False,
+        ).distinct()
 
         if date_from:
             query = query.filter(date_created__gte=date_from)
@@ -511,11 +453,17 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_refugees(self, indicator, date_from, date_to, location, config):
-        """Count refugee beneficiaries using the menage_refugie flag."""
+        """Count refugee beneficiaries (Indicator 11).
+
+        Source: GroupBeneficiary rows on benefit plan 1.4 (Refugies).
+        Plan 1.4 is the authoritative source for refugee identification;
+        the prior ``json_ext.menage_refugie='OUI'`` filter is dropped (it
+        let stray flagged rows without a plan-1.4 enrolment slip in).
+        """
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
-            group__json_ext__menage_refugie='OUI',
+            benefit_plan__code='1.4',
         )
 
         if date_from:
@@ -526,8 +474,10 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
+        # Breakdowns scoped to plan 1.4 so they describe the same population
+        # the headline value counts.
         breakdowns = self._compute_breakdowns(
-            benefit_plan_codes=config.get('benefit_plan_codes'),
+            benefit_plan_codes=config.get('benefit_plan_codes', ['1.4']),
             location=location,
         )
         return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
@@ -561,14 +511,30 @@ class ResultFrameworkService:
         return {'value': result['female'], 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_employment_refugees(self, indicator, date_from, date_to, location, config):
-        """Count refugee employment beneficiaries — latest per colline in refugee areas."""
-        if not REFUGEE_COLLINES:
+        """Count refugee employment beneficiaries (Indicator 18).
+
+        "Refugee collines" are derived at query time as the set of distinct
+        Location ids carrying at least one plan-1.4 (Refugies) Group. This
+        auto-adapts as plan 1.4 expands — no constant list to maintain. The
+        snapshot uses the latest MicroProject report per colline within the
+        selected window, then sums male + female participants.
+        """
+        refugee_colline_ids = list(
+            Group.objects.filter(
+                is_deleted=False,
+                groupbeneficiary__benefit_plan__code='1.4',
+                groupbeneficiary__is_deleted=False,
+            ).values_list('location_id', flat=True).distinct()
+        )
+
+        if not refugee_colline_ids:
             return {'value': 0, 'calculation_type': 'SYSTEM'}
-        placeholders = ','.join(['%s'] * len(REFUGEE_COLLINES))
+
+        placeholders = ','.join(['%s'] * len(refugee_colline_ids))
         result = self._count_snapshot_beneficiaries(
             'merankabandi_microproject', date_from, date_to, location=None,
-            extra_where=f'location_id IN (SELECT "LocationId" FROM "tblLocations" WHERE "LocationName" IN ({placeholders}))',
-            extra_params=REFUGEE_COLLINES,
+            extra_where=f'location_id IN ({placeholders})',
+            extra_params=refugee_colline_ids,
         )
         return {'value': result['total'], 'calculation_type': 'SYSTEM'}
 
