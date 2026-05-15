@@ -44,8 +44,10 @@ User = get_user_model()
 
 FILES = (
     # (label, agency_code, candidate_sheet_names)
-    ("bancobu", "BANCOBU", ["Synthèse"]),
-    ("ibb",     "IBB",     ["Non régularisés"]),
+    # NB: the IBB Excel column says "IBB" but those payments route through
+    # the INTERBANK PaymentAgency (BANCOBU has its own agency, IBB does not).
+    ("bancobu", "BANCOBU",   ["Synthèse"]),
+    ("ibb",     "INTERBANK", ["Non régularisés"]),
 )
 
 
@@ -173,8 +175,9 @@ class Command(BaseCommand):
     help = "One-off: create regularisation Payrolls from two partner Excel files."
 
     def add_arguments(self, parser):
-        parser.add_argument("--bancobu-file", required=True)
-        parser.add_argument("--ibb-file", required=True)
+        # Either file is optional individually, but at least one must be given.
+        parser.add_argument("--bancobu-file", default=None)
+        parser.add_argument("--ibb-file", default=None)
         parser.add_argument("--payment-plan-code", required=True)
         parser.add_argument("--payment-cycle-code", default="1.2 — Régularisation 2026-05")
         parser.add_argument("--cycle-start-date", default="2026-05-11")
@@ -198,15 +201,26 @@ class Command(BaseCommand):
                 f"Available codes:\n  " + "\n  ".join(available)
             )
 
-        for code in ("BANCOBU", "IBB"):
-            if not PaymentAgency.objects.filter(code__iexact=code, is_active=True).exists():
+        agencies = {}
+        for _, code, _ in FILES:
+            agency = PaymentAgency.objects.filter(
+                code__iexact=code, is_active=True
+            ).first()
+            if not agency:
                 raise CommandError(f"Active PaymentAgency {code!r} not found")
+            agencies[code] = agency
 
         cycle_start = datetime.strptime(opts["cycle_start_date"], "%Y-%m-%d").date()
         cycle_end = datetime.strptime(opts["cycle_end_date"], "%Y-%m-%d").date()
         today = date.today()
 
-        file_paths = {"bancobu": Path(opts["bancobu_file"]), "ibb": Path(opts["ibb_file"])}
+        file_paths = {}
+        if opts["bancobu_file"]:
+            file_paths["bancobu"] = Path(opts["bancobu_file"])
+        if opts["ibb_file"]:
+            file_paths["ibb"] = Path(opts["ibb_file"])
+        if not file_paths:
+            raise CommandError("Provide at least one of --bancobu-file or --ibb-file")
         for p in file_paths.values():
             if not p.is_file():
                 raise CommandError(f"File not found: {p}")
@@ -222,7 +236,7 @@ class Command(BaseCommand):
             return
 
         created = self._persist(sections, payment_plan, opts["payment_cycle_code"],
-                                cycle_start, cycle_end, user)
+                                cycle_start, cycle_end, user, agencies)
 
         # Re-write report so it captures the DB-trigger-assigned BEN codes
         report_path = self._write_report(sections, Path(opts["report_dir"]))
@@ -234,14 +248,17 @@ class Command(BaseCommand):
             )
 
     def _get_user(self, username):
+        # openIMIS custom User has no `is_superuser`; fall back to login_name='Admin'.
         if username:
             u = User.objects.filter(username=username).first()
             if not u:
                 raise CommandError(f"User {username!r} not found")
             return u
-        u = User.objects.filter(is_superuser=True).first()
+        u = User.objects.filter(username__iexact="Admin").first()
         if not u:
-            raise CommandError("No superuser found; pass --user")
+            raise CommandError(
+                "Pass --user <username> explicitly (no 'Admin' user found)."
+            )
         return u
 
     def _build_sections(self, file_paths, cycle_start, cycle_end, today):
@@ -250,6 +267,8 @@ class Command(BaseCommand):
         indiv_ct = ContentType.objects.get_for_model(Individual)
 
         for label, agency_code, sheets in FILES:
+            if label not in file_paths:
+                continue
             path = file_paths[label]
             rows = _parse_excel(path, sheets)
             kept, dropped = _dedupe(rows)
@@ -334,7 +353,7 @@ class Command(BaseCommand):
             sections[label] = section
         return sections
 
-    def _persist(self, sections, payment_plan, cycle_code, cycle_start, cycle_end, user):
+    def _persist(self, sections, payment_plan, cycle_code, cycle_start, cycle_end, user, agencies):
         created = []
         with transaction.atomic():
             cycle, _ = PaymentCycle.objects.get_or_create(
@@ -346,11 +365,17 @@ class Command(BaseCommand):
             )
 
             for label, agency_code, _ in FILES:
+                if label not in sections:
+                    continue
                 section = sections[label]
                 if not section["triples"]:
                     continue
 
                 total = sum(t[0][2]["amount"] for t in section["triples"])
+                # PaymentAgency.payment_gateway holds the strategy class name
+                # (e.g. StrategyOnlinePaymentPull for BANCOBU,
+                # StrategyOnlinePaymentPush for INTERBANK).
+                payment_method = agencies[agency_code].payment_gateway
                 payroll = Payroll(
                     id=uuid.uuid4(),
                     name=f"Régularisation {label.title()} 2026-05",
@@ -358,7 +383,7 @@ class Command(BaseCommand):
                     payment_cycle=cycle,
                     payment_point=None,
                     status=PayrollStatus.GENERATING,
-                    payment_method="StrategyOnlinePaymentPush",
+                    payment_method=payment_method,
                     json_ext={
                         "agency_code":    agency_code,
                         "regularisation": True,
@@ -401,6 +426,8 @@ class Command(BaseCommand):
         self.stdout.write("Régularisation — création de payrolls")
         self.stdout.write("=" * 80)
         for label, _, _ in FILES:
+            if label not in sections:
+                continue
             s = sections[label]
             counts = Counter(e["outcome"] for e in s["entries"])
             total = sum((e["amount"] or 0) for e in s["entries"] if e["outcome"] == "created")
@@ -428,6 +455,8 @@ class Command(BaseCommand):
             writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             for label, _, _ in FILES:
+                if label not in sections:
+                    continue
                 for entry in sections[label]["entries"]:
                     writer.writerow({k: entry.get(k, "") for k in fields})
         return path
