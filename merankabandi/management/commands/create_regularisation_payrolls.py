@@ -361,6 +361,8 @@ class Command(BaseCommand):
                 defaults={
                     "start_date": cycle_start, "end_date": cycle_end,
                     "status": PaymentCycle.PaymentCycleStatus.ACTIVE,
+                    # See Payroll construction below for why these are set explicitly.
+                    "user_created": user, "user_updated": user,
                 },
             )
 
@@ -384,6 +386,12 @@ class Command(BaseCommand):
                     payment_point=None,
                     status=PayrollStatus.GENERATING,
                     payment_method=payment_method,
+                    # HistoryBusinessModel.save() checks `if not self.user_created:`
+                    # but accessing a required FK on an unsaved instance raises
+                    # RelatedObjectDoesNotExist. Set the audit users explicitly so
+                    # the save() guard sees a populated relation.
+                    user_created=user,
+                    user_updated=user,
                     json_ext={
                         "agency_code":    agency_code,
                         "regularisation": True,
