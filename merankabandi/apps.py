@@ -63,10 +63,24 @@ class MerankabandiConfig(AppConfig):
         self.__register_filters_and_payment_methods()
         self.__register_calculation_rules()
         self.__register_workflows()
+        self.__register_export_handlers()
         self.__load_config()
         self.__setup_dashboard_optimization()
         self.__patch_calculation_gql_type()
         self.__patch_payroll_status()
+
+    @staticmethod
+    def __register_export_handlers():
+        """Wire merankabandi-specific export handlers into upstream
+        social_protection.export_mixin's downstream-override registry.
+
+        The upstream registry is a generic (file_format, field_name) → callable
+        map; here we plug in our XLSX exporter for group_beneficiary so the
+        upstream package stays free of merankabandi imports.
+        """
+        from social_protection.export_mixin import register_export_handler
+        from merankabandi.beneficiary_export import export_group_beneficiary_xlsx
+        register_export_handler('xlsx', 'group_beneficiary', export_group_beneficiary_xlsx)
 
     @staticmethod
     def __patch_payroll_status():

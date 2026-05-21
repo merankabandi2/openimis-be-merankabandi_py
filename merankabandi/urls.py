@@ -4,6 +4,7 @@ from . import optimized_dashboard_views
 from . import analytics_views
 from . import views_export
 from . import sync_views
+from . import beneficiary_export
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -52,6 +53,11 @@ urlpatterns = [
          name='colline_cards'),
     path('beneficiary-photo/<str:type>/<str:id>/', views.beneficiary_photo_view, name='beneficiary_photo'),
     path('beneficiary-photos/<str:socialid>/', views.beneficiary_photos_view, name='beneficiary_photos'),
+    # Custom XLSX export of group beneficiaries (photo URLs, primary recipient only).
+    # Moved from social_protection/urls.py:export_beneficiaries_excel/ as part of the
+    # registry-based extension refactor (see merankabandi/beneficiary_export.py).
+    path('export_beneficiaries_excel/', beneficiary_export.export_beneficiaries_excel_view,
+         name='export_beneficiaries_excel'),
     path('location/<str:location_id>/cards/', views.generate_location_cards_view, name='generate_location_cards'),
     path(
         'location/<str:location_id>/generate-cards-background/',
