@@ -94,10 +94,13 @@ class ResultFrameworkService:
 
         women_count = self._count_women_beneficiaries(benefit_plan_codes, location)
 
+        # psycopg2 returns Decimal for SUM aggregates; cast to int so the
+        # whole dict stays JSON-serializable when it lands in
+        # IndicatorAchievement.breakdowns (JSONField).
         view_keys = ['twa', 'disabled', 'chronic_illness', 'refugees', 'returnees', 'displaced']
-        values = {'women': women_count}
+        values = {'women': int(women_count or 0)}
         for i, key in enumerate(view_keys):
-            values[key] = row[i] if row else 0
+            values[key] = int(row[i]) if row and row[i] is not None else 0
 
         return [
             {**bd, 'value': values.get(bd['key'], 0)}
@@ -352,7 +355,14 @@ class ResultFrameworkService:
         return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
 
     def _count_beneficiaries_women(self, indicator, date_from, date_to, location, config):
-        """Count female beneficiaries (Indicator 6)"""
+        """Count female beneficiaries (Indicator 6).
+
+        No demographic breakdowns are returned: the indicator is already a
+        sub-population filter (sexe='F'), and the existing matview-backed
+        breakdowns are total-population counts (twa, refugees, etc.) which
+        would duplicate Indicator 5's breakdown chart verbatim. Showing them
+        beside the women headline is misleading.
+        """
         query = GroupBeneficiary.objects.filter(
             is_deleted=False,
             status__in=['ACTIVE', 'VALIDATED', 'POTENTIAL'],
@@ -368,11 +378,7 @@ class ResultFrameworkService:
             query = query.filter(group__location__parent__parent=location)
 
         count = query.distinct().count()
-        breakdowns = self._compute_breakdowns(
-            benefit_plan_codes=config.get('benefit_plan_codes'),
-            location=location,
-        )
-        return {'value': count, 'calculation_type': 'SYSTEM', 'breakdowns': breakdowns}
+        return {'value': count, 'calculation_type': 'SYSTEM'}
 
     def _count_beneficiaries_unconditional_transfers(self, indicator, date_from, date_to, location, config):
         """Count beneficiaries of unconditional transfers — programme 1.2 (Indicator 7)"""
