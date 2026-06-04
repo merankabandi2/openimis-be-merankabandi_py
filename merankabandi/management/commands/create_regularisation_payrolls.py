@@ -331,7 +331,11 @@ class Command(BaseCommand):
                 benefit_data = {
                     "individual_id": recipient.id, "code": "",
                     "date_due": cycle_end, "amount": row["amount"],
-                    "type": "CASH", "status": BenefitConsumptionStatus.ACCEPTED,
+                    # "Cash Transfer" matches the type normal Mera payroll benefits
+                    # use (calcrule builder); "CASH" made these 30 rows stick out in
+                    # OpenSearch/reporting. Display/reporting only — no payment logic
+                    # branches on benefit type.
+                    "type": "Cash Transfer", "status": BenefitConsumptionStatus.ACCEPTED,
                     "json_ext": {
                         "social_id":      row["social_id"],
                         "regularisation": True,

@@ -671,12 +671,22 @@ class PaymentApiService:
             if payment_provider:
                 payroll_query = payroll_query.filter(json_ext__payment_agency_name__iexact=payment_provider)
 
-            # Filter by payment cycle if specified
+            # Filter by payment cycle if specified.
+            # Accept either a UUID (PK) or a cycle code. Matching the PK against a
+            # non-UUID string raises "is not a valid UUID", so only add the PK
+            # branch when the value actually parses as a UUID.
             if payment_cycle:
-                payroll_query = payroll_query.filter(
-                    Q(payment_cycle=payment_cycle) |
-                    Q(payment_cycle__code__iexact=payment_cycle)
-                )
+                import uuid as _uuid
+                try:
+                    _uuid.UUID(str(payment_cycle))
+                    payroll_query = payroll_query.filter(
+                        Q(payment_cycle_id=payment_cycle) |
+                        Q(payment_cycle__code__iexact=payment_cycle)
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    payroll_query = payroll_query.filter(
+                        payment_cycle__code__iexact=payment_cycle
+                    )
 
             # Filter by commune if specified (via json_ext.commune_id / location_uuid)
             if commune:
