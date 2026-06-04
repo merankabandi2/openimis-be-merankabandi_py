@@ -393,11 +393,16 @@ class Command(BaseCommand):
                     user_created=user,
                     user_updated=user,
                     json_ext={
-                        "agency_code":    agency_code,
-                        "regularisation": True,
-                        "source_file":    str(section["path"]),
-                        "row_count":      len(section["triples"]),
-                        "total_amount":   str(total),
+                        "agency_code":         agency_code,
+                        # PaymentApiService.get_individual_payment_requests filters the
+                        # bank-facing pull API on json_ext.payment_agency_name, so it
+                        # MUST be set or the payroll is invisible to the agency's API.
+                        # Normal Mera payrolls (payment_schedule_service) write both keys.
+                        "payment_agency_name": agency_code,
+                        "regularisation":      True,
+                        "source_file":         str(section["path"]),
+                        "row_count":           len(section["triples"]),
+                        "total_amount":        str(total),
                     },
                 )
                 payroll.save(username=user.login_name)
