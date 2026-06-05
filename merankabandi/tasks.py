@@ -11,6 +11,82 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+# Directory (under MEDIA_ROOT) where generated account-creation reports are stored.
+ACCOUNT_REPORT_SUBDIR = 'account_creation_reports'
+
+
+@shared_task
+def generate_account_creation_report(user_id, benefit_plan_id, province_id=None,
+                                     payment_agency_id=None):
+    """Build the per-commune Finbank account-creation workbook asynchronously,
+    save it under MEDIA_ROOT, and notify the requesting user (in-app + email)
+    with a download link.
+
+    Used for large scopes; small scopes are streamed synchronously by the view.
+    """
+    import os
+    from core.models import User
+    from .reports.account_creation_report import AccountCreationReportService
+
+    user = User.objects.get(id=user_id)
+    try:
+        service = AccountCreationReportService(user)
+        buf = service.build_workbook(
+            benefit_plan_id, province_id=province_id, payment_agency_id=payment_agency_id)
+
+        report_dir = os.path.join(
+            getattr(settings, 'MEDIA_ROOT', 'file_storage'), ACCOUNT_REPORT_SUBDIR)
+        os.makedirs(report_dir, exist_ok=True)
+        scope = 'province' if province_id else 'agency'
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'comptes_finbank_{scope}_{timestamp}.xlsx'
+        filepath = os.path.join(report_dir, filename)
+        with open(filepath, 'wb') as fh:
+            fh.write(buf.read())
+
+        _notify_account_report_ready(user, filename)
+        logger.info("Account-creation report saved to %s", filepath)
+        return filename
+
+    except Exception as e:
+        logger.error("Account-creation report generation failed: %s", e, exc_info=True)
+        _notify_account_report_failed(user)
+        raise
+
+
+def _notify_account_report_ready(user, filename):
+    """Notify the requester (in-app + email) that the report is ready, with a
+    download link. actor=None so the requester is NOT skipped by notify()."""
+    try:
+        from notification.services import NotificationService
+
+        NotificationService.notify(
+            event_code='report.account_creation_ready',
+            actor=None,
+            entity=None,
+            entity_url=f'/reports/download/{filename}',
+            recipients=[user],
+            context={'filename': filename},
+        )
+    except Exception as e:  # notification must never break report generation
+        logger.warning("Failed to send account-report-ready notification: %s", e)
+
+
+def _notify_account_report_failed(user):
+    try:
+        from notification.services import NotificationService
+
+        NotificationService.notify(
+            event_code='report.account_creation_failed',
+            actor=None,
+            entity=None,
+            entity_url='',
+            recipients=[user],
+            context={},
+        )
+    except Exception as e:
+        logger.warning("Failed to send account-report-failed notification: %s", e)
+
 
 
 @shared_task

@@ -110,6 +110,9 @@ urlpatterns = [
     # Operational reports (read-only)
     path('reports/account-creation/', views_reports.account_creation_report_view,
          name='account_creation_report'),
+    path('reports/account-creation/download/<str:filename>',
+         views_reports.account_creation_report_download_view,
+         name='account_creation_report_download'),
 
     # Mobile sync endpoints (WatermelonDB pull/push)
     path('sync/pull/', sync_views.sync_pull, name='sync_pull'),

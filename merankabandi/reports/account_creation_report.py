@@ -72,6 +72,20 @@ class AccountCreationReportService:
             qs = Location.objects.none()
         return qs.order_by('parent__name', 'name')
 
+    def estimate_size(self, benefit_plan_id, province_id=None, payment_agency_id=None):
+        """Cheap beneficiary count for the scope — drives the sync/async decision
+        without building the workbook (one COUNT query)."""
+        from social_protection.models import GroupBeneficiary
+
+        commune_ids = list(self.resolve_communes(
+            benefit_plan_id, province_id, payment_agency_id).values_list('id', flat=True))
+        if not commune_ids:
+            return 0
+        return GroupBeneficiary.objects.filter(
+            benefit_plan_id=benefit_plan_id, is_deleted=False,
+            group__location__parent_id__in=commune_ids,
+        ).count()
+
     def _beneficiaries_for_commune(self, benefit_plan_id, commune):
         from social_protection.models import GroupBeneficiary
         return (GroupBeneficiary.objects
