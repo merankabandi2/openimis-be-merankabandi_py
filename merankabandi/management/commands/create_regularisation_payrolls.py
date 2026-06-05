@@ -347,6 +347,11 @@ class Command(BaseCommand):
                         "colline":        row["colline"],
                         "cni":            row["cni"],
                         "phone":          row["phone"],
+                        # The payment-request serializer reads json_ext.phoneNumber
+                        # (not 'phone'). Store the 8-digit local form (strip the 257
+                        # country code) so it matches the beneficiary's
+                        # moyen_paiement/moyen_telecom number used by the agency rail.
+                        "phoneNumber":    re.sub(r"^257", "", row["phone"] or ""),
                         "nom":            row["nom"],
                         "prenom":         row["prenom"],
                     },
