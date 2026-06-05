@@ -153,3 +153,47 @@ class TestAccountCreationReport(TestCase):
         ws = wb['Makebuko']
         self.assertEqual([c.value for c in ws[1]], REPORT_HEADERS)
         self.assertEqual(ws.max_row, 1)
+
+
+from rest_framework.test import APIRequestFactory, force_authenticate
+
+
+class TestAccountCreationReportView(TestCase):
+    def setUp(self):
+        from merankabandi.views_reports import account_creation_report_view
+        self.view = account_creation_report_view
+        self.factory = APIRequestFactory()
+        self.user = _user()
+        self.bp = _bp(self.user)
+        self.province = _loc('Gitega', 'D')
+        self.commune = _loc('Giheta', 'W', self.province)
+        self.colline = _loc('CollineA', 'V', self.commune)
+        _beneficiary(self.user, self.bp, self.colline, social_id='S1', first='Jean', last='UWIMANA',
+                     moyen_paiement={'phoneNumber': '71519246', 'agence': 'ECONET',
+                                     'status': 'SUCCESS', 'ordernumber': 1, 'responseDate': '2023-01-01'})
+
+    def _get(self, params):
+        # Plain RequestFactory triggers SessionAuthentication CSRF enforcement;
+        # use DRF's APIRequestFactory + force_authenticate so the permission layer
+        # (IsAuthenticated + has_perms) resolves request.user to the test user.
+        req = self.factory.get('/api/merankabandi/reports/account-creation/', params)
+        force_authenticate(req, user=self.user)
+        return self.view(req)
+
+    def test_missing_benefit_plan_returns_400(self):
+        resp = self._get({'province_id': str(self.province.id)})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_both_scopes_returns_400(self):
+        resp = self._get({'benefit_plan_id': str(self.bp.id),
+                          'province_id': str(self.province.id),
+                          'payment_agency_id': '1'})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_valid_returns_xlsx(self):
+        resp = self._get({'benefit_plan_id': str(self.bp.id),
+                          'province_id': str(self.province.id)})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'],
+                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        self.assertIn('attachment;', resp['Content-Disposition'])

@@ -5,6 +5,7 @@ from . import analytics_views
 from . import views_export
 from . import sync_views
 from . import beneficiary_export
+from . import views_reports
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -105,6 +106,10 @@ urlpatterns = [
     path('export/sensitization-trainings/', views_export.export_sensitization_trainings, name='export_sensitization_trainings'),
     path('export/micro-projects/', views_export.export_micro_projects, name='export_micro_projects'),
     path('export/behavior-change/', views_export.export_behavior_change_promotions, name='export_behavior_change'),
+
+    # Operational reports (read-only)
+    path('reports/account-creation/', views_reports.account_creation_report_view,
+         name='account_creation_report'),
 
     # Mobile sync endpoints (WatermelonDB pull/push)
     path('sync/pull/', sync_views.sync_pull, name='sync_pull'),
