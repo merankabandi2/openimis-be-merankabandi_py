@@ -41,7 +41,7 @@ def account_creation_report_view(request):
         return Response({'success': False, 'error': str(exc)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    scope = province_id and 'province' or 'agency'
+    scope = 'province' if province_id else 'agency'
     ts = datetime.datetime.now().strftime('%Y%m%d')
     filename = f'comptes_finbank_{scope}_{ts}.xlsx'
     response = HttpResponse(buf.read(), content_type=XLSX_CONTENT_TYPE)

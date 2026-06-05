@@ -3,6 +3,7 @@ from io import BytesIO
 
 import openpyxl
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from core.test_helpers import create_test_interactive_user
 from social_protection.models import BenefitPlan, GroupBeneficiary
@@ -153,9 +154,6 @@ class TestAccountCreationReport(TestCase):
         ws = wb['Makebuko']
         self.assertEqual([c.value for c in ws[1]], REPORT_HEADERS)
         self.assertEqual(ws.max_row, 1)
-
-
-from rest_framework.test import APIRequestFactory, force_authenticate
 
 
 class TestAccountCreationReportView(TestCase):
