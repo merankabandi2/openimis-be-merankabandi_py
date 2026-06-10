@@ -74,6 +74,47 @@ def _beneficiary(user, bp, colline, *, social_id, first, last, sexe='M', ci='C1'
     return gb
 
 
+class TestAgencyScoping(TestCase):
+    """S2 (cross-review): attribution endpoints must scope to the agency's served
+    provinces/plans, not return program-wide beneficiary PII."""
+
+    def setUp(self):
+        self.user = _user()
+        self.bp = _bp(self.user)
+        self.prov_a = _loc('ProvA', 'D')
+        self.prov_b = _loc('ProvB', 'D')
+        com_a = _loc('ComA', 'W', self.prov_a)
+        com_b = _loc('ComB', 'W', self.prov_b)
+        self.col_a = _loc('ColA', 'V', com_a)
+        self.col_b = _loc('ColB', 'V', com_b)
+        _beneficiary(self.user, self.bp, self.col_a, social_id='A1', first='A', last='A')
+        _beneficiary(self.user, self.bp, self.col_b, social_id='B1', first='B', last='B')
+        self.agency = PaymentAgency.objects.create(
+            code='AGX', name='AGX', payment_gateway='StrategyOnlinePaymentPull', is_active=True)
+        # Agency AGX serves only province A for this plan.
+        ProvincePaymentAgency.objects.create(
+            province=self.prov_a, benefit_plan=self.bp, payment_agency=self.agency)
+
+    def test_scopes_to_served_province_only(self):
+        from social_protection.models import GroupBeneficiary
+        from merankabandi.services import _scope_beneficiaries_to_agency
+        qs = _scope_beneficiaries_to_agency(GroupBeneficiary.objects.all(), 'AGX')
+        codes = sorted(gb.group.code for gb in qs)
+        self.assertEqual(codes, ['A1'])  # NOT B1 (province B not served by AGX)
+
+    def test_unknown_agency_returns_nothing(self):
+        from social_protection.models import GroupBeneficiary
+        from merankabandi.services import _scope_beneficiaries_to_agency
+        qs = _scope_beneficiaries_to_agency(GroupBeneficiary.objects.all(), 'NOPE')
+        self.assertEqual(list(qs), [])
+
+    def test_no_agency_passes_through(self):
+        from social_protection.models import GroupBeneficiary
+        from merankabandi.services import _scope_beneficiaries_to_agency
+        qs = _scope_beneficiaries_to_agency(GroupBeneficiary.objects.all(), None)
+        self.assertEqual(qs.count(), GroupBeneficiary.objects.count())
+
+
 class TestAccountCreationReport(TestCase):
     def setUp(self):
         self.user = _user()

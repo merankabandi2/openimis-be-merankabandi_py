@@ -961,7 +961,10 @@ class BulkUpdateGroupBeneficiaryStatusMutation(BaseMutation):
 
         if json_ext_update:
             import json
-            update_data = json.loads(json_ext_update) if isinstance(json_ext_update, str) else json_ext_update
+            try:
+                update_data = json.loads(json_ext_update) if isinstance(json_ext_update, str) else json_ext_update
+            except (ValueError, TypeError):
+                raise ValidationError(_("Invalid json_ext_update payload"))
             updated = 0
             for gb in qs:
                 ext = gb.json_ext or {}
@@ -1238,8 +1241,7 @@ class CreatePreCollecteMutation(BaseHistoryModelCreateMutationMixin, BaseMutatio
         if isinstance(data.get('json_ext'), str):
             data['json_ext'] = json.loads(data['json_ext'])
         pc = PreCollecte(**data)
-        generate_social_id(pc)
-        pc.save()
+        generate_social_id(pc)  # allocates the sequence under an advisory lock AND saves
 
     class Input(CreatePreCollecteInputType):
         pass
@@ -1564,7 +1566,10 @@ class RunPayrollRecoveryFlowMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        # Payment-mutating op (reconciliation + retry payment) — require the payroll
+        # right, not just authentication.
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
         if data.get('mode') not in VALID_RECOVERY_MODES:
             raise ValidationError(

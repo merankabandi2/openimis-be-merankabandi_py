@@ -519,14 +519,17 @@ class PhoneNumberAttributionViewSet(viewsets.ViewSet):
         Optional filters: commune, programme
         """
 
-        _ = request.auth.application.name
+        # Restrict results to the provinces/plans this agency actually serves
+        # (tenant isolation — was previously fetched and discarded).
+        application_name = request.auth.application.name
         commune = request.query_params.get('commune')
         programme = request.query_params.get('programme')
 
         # Get beneficiaries awaiting phone verification
         queryset = PhoneNumberAttributionService.get_pending_phone_verifications(
             commune=commune,
-            programme=programme
+            programme=programme,
+            payment_agency=application_name
         )
 
         # Paginate results
@@ -740,7 +743,9 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         GET: List beneficiaries requiring payment account attribution.
         Optional filters: commune, programme
         """
-        _ = request.auth.application.name
+        # Restrict results to the provinces/plans this agency actually serves
+        # (tenant isolation — was previously fetched and discarded).
+        application_name = request.auth.application.name
         commune = request.query_params.get('commune')
         phonenumber = request.query_params.get('phonenumber')
         programme = request.query_params.get('programme')
@@ -749,7 +754,8 @@ class PaymentAccountAttributionViewSet(viewsets.ViewSet):
         queryset = PaymentAccountAttributionService.get_pending_account_attributions(
             commune=commune,
             programme=programme,
-            phonenumber=phonenumber
+            phonenumber=phonenumber,
+            payment_agency=application_name
         )
 
         # Paginate results

@@ -519,7 +519,17 @@ class DashboardService:
             cursor.execute(query, params)
             overall = cls._dictfetchone(cursor)
 
-        # By transfer type (from quarterly view)
+        # By transfer type (from quarterly view). This view carries year +
+        # programme_id but NOT province_id (only provinces_covered), so the
+        # programme filter is applied here; province cannot be (no column).
+        q2_conds, p2 = [], []
+        if filters and filters.get('year'):
+            q2_conds.append("year = %s")
+            p2.append(filters['year'])
+        if filters and filters.get('benefit_plan_id'):
+            q2_conds.append("programme_id = %s")
+            p2.append(filters['benefit_plan_id'])
+        q2_where = ("WHERE " + " AND ".join(q2_conds)) if q2_conds else ""
         q2 = f"""
         SELECT transfer_type, payment_source,
             total_beneficiaries, total_amount,
@@ -527,10 +537,9 @@ class DashboardService:
             q1_beneficiaries, q2_beneficiaries, q3_beneficiaries, q4_beneficiaries,
             avg_female_percentage, avg_twa_percentage
         FROM payment_reporting_unified_quarterly
-        {"WHERE year = %s" if filters and filters.get('year') else ""}
+        {q2_where}
         ORDER BY total_amount DESC
         """
-        p2 = [filters['year']] if filters and filters.get('year') else []
         with connection.cursor() as cursor:
             cursor.execute(q2, p2)
             by_type = cls._dictfetchall(cursor)

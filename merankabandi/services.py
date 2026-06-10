@@ -245,6 +245,33 @@ class PaymentDataService:
             cls.approve_for_payment_benefit_consumption(benefits_to_approve, user)
 
 
+def _scope_beneficiaries_to_agency(queryset, payment_agency_name):
+    """Restrict a GroupBeneficiary queryset to the (province, benefit_plan) pairs
+    the calling payment agency actually serves (via ProvincePaymentAgency).
+
+    Tenant isolation for the agency-facing attribution endpoints: without this any
+    agency token returns program-wide beneficiary PII. Unknown agency or no active
+    assignment -> empty queryset (secure default).
+    """
+    if not payment_agency_name:
+        return queryset
+    from merankabandi.models import PaymentAgency, ProvincePaymentAgency
+    agency = (PaymentAgency.objects.filter(name__iexact=payment_agency_name).first()
+              or PaymentAgency.objects.filter(code__iexact=payment_agency_name).first())
+    if not agency:
+        return queryset.none()
+    pairs = list(ProvincePaymentAgency.objects.filter(
+        payment_agency=agency, is_active=True
+    ).values_list('province_id', 'benefit_plan_id'))
+    if not pairs:
+        return queryset.none()
+    scope = Q()
+    for province_id, benefit_plan_id in pairs:
+        scope |= Q(group__location__parent__parent_id=province_id,
+                   benefit_plan_id=benefit_plan_id)
+    return queryset.filter(scope)
+
+
 class PhoneNumberAttributionService:
     """
     Service class for phone number attribution operations.
@@ -337,13 +364,14 @@ class PhoneNumberAttributionService:
             return False, None, str(e)
 
     @classmethod
-    def get_pending_phone_verifications(cls, commune=None, programme=None):
+    def get_pending_phone_verifications(cls, commune=None, programme=None, payment_agency=None):
         """
         Get all beneficiaries awaiting phone verification
 
         Args:
             commune (str, optional): Filter by commune name
             programme (str, optional): Filter by programme name
+            payment_agency (str, optional): Restrict to the agency's served provinces/plans
 
         Returns:
             QuerySet: Filtered queryset of beneficiaries
@@ -373,6 +401,7 @@ class PhoneNumberAttributionService:
                 Q(benefit_plan__code__iexact=programme)
             )
 
+        queryset = _scope_beneficiaries_to_agency(queryset, payment_agency)
         return queryset.order_by('id')
 
 
@@ -420,13 +449,15 @@ class PaymentAccountAttributionService:
             return None
 
     @classmethod
-    def get_pending_account_attributions(cls, commune=None, programme=None, phonenumber=None):
+    def get_pending_account_attributions(cls, commune=None, programme=None, phonenumber=None,
+                                         payment_agency=None):
         """
         Get all beneficiaries awaiting payment account attribution
 
         Args:
             commune (str, optional): Filter by commune name
             programme (str, optional): Filter by programme name
+            payment_agency (str, optional): Restrict to the agency's served provinces/plans
 
         Returns:
             QuerySet: Filtered queryset of beneficiaries
@@ -474,6 +505,7 @@ class PaymentAccountAttributionService:
                 Q(benefit_plan__code__iexact=programme)
             )
 
+        queryset = _scope_beneficiaries_to_agency(queryset, payment_agency)
         return queryset.order_by('id')
 
     @classmethod

@@ -1,6 +1,6 @@
 import datetime
 
-from django.db import transaction
+from django.db import transaction, connection
 from django.db.models import Max
 
 
@@ -34,9 +34,18 @@ def generate_social_id(precollecte_instance):
     prefix = f"{yy}{province_code}{rr}"
 
     with transaction.atomic():
+        # Serialize per-prefix sequence allocation. `select_for_update().aggregate()`
+        # silently DROPS the row lock (Django runs the aggregate as a subquery), and
+        # on the first record for a prefix there are no rows to lock anyway — so two
+        # concurrent creates would read the same max and mint a DUPLICATE social_id.
+        # A transaction-scoped advisory lock keyed on the prefix serializes them; it
+        # is held until the enclosing transaction commits (after the save below).
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
+                           [f"precollecte_social_id:{prefix}"])
+
         max_seq = (
             PreCollecte.objects
-            .select_for_update()
             .filter(social_id__startswith=prefix)
             .aggregate(max_seq=Max('social_id_seq'))
         )['max_seq'] or 0
@@ -46,5 +55,8 @@ def generate_social_id(precollecte_instance):
 
         precollecte_instance.social_id_seq = new_seq
         precollecte_instance.social_id = social_id
+        # Save INSIDE the lock so the new row is committed before another waiter
+        # reads max_seq. (Callers must not save again.)
+        precollecte_instance.save()
 
     return social_id

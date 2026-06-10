@@ -101,15 +101,19 @@ class LumicashPaymentGatewayConnector(PaymentGatewayConnector):
 
         request_id = self._generate_request_id(invoice_id)
         request_date = self._generate_request_date()
-        # Signature must be over the actual TransAmount we send, not the net.
-        signature = self._generate_signature(request_date, transfer_amount, phone_number, request_id)
+        # BIF has no minor unit: collapse to a single integer FIRST, then sign and
+        # send THAT exact value. Previously the signature was over the %.2f float
+        # (e.g. "73080.50") while the payload sent int() ("73080"), so any
+        # fee-bearing fractional amount produced a signature the gateway rejected.
+        trans_amount = int(round(transfer_amount))
+        signature = self._generate_signature(request_date, trans_amount, phone_number, request_id)
 
         payload = {
             "RequestId": request_id,
             "RequestDate": request_date,
             "PartnerCode": self.config.partner_code,
             "DesMobile": phone_number,
-            "TransAmount": int(transfer_amount),
+            "TransAmount": trans_amount,
             "Content": kwargs.get('content', f"Payment for invoice {invoice_id}"),
             "Description": kwargs.get('description', ''),
             "Signature": signature,
