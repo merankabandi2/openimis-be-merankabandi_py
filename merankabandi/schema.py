@@ -467,7 +467,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         return gql_optimizer.query(queryset, info)
 
     def resolve_monetary_transfer(self, info, **kwargs):
-        # Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
+        Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
         filters = append_validity_filter(**kwargs)
         query = MonetaryTransfer.objects.filter(*filters)
         return gql_optimizer.query(query, info)
@@ -1006,8 +1006,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         return gql_optimizer.query(query, info)
 
     def resolve_tickets_by_resolution(self, info, **kwargs):
-        # Check permissions - adjust as needed based on your application's permission model
-        # Query._check_permissions(info.context.user, SocialProtectionConfig.gql_query_beneficiaries_perms)
+        Query._check_permissions(info.context.user, SocialProtectionConfig.gql_beneficiary_search_perms)
 
         # Start with all tickets
         query = Ticket.objects.filter(is_deleted=False)
@@ -1191,6 +1190,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         )
 
     def resolve_payment_agency(self, info, **kwargs):
+        Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
         return gql_optimizer.query(PaymentAgency.objects.all(), info)
 
     def resolve_payment_gateway_connectors(self, info, **kwargs):
@@ -1201,6 +1201,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
         ]
 
     def resolve_province_payment_agency(self, info, **kwargs):
+        Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
         return gql_optimizer.query(ProvincePaymentAgency.objects.all(), info)
 
     agency_fee_config = OrderedDjangoFilterConnectionField(
@@ -1209,6 +1210,7 @@ class Query(ExportableQueryMixin, OptimizedDashboardQuery, PaymentReportingQuery
     )
 
     def resolve_agency_fee_config(self, info, **kwargs):
+        Query._check_permissions(info.context.user, PayrollConfig.gql_payroll_search_perms)
         return gql_optimizer.query(AgencyFeeConfig.objects.all(), info)
 
     # Extended payroll type with meraLocation resolved from json_ext

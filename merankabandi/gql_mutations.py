@@ -536,7 +536,8 @@ class CreatePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -555,7 +556,8 @@ class UpdatePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -576,7 +578,8 @@ class DeletePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -613,7 +616,8 @@ class CreateProvincePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -632,7 +636,8 @@ class UpdateProvincePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -653,7 +658,8 @@ class DeleteProvincePaymentAgencyMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -692,7 +698,8 @@ class CreateAgencyFeeConfigMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -717,7 +724,8 @@ class UpdateAgencyFeeConfigMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
@@ -746,7 +754,8 @@ class DeleteAgencyFeeConfigMutation(BaseMutation):
 
     @classmethod
     def _validate_mutation(cls, user, **data):
-        if type(user) is AnonymousUser or not user.id:
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
             raise ValidationError(_("mutation.authentication_required"))
 
     @classmethod
