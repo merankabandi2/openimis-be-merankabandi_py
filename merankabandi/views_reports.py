@@ -52,14 +52,21 @@ def account_creation_report_view(request):
             benefit_plan_id, province_id=province_id, payment_agency_id=payment_agency_id)
     except Exception as exc:  # noqa: BLE001
         logger.error("account_creation_report size estimate failed", exc_info=exc)
-        return Response({'success': False, 'error': str(exc)},
+        return Response({'success': False, 'error': 'Failed to estimate report size'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Large scope -> async build + notify.
     if size > ACCOUNT_REPORT_SYNC_THRESHOLD:
-        generate_account_creation_report.delay(
-            str(request.user.id), benefit_plan_id,
-            province_id=province_id, payment_agency_id=payment_agency_id)
+        try:
+            generate_account_creation_report.delay(
+                str(request.user.id), benefit_plan_id,
+                province_id=province_id, payment_agency_id=payment_agency_id)
+        except Exception as exc:  # broker unavailable etc. — don't 500 the request
+            logger.error("account_creation_report enqueue failed", exc_info=exc)
+            return Response(
+                {'success': False,
+                 'error': 'Report service temporarily unavailable, please retry later'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {'success': True, 'async': True, 'count': size,
              'message': ('Le rapport est en cours de génération. Vous serez '
@@ -72,7 +79,7 @@ def account_creation_report_view(request):
             benefit_plan_id, province_id=province_id, payment_agency_id=payment_agency_id)
     except Exception as exc:  # noqa: BLE001
         logger.error("account_creation_report failed", exc_info=exc)
-        return Response({'success': False, 'error': str(exc)},
+        return Response({'success': False, 'error': 'Failed to generate report'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     scope = 'province' if province_id else 'agency'

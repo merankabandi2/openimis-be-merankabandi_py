@@ -65,6 +65,7 @@ class AccountCreationReportService:
             province_ids = list(ProvincePaymentAgency.objects.filter(
                 payment_agency_id=payment_agency_id,
                 benefit_plan_id=benefit_plan_id,
+                is_active=True,
             ).values_list('province_id', flat=True))
             qs = Location.objects.filter(
                 type='W', parent_id__in=province_ids, validity_to__isnull=True)

@@ -3,6 +3,7 @@ Merankabandi-specific Celery tasks.
 """
 import io
 import logging
+import uuid
 from datetime import datetime
 
 from celery import shared_task
@@ -39,7 +40,11 @@ def generate_account_creation_report(user_id, benefit_plan_id, province_id=None,
         os.makedirs(report_dir, exist_ok=True)
         scope = 'province' if province_id else 'agency'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'comptes_finbank_{scope}_{timestamp}.xlsx'
+        # The random suffix makes the filename unique (two large reports finishing
+        # in the same second won't overwrite each other) AND unguessable (the
+        # download view is right-gated but has no per-file owner check, so a
+        # guessable name would let any holder enumerate others' report PII).
+        filename = f'comptes_finbank_{scope}_{timestamp}_{uuid.uuid4().hex[:12]}.xlsx'
         filepath = os.path.join(report_dir, filename)
         with open(filepath, 'wb') as fh:
             fh.write(buf.read())

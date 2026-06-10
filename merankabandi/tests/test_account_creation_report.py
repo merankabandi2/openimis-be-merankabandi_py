@@ -114,6 +114,16 @@ class TestAccountCreationReport(TestCase):
         communes = list(svc.resolve_communes(self.bp.id, payment_agency_id=agency.id))
         self.assertEqual(sorted(c.name for c in communes), ['Giheta', 'Gishubi'])
 
+    def test_resolve_communes_excludes_inactive_agency_assignment(self):
+        agency = PaymentAgency.objects.create(code='RPT-INACT', name='RPT-INACT',
+                                              payment_gateway='StrategyOnlinePaymentPull', is_active=True)
+        # A deactivated province<->agency assignment must NOT contribute communes.
+        ProvincePaymentAgency.objects.create(province=self.province, benefit_plan=self.bp,
+                                             payment_agency=agency, is_active=False)
+        svc = AccountCreationReportService(self.user)
+        communes = list(svc.resolve_communes(self.bp.id, payment_agency_id=agency.id))
+        self.assertEqual(communes, [])
+
     def test_workbook_has_a_sheet_per_commune(self):
         svc = AccountCreationReportService(self.user)
         buf = svc.build_workbook(self.bp.id, province_id=self.province.id)
