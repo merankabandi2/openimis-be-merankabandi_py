@@ -80,14 +80,11 @@ class MerankabandiConfig(AppConfig):
         """
         from social_protection.export_mixin import register_export_handler
         from merankabandi.beneficiary_export import export_group_beneficiary_xlsx
-        # Register for BOTH formats: the Merankabandi beneficiary export must always be
-        # the photo-URL workbook, but the FE Searcher's default export format is 'csv'
-        # (fe-core SearcherExport). Registering under 'csv' too means the stock FE
-        # download dispatches here regardless — the format-forcing stays in this Mera
-        # module instead of diverging the social_protection FE fork. The handler always
-        # produces an xlsx workbook.
+        # The FE requests xlsx for the group-beneficiary export (set via the
+        # fe-social_protection 'groupBeneficiaryExportFileFormat' config — see
+        # migration 0026), so a single xlsx registration suffices and the download
+        # is correctly named .xlsx.
         register_export_handler('xlsx', 'group_beneficiary', export_group_beneficiary_xlsx)
-        register_export_handler('csv', 'group_beneficiary', export_group_beneficiary_xlsx)
 
     @staticmethod
     def __patch_payroll_status():
